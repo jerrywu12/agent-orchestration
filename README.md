@@ -166,3 +166,22 @@ The desired Codex, Claude, Gemini, and Cursor MCP entries are tracked under `con
 Cursor also receives an always-on project rule from `templates/cursor-shared-ui-tooling.mdc.template`, and the machine-wide operational copy lives at `/Users/jerry/.cursor/rules/shared-ui-tooling.mdc`.
 
 Agents should use this bundle for global inspection and bootstrap help. Repos that need durable tests should still add project-local Playwright or Storybook dependencies so CI and local runs share the repo lockfile.
+
+---
+
+## 6. Local Agent and Model State
+
+Agent and model folders are organized under the ignored local state root:
+
+```bash
+/Users/jerry/agent-orchestrator/local/agent-home
+```
+
+Use the migration script to preview or perform moves while leaving compatibility symlinks at the original paths:
+
+```bash
+/Users/jerry/agent-orchestrator/scripts/relocate_agent_home.sh
+/Users/jerry/agent-orchestrator/scripts/relocate_agent_home.sh --execute --only agent-skills
+```
+
+See `docs/AGENT_HOME_CONSOLIDATION.md` for the managed folder list and the safe full migration flow. Do not commit anything under `local/agent-home/`.

@@ -25,6 +25,9 @@ Machine-wide Playwright CLI, Playwright MCP, Storybook CLI, and Chrome DevTools 
 - This notice is mirrored for Claude, Codex, Gemini, and Cursor; Cursor also uses `.cursor/rules/shared-ui-tooling.mdc`.
 - Prefer project-local Playwright/Storybook dependencies for durable tests that CI should run.
 
+## Agent and Model State
+Agent and model folders are organized under `/Users/jerry/agent-orchestrator/local/agent-home`, with original home-directory paths kept as symlinks when moved. Check `/Users/jerry/agent-orchestrator/docs/AGENT_HOME_STATUS.md` before moving or assuming a path is still physical.
+
 ## Handoff Workflow
 1. Write the spec and acceptance test gate, commit + push them.
 2. Add a row to the coordination board `docs/HANDOFF_PUNCHLIST.md`:

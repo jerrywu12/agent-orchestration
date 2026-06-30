@@ -12,3 +12,7 @@ Playwright CLI, Playwright MCP, Storybook CLI, and Chrome DevTools MCP are insta
 - Use Storybook for isolated component states when a repo should own UI fixtures.
 - Cursor global MCP servers are configured in `/Users/jerry/.cursor/mcp.json`; reload Cursor if the tools are not visible in a running session.
 - For real project tests, prefer project-local Playwright/Storybook dependencies so CI and local runs use the repo lockfile.
+
+## Agent and Model State
+
+Agent and model folders are organized under `/Users/jerry/agent-orchestrator/local/agent-home`, with original home-directory paths kept as symlinks when moved. Check `/Users/jerry/agent-orchestrator/docs/AGENT_HOME_STATUS.md` before moving or assuming a path is still physical.

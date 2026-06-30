@@ -5,3 +5,11 @@ tools/open-source-ui-tooling/test-results/
 tools/open-source-ui-tooling/*.png
 tools/open-source-ui-tooling/*.webm
 tools/open-source-ui-tooling/*.zip
+
+# Local relocated agent/model state. These folders can contain auth files,
+# SQLite databases, logs, browser profiles, transcripts, and model caches.
+local/*
+!local/README.md
+!local/agent-home/
+local/agent-home/*
+!local/agent-home/README.md
