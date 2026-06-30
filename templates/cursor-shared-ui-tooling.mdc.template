@@ -1,0 +1,14 @@
+---
+description: Shared browser automation and UI verification tooling for Cursor
+alwaysApply: true
+---
+
+# Shared Open-Source UI Tooling
+
+Playwright CLI, Playwright MCP, Storybook CLI, and Chrome DevTools MCP are installed in the shared tracked bundle at `/Users/jerry/agent-orchestrator/tools/open-source-ui-tooling`, with wrappers in `/Users/jerry/.local/bin`.
+
+- Check tool versions and update status with `/Users/jerry/agent-orchestrator/scripts/check_open_source_ui_tooling.sh`.
+- Use Playwright and Chrome DevTools MCP for browser-rendered UI verification, computed style inspection, console/network checks, and screenshots.
+- Use Storybook for isolated component states when a repo should own UI fixtures.
+- Cursor global MCP servers are configured in `/Users/jerry/.cursor/mcp.json`; reload Cursor if the tools are not visible in a running session.
+- For real project tests, prefer project-local Playwright/Storybook dependencies so CI and local runs use the repo lockfile.

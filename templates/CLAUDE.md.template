@@ -22,6 +22,7 @@ Machine-wide Playwright CLI, Playwright MCP, Storybook CLI, and Chrome DevTools 
 
 - Check status with `/Users/jerry/agent-orchestrator/scripts/check_open_source_ui_tooling.sh`.
 - When writing UI specs, include browser-rendered acceptance checks and Storybook/component-state fixtures when visual behavior matters.
+- This notice is mirrored for Claude, Codex, Gemini, and Cursor; Cursor also uses `.cursor/rules/shared-ui-tooling.mdc`.
 - Prefer project-local Playwright/Storybook dependencies for durable tests that CI should run.
 
 ## Handoff Workflow

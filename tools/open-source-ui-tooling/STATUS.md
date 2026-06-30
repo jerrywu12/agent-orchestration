@@ -29,7 +29,9 @@ Configuration state:
 - Codex MCP: `playwright` and `chrome-devtools` are registered in `/Users/jerry/.codex/config.toml`.
 - Claude MCP: `playwright` and `chrome-devtools` are registered in `/Users/jerry/.claude.json`.
 - Gemini MCP: `playwright` and `chrome-devtools` are registered in `/Users/jerry/.gemini/config/mcp_config.json`.
-- Global guidance files updated: `/Users/jerry/.codex/AGENTS.md`, `/Users/jerry/.claude/CLAUDE.md`, `/Users/jerry/.gemini/GEMINI.md`.
+- Cursor MCP: `playwright` and `chrome-devtools` are registered in `/Users/jerry/.cursor/mcp.json`.
+- Cursor rule: shared UI tooling guidance is registered in `/Users/jerry/.cursor/rules/shared-ui-tooling.mdc`.
+- Global guidance files updated: `/Users/jerry/.codex/AGENTS.md`, `/Users/jerry/.claude/CLAUDE.md`, `/Users/jerry/.gemini/GEMINI.md`, `/Users/jerry/.cursor/rules/shared-ui-tooling.mdc`.
 
 Maintenance:
 

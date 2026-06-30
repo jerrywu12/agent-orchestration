@@ -33,7 +33,7 @@ When installed, the project structure is laid out as follows:
 ├── .agents/
 │   └── config.json              # Configuration file specifying test commands
 ├── config/
-│   └── global-agent-tooling/     # Tracked MCP snippets for Codex, Claude, and Gemini
+│   └── global-agent-tooling/     # Tracked MCP snippets for Codex, Claude, Gemini, and Cursor
 ├── scripts/
 │   ├── agent_workflow.sh        # Core task dispatcher (handoff submit, watch, status)
 │   ├── agent_worktree.sh        # Creates and prunes isolated git worktrees
@@ -108,11 +108,11 @@ Keep a queue runner watching for new jobs in the background:
 
 1.  **Clone or copy** the template installer to your home directory:
     ```bash
-    git clone git@github.com:jerrywu12/agent-orchestration.git ~/agent-orchestrator-template
+    git clone git@github.com:jerrywu12/agent-orchestration.git ~/agent-orchestrator
     ```
 2.  **Navigate** to the project where you want to install this pipeline and run:
     ```bash
-    ~/agent-orchestrator-template/install.sh
+    ~/agent-orchestrator/install.sh
     ```
 3.  **Configure** `.agents/config.json` with the project name, test paths, and test commands:
     ```json
@@ -161,6 +161,8 @@ Wrappers are installed in `/Users/jerry/.local/bin`:
 - `storybook`
 - `chrome-devtools-mcp`
 
-The desired Codex, Claude, and Gemini MCP entries are tracked under `config/global-agent-tooling/`; the operational copies still live in each agent's home-directory config file.
+The desired Codex, Claude, Gemini, and Cursor MCP entries are tracked under `config/global-agent-tooling/`; the operational copies still live in each agent's home-directory config file.
+
+Cursor also receives an always-on project rule from `templates/cursor-shared-ui-tooling.mdc.template`, and the machine-wide operational copy lives at `/Users/jerry/.cursor/rules/shared-ui-tooling.mdc`.
 
 Agents should use this bundle for global inspection and bootstrap help. Repos that need durable tests should still add project-local Playwright or Storybook dependencies so CI and local runs share the repo lockfile.

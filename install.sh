@@ -13,6 +13,7 @@ echo "Initializing Agent Orchestration Structure in $TARGET_DIR..."
 
 # 1. Create target directories
 mkdir -p "$TARGET_DIR/.agents"
+mkdir -p "$TARGET_DIR/.cursor/rules"
 mkdir -p "$TARGET_DIR/scripts"
 mkdir -p "$TARGET_DIR/docs/reviews"
 mkdir -p "$TARGET_DIR/storage/agent_queue/pending"
@@ -22,6 +23,7 @@ echo "Copying role files and coordination docs..."
 cp "$TEMPLATE_DIR/templates/CLAUDE.md.template" "$TARGET_DIR/CLAUDE.md"
 cp "$TEMPLATE_DIR/templates/AGENTS.md.template" "$TARGET_DIR/AGENTS.md"
 cp "$TEMPLATE_DIR/templates/GEMINI.md.template" "$TARGET_DIR/GEMINI.md"
+cp "$TEMPLATE_DIR/templates/cursor-shared-ui-tooling.mdc.template" "$TARGET_DIR/.cursor/rules/shared-ui-tooling.mdc"
 cp "$TEMPLATE_DIR/templates/AGENT_COORDINATION.md.template" "$TARGET_DIR/docs/AGENT_COORDINATION.md"
 cp "$TEMPLATE_DIR/config/.agents-config.json.template" "$TARGET_DIR/.agents/config.json"
 

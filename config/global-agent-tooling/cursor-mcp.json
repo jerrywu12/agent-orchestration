@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "playwright": {
+      "command": "/Users/jerry/.local/bin/agent-playwright-mcp",
+      "args": ["--headless", "--isolated"]
+    },
+    "chrome-devtools": {
+      "command": "/Users/jerry/.local/bin/agent-chrome-devtools-mcp",
+      "args": ["--headless", "--isolated", "--no-usage-statistics"]
+    }
+  }
+}
