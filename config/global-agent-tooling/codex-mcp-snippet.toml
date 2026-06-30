@@ -1,3 +1,13 @@
+[mcp_servers.deerflow]
+command = "/Users/jerry/.local/bin/agent-deerflow-mcp"
+args = []
+startup_timeout_sec = 30.0
+
+[mcp_servers.deerflow.env]
+DEERFLOW_ASSISTANT_ID = "lead_agent"
+DEERFLOW_GATEWAY_URL = "http://127.0.0.1:8001"
+DEERFLOW_MCP_TIMEOUT_SECONDS = "300"
+
 [mcp_servers.playwright]
 command = "/Users/jerry/.local/bin/playwright-mcp"
 args = ["--headless", "--isolated"]

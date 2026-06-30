@@ -1,4 +1,10 @@
 {
+  "deerflow": {
+    "type": "stdio",
+    "command": "/Users/jerry/.local/bin/agent-deerflow-mcp",
+    "args": [],
+    "env": {}
+  },
   "playwright": {
     "type": "stdio",
     "command": "/Users/jerry/.local/bin/agent-playwright-mcp",

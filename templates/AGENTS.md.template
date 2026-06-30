@@ -25,6 +25,9 @@ Machine-wide Playwright CLI, Playwright MCP, Storybook CLI, and Chrome DevTools 
 ## Agent and Model State
 Agent and model folders are organized under `/Users/jerry/agent-orchestrator/local/agent-home`, with original home-directory paths kept as symlinks when moved. Check `/Users/jerry/agent-orchestrator/docs/AGENT_HOME_STATUS.md` before moving or assuming a path is still physical.
 
+## Shared DeerFlow
+DeerFlow is shared across Claude, Codex, Gemini, and Cursor at `/Users/jerry/agent-orchestrator/local/agent-home/deerflow/deer-flow`. Use `/Users/jerry/.local/bin/agent-deerflow-mcp` for MCP and `http://127.0.0.1:8001/health` to verify the local gateway.
+
 ## Workflow (every feature)
 1. `git pull` then `git switch -c agent/codex/<topic>` off the latest main.
 2. Read the active dev plan's Codex task packet first to get files, patterns, and scoped test targets.

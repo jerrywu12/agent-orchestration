@@ -169,7 +169,32 @@ Agents should use this bundle for global inspection and bootstrap help. Repos th
 
 ---
 
-## 6. Local Agent and Model State
+## 6. Shared DeerFlow
+
+DeerFlow is shared agent infrastructure, not Codex-only state. The live checkout is machine-local and ignored by git:
+
+```bash
+/Users/jerry/agent-orchestrator/local/agent-home/deerflow/deer-flow
+```
+
+Operational wrappers live in `/Users/jerry/.local/bin`:
+
+- `agent-deerflow-gateway` starts the local gateway on `127.0.0.1:8001`.
+- `agent-deerflow-mcp` exposes the MCP bridge used by Codex, Claude, Gemini, and Cursor.
+- `deerflow` points at the shared checkout CLI.
+- `codex-deerflow-gateway` and `codex-deerflow-mcp` remain compatibility symlinks to the neutral wrappers.
+
+The launchd service is `local.agent.deerflow`, with config at `/Users/jerry/Library/LaunchAgents/local.agent.deerflow.plist`.
+
+Quick health check:
+
+```bash
+curl -fsS http://127.0.0.1:8001/health
+```
+
+---
+
+## 7. Local Agent and Model State
 
 Agent and model folders are organized under the ignored local state root:
 

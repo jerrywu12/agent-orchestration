@@ -26,8 +26,11 @@ The `local/` tree is ignored by git because these folders can contain credential
 | Exo cluster | `/Users/jerry/.local/share/exo-cluster` | `/Users/jerry/agent-orchestrator/local/agent-home/exo-cluster` |
 | Antigravity IDE | `/Users/jerry/.antigravity-ide` | `/Users/jerry/agent-orchestrator/local/agent-home/antigravity-ide` |
 | Aider Desk | `/Users/jerry/.aider-desk` | `/Users/jerry/agent-orchestrator/local/agent-home/aider-desk` |
+| DeerFlow | `/Users/jerry/Codex/deer-flow` | `/Users/jerry/agent-orchestrator/local/agent-home/deerflow/deer-flow` |
 
 Agent-specific skills are included inside their parent folders, for example `/Users/jerry/.codex/skills`, `/Users/jerry/.claude/skills`, `/Users/jerry/.gemini/skills`, and `/Users/jerry/.cursor/skills-cursor`.
+
+DeerFlow is already migrated and the old `/Users/jerry/Codex` tree has been removed. Use `agent-deerflow-gateway` and `agent-deerflow-mcp` from `/Users/jerry/.local/bin` for all agents.
 
 ## Safe Migration Flow
 

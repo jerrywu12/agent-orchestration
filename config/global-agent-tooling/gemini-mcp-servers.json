@@ -1,4 +1,13 @@
 {
+  "deerflow": {
+    "command": "/Users/jerry/.local/bin/agent-deerflow-mcp",
+    "args": [],
+    "env": {
+      "DEERFLOW_GATEWAY_URL": "http://127.0.0.1:8001",
+      "DEERFLOW_ASSISTANT_ID": "lead_agent",
+      "DEERFLOW_MCP_TIMEOUT_SECONDS": "300"
+    }
+  },
   "playwright": {
     "command": "/Users/jerry/.local/bin/agent-playwright-mcp",
     "args": ["--headless", "--isolated"]

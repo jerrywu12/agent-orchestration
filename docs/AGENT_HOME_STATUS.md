@@ -18,6 +18,9 @@ These paths have been moved under the canonical local state root and replaced wi
 | `/Users/jerry/.cache/huggingface` | `/Users/jerry/agent-orchestrator/local/agent-home/huggingface` |
 | `/Users/jerry/.cache/whisper` | `/Users/jerry/agent-orchestrator/local/agent-home/whisper` |
 | `/Users/jerry/.aider-desk` | `/Users/jerry/agent-orchestrator/local/agent-home/aider-desk` |
+| `/Users/jerry/Codex/deer-flow` | `/Users/jerry/agent-orchestrator/local/agent-home/deerflow/deer-flow` |
+
+The old `/Users/jerry/Codex` tree has been removed. DeerFlow is now exposed to all agents through `/Users/jerry/.local/bin/agent-deerflow-mcp` and the launchd service `local.agent.deerflow`.
 
 ## Prepared But Not Moved While Active
 
