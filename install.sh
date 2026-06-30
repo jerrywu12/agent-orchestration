@@ -2,7 +2,7 @@
 # install.sh — Setup Agent Orchestration in the current repository
 # Usage:
 #   cd /path/to/your/new/project
-#   /Users/jerry/agent-orchestrator-template/install.sh
+#   /Users/jerry/agent-orchestrator/install.sh
 
 set -euo pipefail
 

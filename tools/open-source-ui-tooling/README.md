@@ -14,9 +14,9 @@ Global wrappers are installed into `/Users/jerry/.local/bin` and point back to t
 Useful commands:
 
 ```bash
-/Users/jerry/Codex/agent-orchestration/scripts/check_open_source_ui_tooling.sh
-/Users/jerry/Codex/agent-orchestration/scripts/install_open_source_ui_tooling.sh
-cd /Users/jerry/Codex/agent-orchestration/tools/open-source-ui-tooling && npm outdated
+/Users/jerry/agent-orchestrator/scripts/check_open_source_ui_tooling.sh
+/Users/jerry/agent-orchestrator/scripts/install_open_source_ui_tooling.sh
+cd /Users/jerry/agent-orchestrator/tools/open-source-ui-tooling && npm outdated
 ```
 
 Repo-local adoption rule:

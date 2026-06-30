@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "bundle": "open-source-ui-tooling",
   "ownerRepo": "jerrywu12/agent-orchestration",
-  "managedPath": "/Users/jerry/Codex/agent-orchestration/tools/open-source-ui-tooling",
+  "managedPath": "/Users/jerry/agent-orchestrator/tools/open-source-ui-tooling",
   "globalBinDir": "/Users/jerry/.local/bin",
   "purpose": "Shared browser automation, visual regression, component workbench, and live DOM inspection tools for local agents.",
   "tools": [
@@ -42,6 +42,6 @@
       "useFor": ["Chrome DevTools MCP", "live DOM and CSS inspection", "console/network/performance debugging"]
     }
   ],
-  "statusCommand": "/Users/jerry/Codex/agent-orchestration/scripts/check_open_source_ui_tooling.sh",
-  "installCommand": "/Users/jerry/Codex/agent-orchestration/scripts/install_open_source_ui_tooling.sh"
+  "statusCommand": "/Users/jerry/agent-orchestrator/scripts/check_open_source_ui_tooling.sh",
+  "installCommand": "/Users/jerry/agent-orchestrator/scripts/install_open_source_ui_tooling.sh"
 }

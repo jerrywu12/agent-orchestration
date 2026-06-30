@@ -32,6 +32,8 @@ When installed, the project structure is laid out as follows:
 │   └── reviews/                 # Directory where Gemini writes code reviews
 ├── .agents/
 │   └── config.json              # Configuration file specifying test commands
+├── config/
+│   └── global-agent-tooling/     # Tracked MCP snippets for Codex, Claude, and Gemini
 ├── scripts/
 │   ├── agent_workflow.sh        # Core task dispatcher (handoff submit, watch, status)
 │   ├── agent_worktree.sh        # Creates and prunes isolated git worktrees
@@ -138,8 +140,8 @@ Keep a queue runner watching for new jobs in the background:
 This repo also tracks the machine-wide open-source UI tooling bundle used by local agents:
 
 ```bash
-/Users/jerry/Codex/agent-orchestration/scripts/check_open_source_ui_tooling.sh
-/Users/jerry/Codex/agent-orchestration/scripts/install_open_source_ui_tooling.sh
+/Users/jerry/agent-orchestrator/scripts/check_open_source_ui_tooling.sh
+/Users/jerry/agent-orchestrator/scripts/install_open_source_ui_tooling.sh
 ```
 
 Managed tools live under `tools/open-source-ui-tooling/` with exact versions in `package-lock.json`:
@@ -158,5 +160,7 @@ Wrappers are installed in `/Users/jerry/.local/bin`:
 - `agent-chrome-devtools-mcp`
 - `storybook`
 - `chrome-devtools-mcp`
+
+The desired Codex, Claude, and Gemini MCP entries are tracked under `config/global-agent-tooling/`; the operational copies still live in each agent's home-directory config file.
 
 Agents should use this bundle for global inspection and bootstrap help. Repos that need durable tests should still add project-local Playwright or Storybook dependencies so CI and local runs share the repo lockfile.

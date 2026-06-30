@@ -18,9 +18,9 @@ Read first: `docs/AGENT_COORDINATION.md` (the multi-agent workflow).
 - `source-driven-development` — ground non-obvious claims in cited sources or files.
 
 ## Shared UI tooling
-Machine-wide Playwright CLI, Playwright MCP, Storybook CLI, and Chrome DevTools MCP are tracked in `/Users/jerry/Codex/agent-orchestration/tools/open-source-ui-tooling`, with wrappers in `/Users/jerry/.local/bin`.
+Machine-wide Playwright CLI, Playwright MCP, Storybook CLI, and Chrome DevTools MCP are tracked in `/Users/jerry/agent-orchestrator/tools/open-source-ui-tooling`, with wrappers in `/Users/jerry/.local/bin`.
 
-- Check status with `/Users/jerry/Codex/agent-orchestration/scripts/check_open_source_ui_tooling.sh`.
+- Check status with `/Users/jerry/agent-orchestrator/scripts/check_open_source_ui_tooling.sh`.
 - When writing UI specs, include browser-rendered acceptance checks and Storybook/component-state fixtures when visual behavior matters.
 - Prefer project-local Playwright/Storybook dependencies for durable tests that CI should run.
 

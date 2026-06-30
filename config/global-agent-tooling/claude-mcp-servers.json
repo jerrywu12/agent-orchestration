@@ -1,0 +1,14 @@
+{
+  "playwright": {
+    "type": "stdio",
+    "command": "/Users/jerry/.local/bin/agent-playwright-mcp",
+    "args": ["--headless", "--isolated"],
+    "env": {}
+  },
+  "chrome-devtools": {
+    "type": "stdio",
+    "command": "/Users/jerry/.local/bin/agent-chrome-devtools-mcp",
+    "args": ["--headless", "--isolated", "--no-usage-statistics"],
+    "env": {}
+  }
+}

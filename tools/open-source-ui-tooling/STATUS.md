@@ -2,7 +2,7 @@
 
 Last verified: 2026-06-30
 
-Managed install root: `/Users/jerry/Codex/agent-orchestration/tools/open-source-ui-tooling`
+Managed install root: `/Users/jerry/agent-orchestrator/tools/open-source-ui-tooling`
 
 Global wrapper dir: `/Users/jerry/.local/bin`
 
@@ -19,9 +19,9 @@ Installed package versions:
 Verification run:
 
 ```bash
-/Users/jerry/Codex/agent-orchestration/scripts/check_open_source_ui_tooling.sh
+/Users/jerry/agent-orchestrator/scripts/check_open_source_ui_tooling.sh
 playwright screenshot --browser=chromium https://example.com tools/open-source-ui-tooling/playwright-smoke.png
-cd /Users/jerry/Codex/agent-orchestration/tools/open-source-ui-tooling && npm run smoke
+cd /Users/jerry/agent-orchestrator/tools/open-source-ui-tooling && npm run smoke
 ```
 
 Configuration state:
@@ -34,8 +34,8 @@ Configuration state:
 Maintenance:
 
 ```bash
-cd /Users/jerry/Codex/agent-orchestration/tools/open-source-ui-tooling
+cd /Users/jerry/agent-orchestrator/tools/open-source-ui-tooling
 npm outdated
 npm update
-/Users/jerry/Codex/agent-orchestration/scripts/install_open_source_ui_tooling.sh --wrappers-only
+/Users/jerry/agent-orchestrator/scripts/install_open_source_ui_tooling.sh --wrappers-only
 ```
