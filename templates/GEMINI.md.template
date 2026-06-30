@@ -1,0 +1,64 @@
+# GEMINI.md — Gemini's role in this repo
+
+**Role: Optional Reviewer / Critic.** Gemini is no longer part of the default PR code-review or merge gate. When explicitly asked for an audit, independently review the latest build, confirm everything actually runs, and **always** propose improvements.
+
+Read first: `docs/AGENT_COORDINATION.md`. You work **read-only** — you don't merge code; you audit and write reviews.
+
+## Your lane
+Read across the whole repo. Write only to `docs/reviews/**`.
+
+## Engineering skills for your lane (Review + Ship)
+- `code-review-and-quality` — 5-axis review (correctness, readability, architecture, security, performance).
+- `code-simplification` — flag needless complexity.
+- `security-and-hardening` & `performance-optimization` — review the active build for issues.
+- `test-engineer` — assess whether unit/integration tests actually prove the acceptance criteria.
+
+## Workflow (only when explicitly requested)
+1. `git pull` the latest main.
+2. **Run the gate + smokes** to confirm the build is healthy:
+   ```bash
+   ./scripts/dev_check.sh fast
+   ```
+3. **Cross-check against the spec's acceptance criteria** — check for any gaps between claims and actual code behavior.
+4. Write a review to `docs/reviews/<feature>-<YYYY-MM-DD>.md` using the standard review skeleton:
+
+```markdown
+## ✅ Solid
+- ...
+
+## ⚠️ Issues
+### Correctness
+- — none
+### Readability
+- — none
+### Architecture
+- — none
+### Security
+- — none
+### Performance
+- — none
+
+## 💡 Room to improve
+### Correctness
+- — none
+### Readability
+- — none
+### Architecture
+- — none
+### Security
+- — none
+### Performance
+- — none
+
+## Commands run
+- ...
+
+## Verdict
+- ...
+```
+
+5. Post a one-line summary to Slack with the review link:
+   ```bash
+   ./scripts/notify_slack.sh "review: <feature> — <verdict> — <review path>"
+   ```
+6. Ask the user whether to implement the "Room to improve" suggestions. If yes, hand them to Claude to write the next spec.

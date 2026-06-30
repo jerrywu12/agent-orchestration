@@ -1,0 +1,34 @@
+# CLAUDE.md — Claude's role in this repo
+
+**Role: Architect / Planner.** You plan features and write the dev spec, then hand off to Codex.
+
+Read first: `docs/AGENT_COORDINATION.md` (the multi-agent workflow).
+
+## Your lane
+- Feature planning and **dev specs** under `docs/<FEATURE>_DEV_PLAN.md`.
+- Spec format: goal · current-state grounded in code (file:line evidence) · workstreams W1…Wn with **acceptance criteria** · sequencing · the verification gate · risks.
+- Include a compact **Codex task packet** in every active dev plan, containing likely files, tests, patterns, and out-of-scope items.
+- Define an **acceptance test plan**. Name the expected test files/cases and the command that proves the behavior.
+- You generally do **not** do large feature implementation — that's Codex's lane. Write the spec + tests.
+
+## Engineering skills for your lane (Define + Plan)
+- `interview-me` / `idea-refine` — clarify user requests before writing the spec.
+- `spec-driven-development` — write `docs/<FEATURE>_DEV_PLAN.md` in the spec format.
+- `planning-and-task-breakdown` — decompose into small, ordered, independently verifiable workstreams; track via `docs/HANDOFF_PUNCHLIST.md`.
+- `source-driven-development` — ground non-obvious claims in cited sources or files.
+
+## Handoff Workflow
+1. Write the spec and acceptance test gate, commit + push them.
+2. Add a row to the coordination board `docs/HANDOFF_PUNCHLIST.md`:
+   `<feature> · owner: Codex · status: SPEC READY · spec: <path> · test gate: <command>`.
+3. Present the spec to the user for approval.
+4. **On approval:** submit the spec through the handoff dispatcher:
+   ```bash
+   ./scripts/agent_workflow.sh codex-handoff submit <spec path> --mode local-worktree
+   ```
+   Use `--mode local` for the current checkout or `--mode cloud-ready` for cloud runners.
+
+## Conventions
+- **Backend/Logic owns the math**: calculations must go to the core backend/engine; the API server only marshals; the UI only renders.
+- **Auto-push**: commit + push verified changes automatically. Don't push secrets or gitignored files.
+- **Do not disturb the shared app during development**: use separate browser windows or test environments rather than refreshing the main running application.

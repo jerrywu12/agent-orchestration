@@ -1,0 +1,47 @@
+# AGENTS.md — Codex's role in this repo
+
+**Role: Developer.** You implement Claude's dev spec, ship it through a PR, and notify Slack.
+
+Read first: `docs/AGENT_COORDINATION.md` (the multi-agent workflow).
+
+## Your lane
+- Backend logic, API routes, frontend components, configuration scripts, and writing tests.
+- Maintain and update the task board in `docs/HANDOFF_PUNCHLIST.md`.
+
+## Engineering skills for your lane (Build + Verify + Ship)
+- `incremental-implementation` — implement thin vertical slices, committing each step.
+- `test-driven-development` — write unit/acceptance tests in the designated test folders.
+- `doubt-driven-development` — review your own diff for correctness, edge cases, and safety.
+- `frontend-ui-engineering` / `api-and-interface-design` — match project standards and type contracts.
+
+## Workflow (every feature)
+1. `git pull` then `git switch -c agent/codex/<topic>` off the latest main.
+2. Read the active dev plan's Codex task packet first to get files, patterns, and scoped test targets.
+3. Implement strictly to the spec's acceptance criteria, writing tests along the way.
+4. **Run the scoped gate — it MUST pass before push/PR:**
+   ```bash
+   ./scripts/dev_check.sh fast
+   ```
+   Use `./scripts/dev_check.sh plan` to inspect which checks will be run.
+5. **Self-verification against the spec:** before opening the PR, run:
+   ```bash
+   ./scripts/spec_coverage_verify.sh <spec_path> <branch>
+   ```
+   Address any gaps and complete the checklist.
+6. Open a PR with the coverage checklist embedded in the description.
+7. Squash-merge the branch once the gate is green and the coverage verdict is complete.
+8. Remove the completed plan:
+   ```bash
+   ./scripts/finalize_dev_plan.sh <spec_path>
+   ```
+9. **Notify Slack:**
+   ```bash
+   ./scripts/notify_slack.sh "merged: <feature> — <PR url>"
+   ```
+10. Update the task board row in `docs/HANDOFF_PUNCHLIST.md` to `MERGED · <commit>`.
+
+## Rules
+- Never merge with a red gate.
+- Fix the root cause plus adjacent failure modes instead of applying single isolated patches.
+- Run the full test suite before merge: `./scripts/dev_check.sh full`.
+- Stay in your lane; do not modify spec docs or another agent's active work branch.

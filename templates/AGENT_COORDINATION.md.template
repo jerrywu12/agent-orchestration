@@ -1,0 +1,79 @@
+# Multi-Agent Coordination — Claude · Codex · Gemini · Cursor
+
+This handbook defines how the planning, implementation, review, and editing agents work together. By treating each agent as a specialized micro-service, we maintain a clean codebase, avoid merge conflicts, and enforce quality control.
+
+---
+
+## 1. Roles & Lanes (The Roster)
+
+Each agent has a specific comparative advantage. Do not use them outside their lane.
+
+| Agent | Role | Scope / Lane | Primary Function |
+|---|---|---|---|
+| **Claude** | Architect / Planner | `docs/specs/**` | Analyzes requirements, designs specs, creates Codex Task Packets. |
+| **Codex** | Developer | `src/**`, `tests/**`, `scripts/**` | Implements the code on a clean branch, runs verification gates. |
+| **Gemini** | Critic / Reviewer | read-only; `docs/reviews/**` | Audits merged builds, runs full test gates, recommends improvements. |
+| **Cursor** | IDE / Surgeon | Whole Project | Visual command center. Slices code changes, reviews diffs, styles UI. |
+
+---
+
+## 2. The Multi-Agent Pipeline
+
+The development loop starts with planning, moves to implementation, runs validation, executes peer review, and returns to the IDE for final refinement.
+
+```
+                  ┌────────────────────────────────────────┐
+                  │ 1. Plan the feature                    │
+                  │    - Claude writes docs/specs/*.md     │
+                  └────────────────────────────────────────┘
+                                      │
+                                      ▼
+                  ┌────────────────────────────────────────┐
+                  │ 2. Implementation                      │
+                  │    - Codex runs in isolated worktree   │
+                  │    - Passes dev_check.sh fast          │
+                  └────────────────────────────────────────┘
+                                      │
+                                      ▼
+                  ┌────────────────────────────────────────┐
+                  │ 3. Automated Peer Review               │
+                  │    - Gemini runs dev_check.sh full     │
+                  │    - Generates docs/reviews/review-*.md│
+                  └────────────────────────────────────────┘
+                                      │
+                                      ▼
+                  ┌────────────────────────────────────────┐
+                  │ 4. Refine & Polish                     │
+                  │    - Human reviews Gemini's audit      │
+                  │    - Cursor agent edits UI & code      │
+                  └────────────────────────────────────────┘
+```
+
+---
+
+## 3. Workflow Commands & Handoffs
+
+ Handoffs are processed via a local, file-based queue managed by `scripts/agent_workflow.sh`.
+
+### Step 1: Hand off from Claude to Codex (Development)
+After Claude designs the spec and you approve it, submit it to the queue:
+```bash
+./scripts/agent_workflow.sh handoff submit docs/my-feature_DEV_PLAN.md --agent codex --mode local-worktree
+```
+This checks out a clean branch `agent/codex/my-feature` in an isolated Git worktree `../<project>-my-feature` and triggers `scripts/codex_auto_dev.sh` to implement it.
+
+### Step 2: Hand off from Codex to Gemini (Review)
+Once Codex completes implementation, passes the fast gate, and merges, Codex submits a review job to the queue:
+```bash
+./scripts/agent_workflow.sh handoff submit docs/my-feature_DEV_PLAN.md --agent gemini --mode local
+```
+This triggers `scripts/gemini_auto_review.sh` to pull `main`, run the full test suite (`./scripts/dev_check.sh full`), and output a multi-axis audit to `docs/reviews/my-feature-YYYY-MM-DD.md`.
+
+---
+
+## 4. Worktree Isolation & Cleanup
+
+To prevent agents from colliding or blocking your active development inside Cursor, agents work in isolated worktrees:
+*   Use `scripts/agent_worktree.sh create <slug>` to spin up a worktree.
+*   Use `scripts/worktree_doctor.sh` to automatically kill zombie Node/API processes and prune stale directories.
+*   Use `scripts/notify_slack.sh` to update your Slack developer channel about progress.
