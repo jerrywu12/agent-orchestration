@@ -1,0 +1,7 @@
+tools/open-source-ui-tooling/node_modules/
+tools/open-source-ui-tooling/.cache/
+tools/open-source-ui-tooling/playwright-report/
+tools/open-source-ui-tooling/test-results/
+tools/open-source-ui-tooling/*.png
+tools/open-source-ui-tooling/*.webm
+tools/open-source-ui-tooling/*.zip

@@ -1,0 +1,20 @@
+{
+  "name": "@jerry/agent-open-source-ui-tooling",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Shared open-source UI testing and inspection tools for local agents.",
+  "license": "UNLICENSED",
+  "scripts": {
+    "check": "../../scripts/check_open_source_ui_tooling.sh",
+    "install:wrappers": "../../scripts/install_open_source_ui_tooling.sh --wrappers-only",
+    "outdated": "npm outdated || true",
+    "smoke": "playwright --version && playwright-mcp --version && storybook --version && chrome-devtools-mcp --version 2>/dev/null"
+  },
+  "dependencies": {
+    "@playwright/mcp": "latest",
+    "@playwright/test": "latest",
+    "chrome-devtools-mcp": "latest",
+    "playwright": "latest",
+    "storybook": "latest"
+  }
+}

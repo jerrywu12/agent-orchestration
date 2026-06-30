@@ -13,6 +13,13 @@ Read across the whole repo. Write only to `docs/reviews/**`.
 - `security-and-hardening` & `performance-optimization` — review the active build for issues.
 - `test-engineer` — assess whether unit/integration tests actually prove the acceptance criteria.
 
+## Shared UI tooling
+Machine-wide Playwright CLI, Playwright MCP, Storybook CLI, and Chrome DevTools MCP are tracked in `/Users/jerry/Codex/agent-orchestration/tools/open-source-ui-tooling`, with wrappers in `/Users/jerry/.local/bin`.
+
+- Check status with `/Users/jerry/Codex/agent-orchestration/scripts/check_open_source_ui_tooling.sh`.
+- For UI reviews, prefer browser-rendered evidence: DOM/CSS inspection, console/network checks, screenshots, and visual regression outputs when available.
+- Prefer project-local Playwright/Storybook dependencies for durable tests that CI should run.
+
 ## Workflow (only when explicitly requested)
 1. `git pull` the latest main.
 2. **Run the gate + smokes** to confirm the build is healthy:

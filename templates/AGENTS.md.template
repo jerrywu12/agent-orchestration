@@ -14,6 +14,13 @@ Read first: `docs/AGENT_COORDINATION.md` (the multi-agent workflow).
 - `doubt-driven-development` — review your own diff for correctness, edge cases, and safety.
 - `frontend-ui-engineering` / `api-and-interface-design` — match project standards and type contracts.
 
+## Shared UI tooling
+Machine-wide Playwright CLI, Playwright MCP, Storybook CLI, and Chrome DevTools MCP are tracked in `/Users/jerry/Codex/agent-orchestration/tools/open-source-ui-tooling`, with wrappers in `/Users/jerry/.local/bin`.
+
+- Check status with `/Users/jerry/Codex/agent-orchestration/scripts/check_open_source_ui_tooling.sh`.
+- Use browser-rendered verification for UI work: inspect DOM/CSS, console/network state, and screenshots instead of reasoning from source alone.
+- Prefer project-local Playwright/Storybook dependencies for durable tests that CI should run.
+
 ## Workflow (every feature)
 1. `git pull` then `git switch -c agent/codex/<topic>` off the latest main.
 2. Read the active dev plan's Codex task packet first to get files, patterns, and scoped test targets.

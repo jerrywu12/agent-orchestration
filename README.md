@@ -42,6 +42,8 @@ When installed, the project structure is laid out as follows:
 │   ├── verify_for_changes.sh    # Executes test suite configured in config.json
 │   ├── dev_check.sh             # User-facing check runner
 │   └── notify_slack.sh          # Webhook notifier for commits, PRs, and review results
+├── tools/
+│   └── open-source-ui-tooling/   # Shared Playwright, Storybook, and Chrome DevTools MCP install root
 └── storage/
     └── agent_queue/
         └── pending/             # Handoff jobs (.job) awaiting execution
@@ -128,3 +130,33 @@ Keep a queue runner watching for new jobs in the background:
     ```bash
     ./scripts/agent_workflow.sh doctor
     ```
+
+---
+
+## 5. Shared UI Tooling
+
+This repo also tracks the machine-wide open-source UI tooling bundle used by local agents:
+
+```bash
+/Users/jerry/Codex/agent-orchestration/scripts/check_open_source_ui_tooling.sh
+/Users/jerry/Codex/agent-orchestration/scripts/install_open_source_ui_tooling.sh
+```
+
+Managed tools live under `tools/open-source-ui-tooling/` with exact versions in `package-lock.json`:
+
+- Playwright CLI and `@playwright/test`
+- Playwright MCP
+- Storybook CLI
+- Chrome DevTools MCP
+
+Wrappers are installed in `/Users/jerry/.local/bin`:
+
+- `agent-playwright`
+- `agent-playwright-test`
+- `agent-playwright-mcp`
+- `agent-storybook`
+- `agent-chrome-devtools-mcp`
+- `storybook`
+- `chrome-devtools-mcp`
+
+Agents should use this bundle for global inspection and bootstrap help. Repos that need durable tests should still add project-local Playwright or Storybook dependencies so CI and local runs share the repo lockfile.

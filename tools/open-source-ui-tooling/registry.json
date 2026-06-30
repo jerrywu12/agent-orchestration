@@ -1,0 +1,47 @@
+{
+  "schemaVersion": 1,
+  "bundle": "open-source-ui-tooling",
+  "ownerRepo": "jerrywu12/agent-orchestration",
+  "managedPath": "/Users/jerry/Codex/agent-orchestration/tools/open-source-ui-tooling",
+  "globalBinDir": "/Users/jerry/.local/bin",
+  "purpose": "Shared browser automation, visual regression, component workbench, and live DOM inspection tools for local agents.",
+  "tools": [
+    {
+      "name": "Playwright CLI",
+      "package": "playwright",
+      "globalCommands": ["playwright", "agent-playwright"],
+      "source": "https://github.com/microsoft/playwright",
+      "useFor": ["browser smoke tests", "screenshots", "visual regression baselines", "cross-browser checks"]
+    },
+    {
+      "name": "Playwright Test",
+      "package": "@playwright/test",
+      "globalCommands": ["agent-playwright-test"],
+      "source": "https://github.com/microsoft/playwright",
+      "useFor": ["repo-local test runner", "expect(page).toHaveScreenshot visual comparisons"]
+    },
+    {
+      "name": "Playwright MCP",
+      "package": "@playwright/mcp",
+      "globalCommands": ["playwright-mcp", "agent-playwright-mcp"],
+      "source": "https://github.com/microsoft/playwright-mcp",
+      "useFor": ["agent browser control", "DOM snapshots", "browser automation through MCP"]
+    },
+    {
+      "name": "Storybook CLI",
+      "package": "storybook",
+      "globalCommands": ["storybook", "agent-storybook"],
+      "source": "https://github.com/storybookjs/storybook",
+      "useFor": ["isolated UI component states", "reproducible layout fixtures", "component visual review"]
+    },
+    {
+      "name": "Chrome DevTools MCP",
+      "package": "chrome-devtools-mcp",
+      "globalCommands": ["chrome-devtools-mcp", "agent-chrome-devtools-mcp"],
+      "source": "https://github.com/ChromeDevTools/chrome-devtools-mcp",
+      "useFor": ["Chrome DevTools MCP", "live DOM and CSS inspection", "console/network/performance debugging"]
+    }
+  ],
+  "statusCommand": "/Users/jerry/Codex/agent-orchestration/scripts/check_open_source_ui_tooling.sh",
+  "installCommand": "/Users/jerry/Codex/agent-orchestration/scripts/install_open_source_ui_tooling.sh"
+}
