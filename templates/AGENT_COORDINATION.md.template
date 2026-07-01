@@ -66,9 +66,10 @@ execute it: that checks out a clean branch `agent/codex/my-feature` in an
 isolated worktree `../<project>-my-feature` and runs `scripts/codex_auto_dev.sh`.
 (Use `--mode local` to run inline at submit time.)
 
-> Note: `codex_auto_dev.sh` ships as a **placeholder** — it prepares the worktree
-> and runs the gate but does not invoke an agent or push/PR. Wire in your Codex
-> CLI at the TODO in that script before relying on it.
+> Note: `codex_auto_dev.sh` invokes the Codex CLI when `codex_cmd`/`$CODEX_CMD`
+> resolves to an installed binary; otherwise it falls back to a safe placeholder
+> (prepare worktree + run gate, no fake implementation). Push/PR is opt-in via
+> `AGENT_AUTO_PR=1`.
 
 ### Step 2: Hand off from Codex to Gemini (Review — optional, on request)
 When you want an audit, submit a review job to the queue:
@@ -79,9 +80,9 @@ This triggers `scripts/gemini_auto_review.sh` to run the full test suite
 (`./scripts/dev_check.sh full`) and write a review to
 `docs/reviews/my-feature-YYYY-MM-DD.md`.
 
-> Note: `gemini_auto_review.sh` ships as a **placeholder** — it runs the gate and
-> writes a **NEEDS-REVIEW** skeleton (never PASS). Wire in your Gemini CLI at the
-> TODO in that script to produce a real multi-axis audit.
+> Note: `gemini_auto_review.sh` invokes a review CLI when `gemini_cmd`/`$GEMINI_CMD`
+> is set; otherwise it runs the gate and writes a **NEEDS-REVIEW** skeleton (never
+> a fake PASS).
 
 ---
 

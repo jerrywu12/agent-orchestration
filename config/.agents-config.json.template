@@ -6,5 +6,7 @@
   "full_test_command": "echo 'Run your full test suite here' && exit 0",
   "api_health_endpoint": "http://localhost:3000/api/health",
   "slack_default_channel": "#dev-notifications",
-  "branches_namespace": "agent"
+  "branches_namespace": "agent",
+  "codex_cmd": "codex exec --full-auto --skip-git-repo-check",
+  "gemini_cmd": ""
 }
