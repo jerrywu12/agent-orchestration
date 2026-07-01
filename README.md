@@ -4,12 +4,18 @@ This repository provides a modular, configuration-driven blueprint for orchestra
 
 Rather than relying on a single "omnipotent AI," this architecture divides labor into strict "lanes" and uses a git-based local task queue and worktree isolation to keep agents synchronized without conflict.
 
-> **Status — runners are placeholders.** `codex_auto_dev.sh` and
-> `gemini_auto_review.sh` set up the worktree and run the verification gate, but
-> they do **not** invoke an LLM/agent yet: the Codex runner makes no edits and
-> does not push/PR, and the Gemini runner writes a `NEEDS-REVIEW` skeleton (never
-> a fake PASS). Each has a marked `TODO` where you wire in your own agent CLI.
-> Treat this repo as the orchestration *scaffold*, not a turnkey autonomous loop.
+> **Agent wiring.** `codex_auto_dev.sh` and `gemini_auto_review.sh` invoke a real
+> agent CLI when one is configured, and otherwise fall back to a **safe
+> placeholder** (prepare worktree + run gate; a `NEEDS-REVIEW` skeleton) — they
+> never fake a PASS. Configure the CLIs and autonomy:
+>
+> | Setting | Where | Default | Effect |
+> | :-- | :-- | :-- | :-- |
+> | `codex_cmd` / `$CODEX_CMD` | `.agents/config.json` / env | `codex exec --full-auto --skip-git-repo-check` | Developer agent; the runner appends `--cd <worktree>` + prompt |
+> | `gemini_cmd` / `$GEMINI_CMD` | `.agents/config.json` / env | *(empty → skeleton)* | Reviewer agent, e.g. `gemini --prompt` |
+> | `AGENT_AUTO_PR` | env | `0` | `1` = push the branch and open a PR when the gate is green and the agent changed files |
+>
+> With no CLI found, the pipeline stays a safe scaffold rather than a turnkey loop.
 
 ---
 
