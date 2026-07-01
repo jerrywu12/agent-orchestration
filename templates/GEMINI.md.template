@@ -15,9 +15,9 @@ Read across the whole repo. Write only to `docs/reviews/**`.
 
 ## Workflow (only when explicitly requested)
 1. `git pull` the latest main.
-2. **Run the gate + smokes** to confirm the build is healthy:
+2. **Run the full gate + smokes** to confirm the build is healthy:
    ```bash
-   ./scripts/dev_check.sh fast
+   ./scripts/dev_check.sh full
    ```
 3. **Cross-check against the spec's acceptance criteria** — check for any gaps between claims and actual code behavior.
 4. Write a review to `docs/reviews/<feature>-<YYYY-MM-DD>.md` using the standard review skeleton:

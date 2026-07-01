@@ -12,7 +12,7 @@ Each agent has a specific comparative advantage. Do not use them outside their l
 |---|---|---|---|
 | **Claude** | Architect / Planner | `docs/specs/**` | Analyzes requirements, designs specs, creates Codex Task Packets. |
 | **Codex** | Developer | `src/**`, `tests/**`, `scripts/**` | Implements the code on a clean branch, runs verification gates. |
-| **Gemini** | Critic / Reviewer | read-only; `docs/reviews/**` | Audits merged builds, runs full test gates, recommends improvements. |
+| **Gemini** | Critic / Reviewer *(optional, on request)* | read-only; `docs/reviews/**` | When asked, audits merged builds, runs full test gates, recommends improvements. Not a default merge gate. |
 | **Cursor** | IDE / Surgeon | Whole Project | Visual command center. Slices code changes, reviews diffs, styles UI. |
 
 ---
@@ -36,7 +36,7 @@ The development loop starts with planning, moves to implementation, runs validat
                                       │
                                       ▼
                   ┌────────────────────────────────────────┐
-                  │ 3. Automated Peer Review               │
+                  │ 3. Peer Review (optional, on request)  │
                   │    - Gemini runs dev_check.sh full     │
                   │    - Generates docs/reviews/review-*.md│
                   └────────────────────────────────────────┘
@@ -60,14 +60,28 @@ After Claude designs the spec and you approve it, submit it to the queue:
 ```bash
 ./scripts/agent_workflow.sh handoff submit docs/my-feature_DEV_PLAN.md --agent codex --mode local-worktree
 ```
-This checks out a clean branch `agent/codex/my-feature` in an isolated Git worktree `../<project>-my-feature` and triggers `scripts/codex_auto_dev.sh` to implement it.
+In `--mode local-worktree` (the default) this only **queues** the job. Run
+`./scripts/agent_workflow.sh handoff run-next` (or start `handoff watch`) to
+execute it: that checks out a clean branch `agent/codex/my-feature` in an
+isolated worktree `../<project>-my-feature` and runs `scripts/codex_auto_dev.sh`.
+(Use `--mode local` to run inline at submit time.)
 
-### Step 2: Hand off from Codex to Gemini (Review)
-Once Codex completes implementation, passes the fast gate, and merges, Codex submits a review job to the queue:
+> Note: `codex_auto_dev.sh` ships as a **placeholder** — it prepares the worktree
+> and runs the gate but does not invoke an agent or push/PR. Wire in your Codex
+> CLI at the TODO in that script before relying on it.
+
+### Step 2: Hand off from Codex to Gemini (Review — optional, on request)
+When you want an audit, submit a review job to the queue:
 ```bash
 ./scripts/agent_workflow.sh handoff submit docs/my-feature_DEV_PLAN.md --agent gemini --mode local
 ```
-This triggers `scripts/gemini_auto_review.sh` to pull `main`, run the full test suite (`./scripts/dev_check.sh full`), and output a multi-axis audit to `docs/reviews/my-feature-YYYY-MM-DD.md`.
+This triggers `scripts/gemini_auto_review.sh` to run the full test suite
+(`./scripts/dev_check.sh full`) and write a review to
+`docs/reviews/my-feature-YYYY-MM-DD.md`.
+
+> Note: `gemini_auto_review.sh` ships as a **placeholder** — it runs the gate and
+> writes a **NEEDS-REVIEW** skeleton (never PASS). Wire in your Gemini CLI at the
+> TODO in that script to produce a real multi-axis audit.
 
 ---
 

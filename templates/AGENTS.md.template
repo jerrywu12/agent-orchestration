@@ -30,10 +30,9 @@ Read first: `docs/AGENT_COORDINATION.md` (the multi-agent workflow).
    Address any gaps and complete the checklist.
 6. Open a PR with the coverage checklist embedded in the description.
 7. Squash-merge the branch once the gate is green and the coverage verdict is complete.
-8. Remove the completed plan:
-   ```bash
-   ./scripts/finalize_dev_plan.sh <spec_path>
-   ```
+8. Mark the plan complete: update its board row and archive or delete
+   `docs/<FEATURE>_DEV_PLAN.md`. (This template ships no `finalize_dev_plan.sh`;
+   do this manually or add your own script.)
 9. **Notify Slack:**
    ```bash
    ./scripts/notify_slack.sh "merged: <feature> — <PR url>"

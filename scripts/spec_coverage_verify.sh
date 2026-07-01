@@ -36,24 +36,24 @@ while IFS= read -r line; do
 done < "$SPEC_PATH"
 
 if [ ${#CRITERIA[@]} -eq 0 ]; then
-  echo "Warning: No workstream identifiers (W1, W2) or checklist items found in the spec."
-  echo "Please verify manually."
-  echo "VERDICT: COVERAGE: COMPLETE (Manual override required)"
+  echo "No workstream identifiers (W1, W2, ...) or checklist items found in the spec."
+  echo "VERDICT: COVERAGE: UNKNOWN (no machine-checkable criteria found — verify manually)"
   exit 0
 fi
 
-echo "Found ${#CRITERIA[@]} criteria items."
-
-# 2. Check for missing elements or markers
-# If the developer has a spec coverage checklist file or PR description prepared
-# We inspect if all Wx items are accounted for.
-MISSING_COUNT=0
+echo "Found ${#CRITERIA[@]} criteria item(s). Listing for manual/agent confirmation:"
 for item in "${CRITERIA[@]}"; do
-  echo "Checking criteria: $item"
-  # Add custom parsing here to verify if the file diff touches relevant lines.
+  echo "  [ ] $item"
 done
 
+# ---------------------------------------------------------------------------
+# TODO: Implement real coverage checking here — e.g. diff the branch against its
+#       base and confirm each workstream's acceptance criteria is exercised by
+#       the changes and/or tests. Until then this is ADVISORY ONLY and must not
+#       assert that coverage is complete.
+# ---------------------------------------------------------------------------
+
 echo "=========================================================="
-echo "VERDICT: COVERAGE: COMPLETE"
+echo "VERDICT: COVERAGE: NEEDS-REVIEW (advisory — criteria above are unverified)"
 echo "=========================================================="
 exit 0

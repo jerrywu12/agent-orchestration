@@ -28,8 +28,16 @@ if [ "${1:-}" = "--set" ]; then
     echo "Error: --set requires a webhook URL argument." >&2
     exit 1
   fi
-  echo "SLACK_WEBHOOK_URL=\"$2\"" >> "$ENV_LOCAL"
+  touch "$ENV_LOCAL"
+  # Replace any existing entry rather than appending duplicate lines (a repeated
+  # --set otherwise leaves multiple SLACK_WEBHOOK_URL= lines that the reader
+  # below collapses into one broken multi-line value).
+  if grep -qE '^SLACK_WEBHOOK_URL=' "$ENV_LOCAL" 2>/dev/null; then
+    grep -vE '^SLACK_WEBHOOK_URL=' "$ENV_LOCAL" > "$ENV_LOCAL.tmp" && mv "$ENV_LOCAL.tmp" "$ENV_LOCAL"
+  fi
+  printf 'SLACK_WEBHOOK_URL="%s"\n' "$2" >> "$ENV_LOCAL"
   echo "Webhook URL saved to .env.local"
+  echo "Reminder: keep .env.local gitignored so the webhook secret is never committed." >&2
   exit 0
 fi
 
@@ -54,18 +62,17 @@ BRANCH="$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo '?')"
 SHA="$(git rev-parse --short HEAD 2>/dev/null || echo '?')"
 TEXT="[$PROJECT_NAME @ ${BRANCH} ${SHA}] ${MSG}"
 
-PAYLOAD=$(cat <<EOF
-{
-  "text": "$TEXT"
-}
-EOF
-)
-
-# Escape payload characters properly for JSON
-ESCAPED_PAYLOAD=$(echo "$PAYLOAD" | python3 -c 'import json,sys; print(json.dumps({"text": sys.stdin.read().replace("{\n  \"text\": \"", "").rstrip("\"\n}")}))' 2>/dev/null || echo "$PAYLOAD")
+# Build the JSON payload in one shot so quotes, backticks, and newlines in the
+# message are escaped correctly (the old hand-built-then-string-stripped version
+# corrupted messages containing any of those).
+if command -v jq >/dev/null 2>&1; then
+  PAYLOAD=$(jq -n --arg t "$TEXT" '{text:$t}')
+else
+  PAYLOAD=$(TEXT="$TEXT" python3 -c 'import json,os; print(json.dumps({"text": os.environ["TEXT"]}))')
+fi
 
 CODE=$("$SLACK_CURL_BIN" -s -o /dev/null -w '%{http_code}' -X POST \
-  -H 'Content-type: application/json' --data "$ESCAPED_PAYLOAD" "$SLACK_WEBHOOK_URL")
+  -H 'Content-type: application/json' --data "$PAYLOAD" "$SLACK_WEBHOOK_URL")
 
 if [ "$CODE" = "200" ] || [ "$CODE" = "201" ]; then
   echo "Slack notified ✓"

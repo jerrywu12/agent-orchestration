@@ -4,6 +4,13 @@ This repository provides a modular, configuration-driven blueprint for orchestra
 
 Rather than relying on a single "omnipotent AI," this architecture divides labor into strict "lanes" and uses a git-based local task queue and worktree isolation to keep agents synchronized without conflict.
 
+> **Status — runners are placeholders.** `codex_auto_dev.sh` and
+> `gemini_auto_review.sh` set up the worktree and run the verification gate, but
+> they do **not** invoke an LLM/agent yet: the Codex runner makes no edits and
+> does not push/PR, and the Gemini runner writes a `NEEDS-REVIEW` skeleton (never
+> a fake PASS). Each has a marked `TODO` where you wire in your own agent CLI.
+> Treat this repo as the orchestration *scaffold*, not a turnkey autonomous loop.
+
 ---
 
 ## 1. The Roster (Who does what)
@@ -14,7 +21,7 @@ Each tool is assigned to tasks matching its distinct comparative advantage:
 | :--- | :--- | :--- | :--- |
 | **Claude** (Claude Code) | **Architect / Planner** | `docs/specs/**` | Clarifies requirements, designs specs, and creates Codex Task Packets. |
 | **Codex** (Background Agent) | **Developer / Executor** | `src/**`, `tests/**`, `scripts/**` | Runs in isolated git worktrees, implements code, writes unit/acceptance tests, passes verification gates. |
-| **Gemini** (Gemini CLI / reviewer) | **Critic / Reviewer** | read-only; `docs/reviews/**` | Audits merged builds, runs full test gates, logs quality reports, checks for quant/architectural edge cases. |
+| **Gemini** (Gemini CLI / reviewer) | **Critic / Reviewer** *(optional, on request)* | read-only; `docs/reviews/**` | When asked, audits merged builds, runs full test gates, logs quality reports. Not a default merge gate. |
 | **Cursor** (Visual IDE) | **IDE / Surgeon** | Whole Project | The visual command center. Handled by the human developer to edit UI, polish code, and resolve Gemini's audit findings. |
 
 ---
@@ -68,7 +75,7 @@ The pipeline is managed via a local, file-based queue:
                                       │
                                       ▼
                   ┌────────────────────────────────────────┐
-                  │ 3. Peer Review                         │
+                  │ 3. Peer Review (optional, on request)  │
                   │    - Gemini runs dev_check.sh full     │
                   │    - Generates docs/reviews/review-*.md│
                   └────────────────────────────────────────┘
