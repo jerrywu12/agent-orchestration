@@ -4,6 +4,19 @@ This repository provides a modular, configuration-driven blueprint for orchestra
 
 Rather than relying on a single "omnipotent AI," this architecture divides labor into strict "lanes" and uses a git-based local task queue and worktree isolation to keep agents synchronized without conflict.
 
+> **Agent wiring.** `codex_auto_dev.sh` and `gemini_auto_review.sh` invoke a real
+> agent CLI when one is configured, and otherwise fall back to a **safe
+> placeholder** (prepare worktree + run gate; a `NEEDS-REVIEW` skeleton) — they
+> never fake a PASS. Configure the CLIs and autonomy:
+>
+> | Setting | Where | Default | Effect |
+> | :-- | :-- | :-- | :-- |
+> | `codex_cmd` / `$CODEX_CMD` | `.agents/config.json` / env | `codex exec --full-auto --skip-git-repo-check` | Developer agent; the runner appends `--cd <worktree>` + prompt |
+> | `gemini_cmd` / `$GEMINI_CMD` | `.agents/config.json` / env | *(empty → skeleton)* | Reviewer agent, e.g. `gemini --prompt` |
+> | `AGENT_AUTO_PR` | env | `0` | `1` = push the branch and open a PR when the gate is green and the agent changed files |
+>
+> With no CLI found, the pipeline stays a safe scaffold rather than a turnkey loop.
+
 ---
 
 ## 1. The Roster (Who does what)
@@ -14,7 +27,7 @@ Each tool is assigned to tasks matching its distinct comparative advantage:
 | :--- | :--- | :--- | :--- |
 | **Claude** (Claude Code) | **Architect / Planner** | `docs/specs/**` | Clarifies requirements, designs specs, and creates Codex Task Packets. |
 | **Codex** (Background Agent) | **Developer / Executor** | `src/**`, `tests/**`, `scripts/**` | Runs in isolated git worktrees, implements code, writes unit/acceptance tests, passes verification gates. |
-| **Gemini** (Gemini CLI / reviewer) | **Critic / Reviewer** | read-only; `docs/reviews/**` | Audits merged builds, runs full test gates, logs quality reports, checks for quant/architectural edge cases. |
+| **Gemini** (Gemini CLI / reviewer) | **Critic / Reviewer** *(optional, on request)* | read-only; `docs/reviews/**` | When asked, audits merged builds, runs full test gates, logs quality reports. Not a default merge gate. |
 | **Cursor** (Visual IDE) | **IDE / Surgeon** | Whole Project | The visual command center. Handled by the human developer to edit UI, polish code, and resolve Gemini's audit findings. |
 
 ---
@@ -72,7 +85,7 @@ The pipeline is managed via a local, file-based queue:
                                       │
                                       ▼
                   ┌────────────────────────────────────────┐
-                  │ 3. Peer Review                         │
+                  │ 3. Peer Review (optional, on request)  │
                   │    - Gemini runs dev_check.sh full     │
                   │    - Generates docs/reviews/review-*.md│
                   └────────────────────────────────────────┘
