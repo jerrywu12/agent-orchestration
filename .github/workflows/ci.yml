@@ -1,0 +1,41 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  shell:
+    name: shell lint + smoke
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Syntax check (bash -n)
+        run: |
+          set -euo pipefail
+          for f in scripts/*.sh install.sh; do
+            echo "bash -n $f"
+            bash -n "$f"
+          done
+
+      - name: ShellCheck (advisory)
+        continue-on-error: true
+        run: shellcheck -S warning scripts/*.sh install.sh || true
+
+      - name: Smoke — install into a fresh repo, then doctor
+        run: |
+          set -euo pipefail
+          tmp="$(mktemp -d)"
+          git -C "$tmp" init -q
+          ./install.sh "$tmp"
+          # Installer must be non-destructive and self-check cleanly.
+          ( cd "$tmp" && ./scripts/agent_workflow.sh doctor )
+          # No FAIL lines in the doctor output.
+          if ( cd "$tmp" && ./scripts/agent_workflow.sh doctor ) | grep -q '^  FAIL'; then
+            echo "doctor reported a FAIL" >&2
+            exit 1
+          fi
+          # The secret file must be gitignored by the installer.
+          grep -qxF '.env.local' "$tmp/.gitignore"
