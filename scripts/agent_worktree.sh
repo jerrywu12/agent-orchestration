@@ -13,6 +13,13 @@ fi
 DEFAULT_PARENT="$(dirname "$ROOT")"
 REPO_NAME="$(basename "$ROOT")"
 
+# Branch namespace is configurable via .agents/config.json ("branches_namespace").
+NAMESPACE="agent"
+if [ -f "$CONFIG_FILE" ]; then
+  NAMESPACE=$(grep -o '"branches_namespace": "[^"]*' "$CONFIG_FILE" | head -1 | cut -d'"' -f4 || echo "agent")
+  NAMESPACE="${NAMESPACE:-agent}"
+fi
+
 usage() {
   cat <<EOF
 usage:
@@ -23,7 +30,7 @@ usage:
 
 Creates one local git worktree per agent task so parallel agents do not share a working directory.
 Default path: ../$REPO_NAME-<slug>
-Default branch: agent/codex/<slug>
+Default branch: $NAMESPACE/codex/<slug>
 EOF
 }
 
@@ -91,7 +98,7 @@ create_worktree() {
     shift || true
   done
 
-  branch="${branch:-agent/codex/${slug}}"
+  branch="${branch:-${NAMESPACE}/codex/${slug}}"
   git check-ref-format --branch "$branch" >/dev/null 2>&1 || die "invalid branch name: $branch"
 
   mkdir -p "$parent"
@@ -166,6 +173,32 @@ list_worktrees() {
   git worktree list
 }
 
+# Resolve the worktree path for a slug. Slugifies its argument the same way
+# 'create' does (so both resolve to the same directory) and honors --parent.
+path_cmd() {
+  local raw_slug="${1:-}"
+  shift || true
+  [ -n "$raw_slug" ] || die "slug is required"
+
+  local parent="$DEFAULT_PARENT"
+  while [ "$#" -gt 0 ]; do
+    case "$1" in
+      --parent)
+        shift
+        parent="${1:-}"
+        [ -n "$parent" ] || die "--parent requires a directory"
+        ;;
+      *)
+        usage >&2
+        exit 2
+        ;;
+    esac
+    shift || true
+  done
+
+  worktree_path_for "$(safe_slug "$raw_slug")" "$parent"
+}
+
 # Subcommands routing
 CMD="${1:-}"
 [ -n "$CMD" ] || { usage; exit 1; }
@@ -182,7 +215,7 @@ case "$CMD" in
     list_worktrees
     ;;
   path)
-    worktree_path_for "$@"
+    path_cmd "$@"
     ;;
   *)
     usage >&2

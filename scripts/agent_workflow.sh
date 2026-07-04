@@ -153,17 +153,21 @@ run_job() {
   # Mark job running by updating status
   sed -i.bak 's/status="pending"/status="running"/g' "$job_file" && rm -f "${job_file}.bak"
 
+  local rc=0
   if [ "$target_agent" = "codex" ]; then
     if [ -f "$ROOT/scripts/codex_auto_dev.sh" ]; then
-      "$ROOT/scripts/codex_auto_dev.sh" "$spec_path"
+      "$ROOT/scripts/codex_auto_dev.sh" "$spec_path" || rc=$?
     else
       die "codex_auto_dev.sh not found."
     fi
   elif [ "$target_agent" = "gemini" ]; then
     if [ -f "$ROOT/scripts/gemini_auto_review.sh" ]; then
       local slug
-      slug=$(basename "$spec_path" | sed 's/_DEV_PLAN.md//' | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9]/-/g')
-      "$ROOT/scripts/gemini_auto_review.sh" "$slug"
+      slug=$(basename "$spec_path" \
+        | sed -E 's/_DEV_PLAN\.md$//' \
+        | tr '[:upper:]' '[:lower:]' \
+        | sed -E 's/[^a-z0-9]+/-/g; s/^-+//; s/-+$//')
+      "$ROOT/scripts/gemini_auto_review.sh" "$slug" || rc=$?
     else
       die "gemini_auto_review.sh not found."
     fi
@@ -171,26 +175,42 @@ run_job() {
     echo "Unknown agent $target_agent. Skipping execution."
   fi
 
-  # Mark job complete
-  sed -i.bak 's/status="running"/status="completed"/g' "$job_file" && rm -f "${job_file}.bak"
+  # Record a terminal status based on the runner's exit code — never mark a
+  # failed run as "completed".
+  local final_status="completed"
+  [ "$rc" -eq 0 ] || final_status="failed"
+  sed -i.bak "s/status=\"running\"/status=\"$final_status\"/g" "$job_file" && rm -f "${job_file}.bak"
+
+  if [ "$rc" -ne 0 ]; then
+    echo "Handoff execution FAILED (exit $rc). Job marked '$final_status': $job_file" >&2
+    return "$rc"
+  fi
   echo "Handoff execution complete."
+  return 0
 }
 
 run_next() {
-  local pending_jobs
-  pending_jobs=$(find "$QUEUE_DIR" -name "*.job" 2>/dev/null | sort)
-  if [ -z "$pending_jobs" ]; then
-    echo "No pending jobs in queue."
-    exit 0
-  fi
-
-  for job in $pending_jobs; do
+  # NB: use 'return', never 'exit' — this runs inside the long-lived watch loop,
+  # and an 'exit' here would kill the whole watcher on the first empty poll.
+  local found_any=0
+  local job
+  while IFS= read -r job; do
+    [ -n "$job" ] || continue
+    found_any=1
     if grep -q 'status="pending"' "$job" 2>/dev/null; then
-      run_job "$job"
+      # Tolerate runner failure: run_job records status="failed" in the job file,
+      # and we keep the watcher alive regardless.
+      run_job "$job" || true
       return 0
     fi
-  done
-  echo "All jobs processed."
+  done < <(find "$QUEUE_DIR" -name "*.job" 2>/dev/null | sort)
+
+  if [ "$found_any" -eq 0 ]; then
+    echo "No pending jobs in queue."
+  else
+    echo "All jobs processed."
+  fi
+  return 0
 }
 
 watch_queue() {
@@ -226,8 +246,13 @@ case "$SUB_CMD" in
         submit_handoff "$@"
         ;;
       status)
-        echo "Pending jobs:"
-        find "$QUEUE_DIR" -name "*.job" 2>/dev/null | xargs grep -l 'status="pending"' 2>/dev/null | wc -l || echo "0"
+        # `|| true` guards each grep: no match exits 1, which under
+        # `set -o pipefail` would otherwise abort the assignment.
+        pending=$(  { grep -l 'status="pending"'   "$QUEUE_DIR"/*.job 2>/dev/null || true; } | wc -l | tr -d ' ')
+        running=$(  { grep -l 'status="running"'   "$QUEUE_DIR"/*.job 2>/dev/null || true; } | wc -l | tr -d ' ')
+        completed=$({ grep -l 'status="completed"' "$QUEUE_DIR"/*.job 2>/dev/null || true; } | wc -l | tr -d ' ')
+        failed=$(   { grep -l 'status="failed"'    "$QUEUE_DIR"/*.job 2>/dev/null || true; } | wc -l | tr -d ' ')
+        echo "Jobs — pending: ${pending:-0}  running: ${running:-0}  completed: ${completed:-0}  failed: ${failed:-0}"
         ;;
       run-next)
         run_next

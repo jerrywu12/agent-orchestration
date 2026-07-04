@@ -5,6 +5,9 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 CONFIG_FILE="$ROOT/.agents/config.json"
 REPO_NAME="$(basename "$ROOT")"
+# Only processes whose cwd is under this repo's own worktree parent prefix
+# (../<repo>-<slug>) are candidates for cleanup — never a bare repo-name substring.
+WT_PREFIX="$(dirname "$ROOT")/$REPO_NAME-"
 
 # Load config
 PROJECT_NAME="project"
@@ -26,19 +29,25 @@ if [ "$OS_NAME" = "Darwin" ] || [ "$OS_NAME" = "Linux" ]; then
     # Get current working directory of PID
     cwd=""
     if [ "$OS_NAME" = "Darwin" ]; then
-      cwd=$(lsof -a -p "$pid" -d cwd -fn 2>/dev/null | awk 'NR==2 {print $NF}' || true)
+      # -Fn emits field output; the cwd path is the 'n'-prefixed line.
+      # (The old '-fn' is not a valid lsof flag and silently returned nothing.)
+      cwd=$(lsof -a -p "$pid" -d cwd -Fn 2>/dev/null | sed -n 's/^n//p' | head -1 || true)
     else
       cwd=$(readlink -f "/proc/$pid/cwd" 2>/dev/null || true)
     fi
 
     if [ -n "$cwd" ]; then
-      # If the cwd contains the repo name, but the directory no longer exists on disk
-      if [[ "$cwd" == *"$REPO_NAME"* ]] && [ ! -d "$cwd" ]; then
-        echo "Found zombie process $pid (cwd: $cwd is missing). Killing..."
-        kill -9 "$pid" || true
+      # Only act on processes whose cwd is under THIS repo's worktree prefix
+      # (../<repo>-<slug>) and whose directory has been removed. SIGTERM first,
+      # then SIGKILL if it does not exit — never an immediate kill -9.
+      if [[ "$cwd" == "$WT_PREFIX"* ]] && [ ! -d "$cwd" ]; then
+        echo "Orphaned process $pid (cwd $cwd was removed). Sending SIGTERM..."
+        kill "$pid" 2>/dev/null || true
+        ( sleep 2; if kill -0 "$pid" 2>/dev/null; then echo "Process $pid still alive; SIGKILL."; kill -9 "$pid" 2>/dev/null || true; fi ) &
       fi
     fi
   done
+  wait
 fi
 
 # 2. Prune registered Git worktrees that no longer have a physical folder
