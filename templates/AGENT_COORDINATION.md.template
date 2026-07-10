@@ -103,11 +103,23 @@ and skipping tests. `codex_auto_dev.sh` therefore brackets every run:
    or a dropped test count). New tests are always welcome.
 3. **Restore, then gate:** protected paths and the config are restored from
    the trusted base before `dev_check.sh fast` runs, so even an undetected
-   tamper vector cannot influence the verdict.
+   tamper vector cannot influence the verdict. The gate also runs the
+   property-based stage when `property_test_command` is configured —
+   randomized inputs make hardcoded fixture answers fail.
+4. **Spec critic:** `spec_coverage_verify.sh` extracts the spec's acceptance
+   criteria and the diff; when a critic CLI is configured (`critic_cmd` /
+   `$CRITIC_CMD`, falling back to `gemini_cmd`), it judges reward hacking,
+   test quality, and coverage. A `NEEDS-CHANGES` verdict fails the run.
+   Unconfigured, the check stays advisory (`NEEDS-REVIEW`, exit 0).
+5. **Mutation gate (pre-PR):** when `mutation_test_command` is configured
+   (mutmut, Stryker, …), surviving mutants block the PR — weak tests are how
+   shortcut code slips through a green gate. Runs last, only after everything
+   else passed.
 
 Overrides (human use only): `AGENT_ALLOW_TEST_EDITS=1` permits deliberate test
-refactors; `AGENT_INTEGRITY=0` disables the check entirely (results are then
-untrustworthy against a hostile agent).
+refactors; `AGENT_SKIP_MUTATION=1` skips the mutation gate; `AGENT_INTEGRITY=0`
+disables the tamper check entirely (results are then untrustworthy against a
+hostile agent).
 
 ---
 

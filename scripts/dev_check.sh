@@ -5,13 +5,15 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 MODE="${1:-fast}"
 
-if [ "$MODE" = "fast" ] || [ "$MODE" = "full" ]; then
+if [ "$MODE" = "fast" ] || [ "$MODE" = "full" ] || [ "$MODE" = "mutation" ]; then
   exec "$ROOT/scripts/verify_for_changes.sh" "$MODE"
 elif [ "$MODE" = "plan" ]; then
   echo "Planning check scope..."
   echo "Fast checks will run: $(python3 -c "import json; print(json.load(open('$ROOT/.agents/config.json'))['fast_test_command'])")"
+  echo "Property stage: $(python3 -c "import json; print(json.load(open('$ROOT/.agents/config.json')).get('property_test_command','') or '(not configured)')")"
+  echo "Mutation stage: $(python3 -c "import json; print(json.load(open('$ROOT/.agents/config.json')).get('mutation_test_command','') or '(not configured)')")"
 else
   echo "Unknown check mode: $MODE" >&2
-  echo "Usage: ./scripts/dev_check.sh [fast|full|plan]" >&2
+  echo "Usage: ./scripts/dev_check.sh [fast|full|mutation|plan]" >&2
   exit 1
 fi

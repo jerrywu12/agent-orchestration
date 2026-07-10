@@ -98,6 +98,7 @@ printf -v PROMPT '%s\n' \
   "- Never modify the verification harness: scripts/, .agents/, .github/, or existing test files. Do not delete tests or add skip/disable markers; adding NEW tests is expected and welcome." \
   "- Do not hardcode test fixture values as implementation logic — implement the general behavior the spec describes." \
   "- These rules are enforced mechanically after you finish (integrity check + protected-path restore), so a shortcut cannot pass the gate; it only wastes an iteration." \
+  "- Verification may also include property-based tests with randomized inputs, a mutation-testing stage, and a semantic critic reviewing your diff — code that merely satisfies the visible unit tests will be caught." \
   "- The gate MUST pass before you finish: run ./scripts/dev_check.sh fast and fix any failures. Iterate until it is green." \
   "- Do NOT push or open a PR; the wrapper handles that."
 
@@ -134,8 +135,11 @@ echo "Running verification gate..."
 GATE_RC=0
 ./scripts/dev_check.sh fast || GATE_RC=$?
 
-echo "Running spec-coverage check (advisory)..."
-./scripts/spec_coverage_verify.sh "$SPEC_PATH" "$BRANCH" || true
+echo "Running spec critic / coverage check..."
+# Advisory (exit 0) unless a critic CLI is configured, in which case a
+# NEEDS-CHANGES verdict fails the run and blocks the PR path.
+CRITIC_RC=0
+./scripts/spec_coverage_verify.sh "$SPEC_PATH" "$BRANCH" || CRITIC_RC=$?
 
 # Did the agent actually change anything? (porcelain also counts untracked files,
 # which `git diff` alone would miss). The runner-provisioned local files copied
@@ -146,11 +150,26 @@ if [ -n "$(git -C "$WORKTREE_PATH" status --porcelain 2>/dev/null \
   CHANGED=1
 fi
 
-if [ "$AGENT_RC" -ne 0 ] || [ "$GATE_RC" -ne 0 ] || [ "$CHANGED" -eq 0 ]; then
-  notify "codex runner: NEEDS ATTENTION for $(basename "$SPEC_PATH") on $BRANCH (agent rc=$AGENT_RC, gate rc=$GATE_RC, changed=$CHANGED). No PR opened. Log: $LOG"
-  echo "Not opening a PR (agent rc=$AGENT_RC, gate rc=$GATE_RC, changed=$CHANGED)." >&2
-  [ "$AGENT_RC" -eq 0 ] && [ "$GATE_RC" -eq 0 ] || exit 1
+if [ "$AGENT_RC" -ne 0 ] || [ "$GATE_RC" -ne 0 ] || [ "$CRITIC_RC" -ne 0 ] || [ "$CHANGED" -eq 0 ]; then
+  notify "codex runner: NEEDS ATTENTION for $(basename "$SPEC_PATH") on $BRANCH (agent rc=$AGENT_RC, gate rc=$GATE_RC, critic rc=$CRITIC_RC, changed=$CHANGED). No PR opened. Log: $LOG"
+  echo "Not opening a PR (agent rc=$AGENT_RC, gate rc=$GATE_RC, critic rc=$CRITIC_RC, changed=$CHANGED)." >&2
+  [ "$AGENT_RC" -eq 0 ] && [ "$GATE_RC" -eq 0 ] && [ "$CRITIC_RC" -eq 0 ] || exit 1
   exit 0
+fi
+
+# --- Mutation gate (pre-PR only; slow) ---------------------------------------
+# Surviving mutants mean the tests don't pin the logic down — weak tests are
+# exactly how shortcut code slips through a green gate. Runs only after
+# everything else passed so the expensive stage is never wasted; SKIPPED
+# instantly when mutation_test_command is not configured.
+if [ "${AGENT_SKIP_MUTATION:-0}" != "1" ]; then
+  MUTATION_RC=0
+  ./scripts/dev_check.sh mutation || MUTATION_RC=$?
+  if [ "$MUTATION_RC" -ne 0 ]; then
+    notify "codex runner: MUTATION GATE FAILED for $(basename "$SPEC_PATH") on $BRANCH — surviving mutants (weak tests or dead shortcut code). No PR. Log: $LOG"
+    echo "Mutation gate failed — the tests are too weak to trust the green gate. Not opening a PR." >&2
+    exit 1
+  fi
 fi
 
 # --- Optional push + PR (opt-in) --------------------------------------------
