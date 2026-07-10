@@ -14,6 +14,9 @@ Rather than relying on a single "omnipotent AI," this architecture divides labor
 > | `codex_cmd` / `$CODEX_CMD` | `.agents/config.json` / env | `codex exec --full-auto --skip-git-repo-check` | Developer agent; the runner appends `--cd <worktree>` + prompt |
 > | `gemini_cmd` / `$GEMINI_CMD` | `.agents/config.json` / env | *(empty → skeleton)* | Reviewer agent, e.g. `gemini --prompt` |
 > | `AGENT_AUTO_PR` | env | `0` | `1` = push the branch and open a PR when the gate is green and the agent changed files |
+> | `AGENT_SKIP_BASELINE` | env | `0` | `1` = skip the pre-agent baseline gate + test-count capture (slow suites) |
+> | `AGENT_ALLOW_TEST_EDITS` | env | `0` | `1` = downgrade "modified/deleted/skipped existing tests" from failure to warning (human-approved refactors) |
+> | `AGENT_INTEGRITY` | env | `1` | `0` = disable the anti-tamper integrity check entirely (results untrustworthy against a hostile agent) |
 >
 > With no CLI found, the pipeline stays a safe scaffold rather than a turnkey loop.
 
@@ -26,7 +29,7 @@ Each tool is assigned to tasks matching its distinct comparative advantage:
 | Agent / Tool | Role | Workspace Lane | Primary Duties |
 | :--- | :--- | :--- | :--- |
 | **Claude** (Claude Code) | **Architect / Planner** | `docs/specs/**` | Clarifies requirements, designs specs, and creates Codex Task Packets. |
-| **Codex** (Background Agent) | **Developer / Executor** | `src/**`, `tests/**`, `scripts/**` | Runs in isolated git worktrees, implements code, writes unit/acceptance tests, passes verification gates. |
+| **Codex** (Background Agent) | **Developer / Executor** | `src/**`, `tests/**` | Runs in isolated git worktrees, implements code, writes unit/acceptance tests, passes verification gates. The harness (`scripts/`, `.agents/`, `.github/`), specs, and existing tests are protected by the integrity gate. |
 | **Gemini** (Gemini CLI / reviewer) | **Critic / Reviewer** *(optional, on request)* | read-only; `docs/reviews/**` | When asked, audits merged builds, runs full test gates, logs quality reports. Not a default merge gate. |
 | **Cursor** (Visual IDE) | **IDE / Surgeon** | Whole Project | The visual command center. Handled by the human developer to edit UI, polish code, and resolve Gemini's audit findings. |
 
@@ -51,7 +54,8 @@ When installed, the project structure is laid out as follows:
 │   ├── agent_workflow.sh        # Core task dispatcher (handoff submit, watch, status)
 │   ├── agent_worktree.sh        # Creates and prunes isolated git worktrees
 │   ├── worktree_doctor.sh       # Cleans up dead worktrees & background processes
-│   ├── codex_auto_dev.sh        # Developer wrapper (build + test gate + coverage verify)
+│   ├── codex_auto_dev.sh        # Developer wrapper (baseline + build + integrity + gate)
+│   ├── agent_integrity_check.sh # Anti-tamper gate: detects/reverts harness + test edits
 │   ├── gemini_auto_review.sh    # Reviewer wrapper (pull main + test check + log review)
 │   ├── spec_coverage_verify.sh  # Verifies implementation diffs against spec criteria
 │   ├── verify_for_changes.sh    # Executes test suite configured in config.json
@@ -79,8 +83,10 @@ The pipeline is managed via a local, file-based queue:
                                       ▼
                   ┌────────────────────────────────────────┐
                   │ 2. Implementation                      │
+                  │    - Baseline gate on clean worktree   │
                   │    - Codex runs in isolated worktree   │
-                  │    - Passes dev_check.sh fast          │
+                  │    - Integrity check + restore, then   │
+                  │      passes dev_check.sh fast          │
                   └────────────────────────────────────────┘
                                       │
                                       ▼
@@ -134,9 +140,14 @@ Keep a queue runner watching for new jobs in the background:
       "src_directories": ["src"],
       "test_directories": ["tests"],
       "fast_test_command": "npm run test:fast",
-      "full_test_command": "npm run test:full"
+      "full_test_command": "npm run test:full",
+      "test_count_command": "npx jest --listTests | wc -l",
+      "protected_paths": ["scripts", ".github"]
     }
     ```
+    `test_directories` doubles as the integrity gate's protected test set;
+    `test_count_command` (optional) lets it detect deleted tests;
+    `protected_paths` are the harness paths the coder agent must never touch.
 4.  **Set your Slack Webhook URL** for automated channel alerts:
     ```bash
     ./scripts/notify_slack.sh --set "https://hooks.slack.com/services/..."
