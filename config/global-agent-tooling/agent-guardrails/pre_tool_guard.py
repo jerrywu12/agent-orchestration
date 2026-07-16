@@ -18,6 +18,13 @@ MAX_RECURSION_DEPTH = 4
 CONTROL_CHARS = frozenset(";&|()`\n")
 SHELLS = {"bash", "dash", "ksh", "sh", "zsh"}
 INLINE_INTERPRETERS = {"node", "nodejs", "perl", "php", "python", "python3", "ruby"}
+SHELL_FLOW_KEYWORDS = {"do", "done", "else", "fi", "if", "then", "while"}
+SIMPLE_WRAPPERS = {"builtin", "command", "exec", "noglob", "nohup"}
+MAX_UNWRAP_DEPTH = 16
+RAW_STORAGE_DEVICE_PATTERN = (
+    r"/dev/(?:r?disk\d+(?:s\d+)*|sd[a-z]\d*|nvme\d+n\d+(?:p\d+)?|"
+    r"mmcblk\d+(?:p\d+)?|loop\d+|vd[a-z]\d*)"
+)
 
 
 @dataclass(frozen=True)
@@ -45,6 +52,11 @@ def is_assignment(token: str) -> bool:
 
 def is_control(token: str) -> bool:
     return bool(token) and all(character in CONTROL_CHARS for character in token)
+
+
+def is_bare_truncating_redirection(tokens: Sequence[str]) -> bool:
+    index = 1 if tokens and tokens[0].isdigit() else 0
+    return index + 1 < len(tokens) and tokens[index] in {">", ">|"}
 
 
 def tokenize(command: str) -> Tuple[List[List[str]], List[str]]:
@@ -77,35 +89,116 @@ def tokenize(command: str) -> Tuple[List[List[str]], List[str]]:
     return segments, separators
 
 
-def unwrap_command(tokens: Sequence[str]) -> Tuple[Optional[str], List[str]]:
-    items = list(tokens)
-    index = 0
+def consume_wrapper(items: List[str], index: int, wrapper: str) -> int:
+    index += 1
+    if wrapper in SIMPLE_WRAPPERS:
+        if index < len(items) and items[index] == "--":
+            index += 1
+        return index
 
-    while index < len(items) and is_assignment(items[index]):
-        index += 1
-
-    if index < len(items) and executable_name(items[index]) == "env":
-        index += 1
+    if wrapper == "env":
+        value_options = {"-C", "--chdir", "-u", "--unset"}
         while index < len(items):
             token = items[index]
             if token == "--":
+                return index + 1
+            split_value: Optional[str] = None
+            split_length = 0
+            if token in {"-S", "--split-string"}:
+                if index + 1 >= len(items):
+                    return -1
+                split_value = items[index + 1]
+                split_length = 2
+            elif token.startswith("--split-string="):
+                split_value = token.split("=", 1)[1]
+                split_length = 1
+            elif token.startswith("-S") and len(token) > 2:
+                split_value = token[2:]
+                split_length = 1
+
+            if split_value is not None:
+                try:
+                    split_items = shlex.split(split_value)
+                except ValueError:
+                    return -1
+                if not split_items:
+                    return -1
+                items[index : index + split_length] = split_items
+                continue
+
+            if token in value_options:
+                if index + 1 >= len(items):
+                    return -1
+                index += 2
+                continue
+            if is_assignment(token) or token.startswith("-"):
                 index += 1
+                continue
+            return index
+        return index
+
+    if wrapper == "time":
+        value_options = {"-f", "--format", "-o", "--output"}
+        while index < len(items) and items[index].startswith("-"):
+            token = items[index]
+            index += 1
+            if token in value_options and index < len(items):
+                index += 1
+            if token == "--":
                 break
-            if is_assignment(token):
+        return index
+
+    if wrapper == "timeout":
+        value_options = {"-k", "--kill-after", "-s", "--signal"}
+        while index < len(items) and items[index].startswith("-"):
+            token = items[index]
+            index += 1
+            if token in value_options and index < len(items):
                 index += 1
-                continue
-            if token.startswith("-"):
+            if token == "--":
+                break
+        if index < len(items):
+            index += 1  # duration
+        return index
+
+    if wrapper == "stdbuf":
+        value_options = {"-e", "--error", "-i", "--input", "-o", "--output"}
+        while index < len(items) and items[index].startswith("-"):
+            token = items[index]
+            index += 1
+            if token in value_options and index < len(items):
                 index += 1
-                continue
+            if token == "--":
+                break
+        return index
+
+    return index
+
+
+def unwrap_command(tokens: Sequence[str]) -> Tuple[Optional[str], List[str]]:
+    items = list(tokens)
+    index = 0
+    unwrap_depth = 0
+
+    while index < len(items):
+        while index < len(items) and is_assignment(items[index]):
+            index += 1
+        if index >= len(items):
             break
 
-    while index < len(items) and executable_name(items[index]) in {
-        "builtin",
-        "command",
-        "exec",
-        "noglob",
-    }:
-        index += 1
+        executable = executable_name(items[index])
+        if executable in SHELL_FLOW_KEYWORDS:
+            index += 1
+        elif executable in SIMPLE_WRAPPERS | {"env", "stdbuf", "time", "timeout"}:
+            index = consume_wrapper(items, index, executable)
+            if index < 0:
+                return "__dynamic_command__", []
+        else:
+            break
+
+        unwrap_depth += 1
+        if unwrap_depth > MAX_UNWRAP_DEPTH:
+            return "__dynamic_command__", []
 
     if index >= len(items):
         return None, []
@@ -122,6 +215,12 @@ def has_short_flag(arguments: Sequence[str], flag: str) -> bool:
             if flag in argument[1:]:
                 return True
     return False
+
+
+def is_inline_interpreter(executable: str) -> bool:
+    return executable in INLINE_INTERPRETERS or re.fullmatch(
+        r"python\d+(?:\.\d+)*", executable, re.IGNORECASE
+    ) is not None
 
 
 def shell_payload(arguments: Sequence[str]) -> Optional[str]:
@@ -167,15 +266,35 @@ def git_subcommand(arguments: Sequence[str]) -> Tuple[Optional[str], List[str]]:
 
 
 def check_git(arguments: Sequence[str]) -> Decision:
+    for index, argument in enumerate(arguments):
+        if argument in {"-c", "--config-env"} and index + 1 < len(arguments):
+            if arguments[index + 1].lower().startswith("alias."):
+                return Decision(True, "git alias configuration can hide a destructive command")
+        if argument.lower().startswith("--config-env=alias."):
+            return Decision(True, "git alias configuration can hide a destructive command")
+
     subcommand, rest = git_subcommand(arguments)
     if subcommand == "reset" and "--hard" in rest:
         return Decision(True, "git reset --hard discards tracked work")
     if subcommand == "clean" and ("--force" in rest or has_short_flag(rest, "f")):
         return Decision(True, "git clean with force deletes untracked files")
-    if subcommand == "branch" and "-D" in rest:
-        return Decision(True, "git branch -D force-deletes a branch")
+    if subcommand == "branch":
+        deletes = "-D" in rest or "--delete" in rest or has_short_flag(rest, "d")
+        forces = "-D" in rest or "--force" in rest or has_short_flag(rest, "f")
+        if deletes and forces:
+            return Decision(True, "forced git branch deletion removes a branch without merge checks")
+    if subcommand == "checkout" and (
+        "--force" in rest
+        or has_short_flag(rest, "f")
+        or any(any(character in argument for character in "*?[") for argument in rest)
+    ):
+        return Decision(True, "git checkout force or glob can discard worktree changes")
     if subcommand in {"checkout", "restore"} and "." in rest:
         return Decision(True, f"git {subcommand} on the whole worktree discards changes")
+    if subcommand == "config" and any(
+        argument.lower().startswith("alias.") for argument in rest
+    ):
+        return Decision(True, "git alias configuration can hide a destructive command")
     if subcommand == "push":
         force_flags = {"-f", "--force", "--force-with-lease", "--mirror", "--delete"}
         if force_flags.intersection(rest) or any(
@@ -199,7 +318,9 @@ def check_inline_payload(executable: str, payload: str) -> Decision:
     destructive = re.compile(
         r"(?:shutil\.rmtree|os\.(?:remove|unlink|rmdir)|pathlib[^\n]*\.(?:unlink|rmdir)\s*\(|"
         r"(?:rmSync|rmdirSync|unlinkSync)\s*\(|FileUtils\.rm_rf|"
-        r"\b(?:system|popen|exec|spawn)\s*\([^\n]*(?:rm\s+-|diskutil|dd\s+)|"
+        r"\b(?:(?:subprocess\.)?(?:run|call|popen)|system|exec|spawn)\s*\([^\n]*"
+        rf"(?:\brm\b[^\n]*(?:--recursive|-[A-Za-z]*[Rr][A-Za-z]*)|\bdiskutil\b|"
+        rf"\bdd\b[^\n]*\bof\s*=\s*{RAW_STORAGE_DEVICE_PATTERN})|"
         r"\b(?:exec|eval|compile)\s*\([^\n]*(?:b64decode|base64|fromhex|decode64))",
         re.IGNORECASE | re.DOTALL,
     )
@@ -209,11 +330,16 @@ def check_inline_payload(executable: str, payload: str) -> Decision:
 
 
 def check_segment(tokens: Sequence[str], depth: int) -> Decision:
+    if is_bare_truncating_redirection(tokens):
+        return Decision(True, "bare shell redirection would truncate a file without recovery")
+
     executable, arguments = unwrap_command(tokens)
     if executable is None:
         return Decision(False)
     if executable == "__dynamic_command__":
         return Decision(True, "dynamic shell command cannot be safely classified")
+    if executable in {">", ">|"} and arguments:
+        return Decision(True, "bare shell redirection would truncate a file without recovery")
     if executable == "sudo":
         return Decision(True, "sudo privilege escalation is not allowed for agents")
     if executable in {"eval", "source"} or executable == ".":
@@ -232,7 +358,11 @@ def check_segment(tokens: Sequence[str], depth: int) -> Decision:
             return Decision(True, f"{executable} reading commands from stdin cannot be safely classified")
 
     if executable == "rm":
-        if "--recursive" in arguments or has_short_flag(arguments, "r"):
+        if (
+            "--recursive" in arguments
+            or has_short_flag(arguments, "r")
+            or has_short_flag(arguments, "R")
+        ):
             return Decision(True, "recursive rm is a mass-deletion operation")
         if any(any(character in argument for character in "*?[") for argument in arguments):
             return Decision(True, "wildcard rm can delete an unbounded set of files")
@@ -260,7 +390,9 @@ def check_segment(tokens: Sequence[str], depth: int) -> Decision:
     ):
         return Decision(True, "xargs feeding a delete command can remove an unbounded file set")
 
-    if executable == "rsync" and any(argument.startswith("--delete") for argument in arguments):
+    if executable == "rsync" and any(
+        argument == "--del" or argument.startswith("--delete") for argument in arguments
+    ):
         return Decision(True, "rsync --delete can remove a broad destination file set")
 
     if executable == "git":
@@ -285,7 +417,8 @@ def check_segment(tokens: Sequence[str], depth: int) -> Decision:
             return Decision(True, "diskutil destructive operation can erase storage")
 
     if executable == "dd" and any(
-        re.match(r"of=/dev/(?:r?disk|sd)", argument, re.IGNORECASE) for argument in arguments
+        re.fullmatch(rf"of={RAW_STORAGE_DEVICE_PATTERN}", argument, re.IGNORECASE)
+        for argument in arguments
     ):
         return Decision(True, "dd raw-disk output can erase storage")
     if executable in {"fdisk", "gdisk", "mkfs"} or executable.startswith("mkfs.") or executable.startswith("newfs_"):
@@ -305,7 +438,7 @@ def check_segment(tokens: Sequence[str], depth: int) -> Decision:
     if executable == "kill" and any(argument in {"-1", "--", "0"} for argument in arguments):
         return Decision(True, "broad kill target can terminate many processes")
 
-    if executable in INLINE_INTERPRETERS:
+    if is_inline_interpreter(executable):
         payload = inline_payload(arguments)
         if payload is None and ("-" in arguments or "<<" in arguments):
             payload = " ".join(arguments)
@@ -334,7 +467,7 @@ def inspect_command(command: str, depth: int = 0) -> Decision:
     if re.search(r":\s*\(\s*\)\s*\{[^}]*:\s*\|[^}]*:\s*&", command, re.DOTALL):
         return Decision(True, "shell fork bomb can exhaust machine resources")
     if re.search(
-        r"\b(?:node|nodejs|perl|php|python|python3|ruby)\b[^\n]*(?:<<|<<<)",
+        r"\b(?:node|nodejs|perl|php|python(?:\d+(?:\.\d+)*)?|ruby)\b[^\n]*(?:<<|<<<)",
         command,
         re.IGNORECASE,
     ):
@@ -362,7 +495,7 @@ def inspect_command(command: str, depth: int = 0) -> Decision:
 
     if re.search(r"\b(?:bash|sh|zsh)\s+<\s*\(\s*(?:curl|wget)\b", command, re.IGNORECASE):
         return Decision(True, "remote script process substitution executes unreviewed code")
-    if re.search(r"(?:>|>>|\btee\b)\s*/dev/(?:r?disk|sd)", command, re.IGNORECASE):
+    if re.search(rf"(?:>|>>|\btee\b)\s*{RAW_STORAGE_DEVICE_PATTERN}\b", command, re.IGNORECASE):
         return Decision(True, "raw-disk redirection can erase storage")
     if re.search(r"(?:^|[;&|])\s*:\s*>|\bcat\s+/dev/null\s*>", command, re.IGNORECASE):
         return Decision(True, "shell redirection would truncate a file without recovery")

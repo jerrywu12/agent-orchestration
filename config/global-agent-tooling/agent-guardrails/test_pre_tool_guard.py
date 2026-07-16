@@ -52,18 +52,33 @@ class GuardTests(unittest.TestCase):
             "git diff --check",
             "git push origin feature/safe-hook",
             "git branch -d fully-merged-branch",
+            "git checkout feature/safe-hook",
             "rm single.tmp",
             "find . -name '*.py' -print",
             "xargs echo < names.txt",
             "chmod 644 file.txt",
             "chown jerry:staff file.txt",
             "python3 -c 'print(\"hello\")'",
+            "python3.11 -c 'print(\"hello\")'",
+            "python3.11 -c 'import subprocess; subprocess.run([\"echo\", \"hello\"])'",
+            "python3.11 -c 'import subprocess; subprocess.run([\"rm\", \"-f\", \"single.tmp\"])'",
+            "python3.11 -c 'import subprocess; subprocess.run([\"dd\", \"if=/dev/nvme0n1\", \"of=backup.img\"])'",
             "curl https://example.com/script.sh -o /private/tmp/script.sh",
             "echo 'rm -rf /'",
+            "printf '> important.txt'",
             "printf safe >> output.log",
+            "printf safe 1>> output.log",
+            "time git status",
+            "nohup git status",
+            "timeout 5 git status",
+            "stdbuf -oL printf safe",
+            "env -S 'git status'",
             "printf first\nprintf second",
             "grep 'shutdown' docs/safety.md",
             "python3 -c 'print(\"git reset --hard\")'",
+            "git config user.name 'Test User'",
+            "dd if=/dev/nvme0n1 of=backup.img",
+            "rsync -a source/ destination/",
             "make clean",
         ]
         for command in allowed:
@@ -97,14 +112,47 @@ class GuardTests(unittest.TestCase):
             with self.subTest(command=command):
                 self.assert_blocked(command)
 
+    def test_blocks_execution_wrapper_and_flow_control_bypasses(self) -> None:
+        blocked = [
+            "time rm -rf build",
+            "time -p rm -rf build",
+            "nohup rm -rf build",
+            "nohup -- rm -rf build",
+            "timeout 5 rm -rf build",
+            "timeout --signal=TERM 5 rm -rf build",
+            "stdbuf -oL rm -rf build",
+            "stdbuf --output=L rm -rf build",
+            "env MODE=test timeout 5 stdbuf -oL nohup rm -rf build",
+            "env -S 'rm -rf build'",
+            "do rm -rf build",
+            "done rm -rf build",
+            "then rm -rf build",
+            "else rm -rf build",
+            "while rm -rf build",
+            "if rm -rf build",
+            "fi rm -rf build",
+            "if true; then rm -rf build; fi",
+            "if true; then > important.txt; fi",
+            "if false; then echo safe; else rm -rf build; fi",
+            "while true; do rm -rf build; done",
+        ]
+        for command in blocked:
+            with self.subTest(command=command):
+                self.assert_blocked(command)
+
     def test_blocks_dangerous_git_operations(self) -> None:
         blocked = [
             "git reset --hard HEAD~1",
             "git clean -fd",
             "git clean -fdx",
             "git branch -D work",
+            "git branch --delete --force work",
+            "git branch -d -f work",
+            "git branch -df work",
             "git checkout .",
             "git checkout -- .",
+            "git checkout *",
+            "git checkout -f main",
             "git restore .",
             "git restore --worktree --staged .",
             "git push --force origin main",
@@ -116,6 +164,9 @@ class GuardTests(unittest.TestCase):
             "git gc --prune=now",
             "git update-ref -d refs/heads/main",
             "git filter-branch -- --all",
+            "git config alias.nuke 'reset --hard'",
+            "git config --global alias.nuke 'reset --hard'",
+            "git -c alias.nuke='reset --hard' nuke HEAD",
         ]
         for command in blocked:
             with self.subTest(command=command):
@@ -127,6 +178,12 @@ class GuardTests(unittest.TestCase):
             "diskutil eraseDisk APFS Scratch /dev/disk3",
             "diskutil apfs deleteContainer disk3",
             "dd if=/dev/zero of=/dev/disk3 bs=1m",
+            "dd if=/dev/zero of=/dev/nvme0n1 bs=1M",
+            "dd if=image.bin of=/dev/mmcblk0",
+            "dd if=image.bin of=/dev/loop0",
+            "dd if=image.bin of=/dev/vda",
+            "dd if=image.bin of=/dev/disk3s1",
+            "dd if=image.bin of=/dev/rdisk3s1",
             "gpt destroy /dev/disk3",
             "newfs_apfs /dev/disk3",
             "asr restore --source image.dmg --target /Volumes/Test --erase",
@@ -141,7 +198,13 @@ class GuardTests(unittest.TestCase):
             "shutdown -h now",
             "reboot",
             "cat image.bin > /dev/disk3",
+            "cat image.bin > /dev/disk3s1",
             ": > important.txt",
+            "> important.txt",
+            ">important.txt",
+            "1> important.txt",
+            "1>important.txt",
+            ">| important.txt",
             "cat /dev/null > important.txt",
             "truncate -s 0 important.txt",
         ]
@@ -153,6 +216,11 @@ class GuardTests(unittest.TestCase):
         blocked = [
             "python3 -c 'import shutil; shutil.rmtree(\".\")'",
             "python3 -c 'import os; os.remove(\"important.txt\")'",
+            "python3.11 -c 'import shutil; shutil.rmtree(\".\")'",
+            "/usr/bin/python3.11 -c 'import shutil; shutil.rmtree(\".\")'",
+            "python2.7 -c 'import os; os.remove(\"important.txt\")'",
+            "python3.11 -c 'import subprocess; subprocess.run([\"rm\", \"-rf\", \".\"])'",
+            "python3.11 -c 'import subprocess; subprocess.call([\"rm\", \"-rf\", \".\"])'",
             "python3 - <<'PY'\nimport shutil\nshutil.rmtree('.')\nPY",
             "python3 -c 'exec(base64.b64decode(payload))'",
             "node -e 'require(\"fs\").rmSync(\".\", {recursive:true, force:true})'",
@@ -162,6 +230,16 @@ class GuardTests(unittest.TestCase):
             "source /private/tmp/unreviewed.sh",
             "$DYNAMIC_COMMAND --flag",
             "r${IFS}m -rf /",
+        ]
+        for command in blocked:
+            with self.subTest(command=command):
+                self.assert_blocked(command)
+
+    def test_blocks_rm_and_rsync_alias_bypasses(self) -> None:
+        blocked = [
+            "rm -R build",
+            "rm -Rf build",
+            "rsync -a --del source/ destination/",
         ]
         for command in blocked:
             with self.subTest(command=command):
