@@ -68,6 +68,7 @@ class GuardTests(unittest.TestCase):
             "printf '> important.txt'",
             "printf safe >> output.log",
             "printf safe 1>> output.log",
+            "printf safe &>> output.log",
             "time git status",
             "nohup git status",
             "timeout 5 git status",
@@ -135,6 +136,12 @@ class GuardTests(unittest.TestCase):
             "if true; then > important.txt; fi",
             "if false; then echo safe; else rm -rf build; fi",
             "while true; do rm -rf build; done",
+            "! rm -rf build",
+            "{ rm -rf build; }",
+            "until rm -rf build; do echo safe; done",
+            "if false; then echo safe; elif rm -rf build; then echo unsafe; fi",
+            "coproc rm -rf build",
+            "function nuke { rm -rf build; }; nuke",
         ]
         for command in blocked:
             with self.subTest(command=command):
@@ -205,6 +212,7 @@ class GuardTests(unittest.TestCase):
             "1> important.txt",
             "1>important.txt",
             ">| important.txt",
+            "&> important.txt",
             "cat /dev/null > important.txt",
             "truncate -s 0 important.txt",
         ]
@@ -221,6 +229,7 @@ class GuardTests(unittest.TestCase):
             "python2.7 -c 'import os; os.remove(\"important.txt\")'",
             "python3.11 -c 'import subprocess; subprocess.run([\"rm\", \"-rf\", \".\"])'",
             "python3.11 -c 'import subprocess; subprocess.call([\"rm\", \"-rf\", \".\"])'",
+            "python3.11 -c 'import subprocess; subprocess.run([\n\"rm\",\n\"-rf\",\n\"/\"\n])'",
             "python3 - <<'PY'\nimport shutil\nshutil.rmtree('.')\nPY",
             "python3 -c 'exec(base64.b64decode(payload))'",
             "node -e 'require(\"fs\").rmSync(\".\", {recursive:true, force:true})'",

@@ -18,7 +18,26 @@ MAX_RECURSION_DEPTH = 4
 CONTROL_CHARS = frozenset(";&|()`\n")
 SHELLS = {"bash", "dash", "ksh", "sh", "zsh"}
 INLINE_INTERPRETERS = {"node", "nodejs", "perl", "php", "python", "python3", "ruby"}
-SHELL_FLOW_KEYWORDS = {"do", "done", "else", "fi", "if", "then", "while"}
+SHELL_FLOW_KEYWORDS = {
+    "!",
+    "{",
+    "}",
+    "case",
+    "do",
+    "done",
+    "elif",
+    "else",
+    "esac",
+    "fi",
+    "for",
+    "if",
+    "in",
+    "select",
+    "then",
+    "until",
+    "while",
+}
+OPAQUE_SHELL_KEYWORDS = {"coproc", "function"}
 SIMPLE_WRAPPERS = {"builtin", "command", "exec", "noglob", "nohup"}
 MAX_UNWRAP_DEPTH = 16
 RAW_STORAGE_DEVICE_PATTERN = (
@@ -56,7 +75,7 @@ def is_control(token: str) -> bool:
 
 def is_bare_truncating_redirection(tokens: Sequence[str]) -> bool:
     index = 1 if tokens and tokens[0].isdigit() else 0
-    return index + 1 < len(tokens) and tokens[index] in {">", ">|"}
+    return index + 1 < len(tokens) and tokens[index] in {">", ">|", "&>"}
 
 
 def tokenize(command: str) -> Tuple[List[List[str]], List[str]]:
@@ -187,6 +206,8 @@ def unwrap_command(tokens: Sequence[str]) -> Tuple[Optional[str], List[str]]:
             break
 
         executable = executable_name(items[index])
+        if executable in OPAQUE_SHELL_KEYWORDS:
+            return "__dynamic_command__", items[index + 1 :]
         if executable in SHELL_FLOW_KEYWORDS:
             index += 1
         elif executable in SIMPLE_WRAPPERS | {"env", "stdbuf", "time", "timeout"}:
@@ -318,9 +339,9 @@ def check_inline_payload(executable: str, payload: str) -> Decision:
     destructive = re.compile(
         r"(?:shutil\.rmtree|os\.(?:remove|unlink|rmdir)|pathlib[^\n]*\.(?:unlink|rmdir)\s*\(|"
         r"(?:rmSync|rmdirSync|unlinkSync)\s*\(|FileUtils\.rm_rf|"
-        r"\b(?:(?:subprocess\.)?(?:run|call|popen)|system|exec|spawn)\s*\([^\n]*"
-        rf"(?:\brm\b[^\n]*(?:--recursive|-[A-Za-z]*[Rr][A-Za-z]*)|\bdiskutil\b|"
-        rf"\bdd\b[^\n]*\bof\s*=\s*{RAW_STORAGE_DEVICE_PATTERN})|"
+        r"\b(?:(?:subprocess\.)?(?:run|call|popen)|system|exec|spawn)\s*\(.*?"
+        rf"(?:\brm\b.*?(?:--recursive|-[A-Za-z]*[Rr][A-Za-z]*)|\bdiskutil\b|"
+        rf"\bdd\b.*?\bof\s*=\s*{RAW_STORAGE_DEVICE_PATTERN})|"
         r"\b(?:exec|eval|compile)\s*\([^\n]*(?:b64decode|base64|fromhex|decode64))",
         re.IGNORECASE | re.DOTALL,
     )
@@ -338,7 +359,7 @@ def check_segment(tokens: Sequence[str], depth: int) -> Decision:
         return Decision(False)
     if executable == "__dynamic_command__":
         return Decision(True, "dynamic shell command cannot be safely classified")
-    if executable in {">", ">|"} and arguments:
+    if executable in {">", ">|", "&>"} and arguments:
         return Decision(True, "bare shell redirection would truncate a file without recovery")
     if executable == "sudo":
         return Decision(True, "sudo privilege escalation is not allowed for agents")
