@@ -11,7 +11,7 @@ Each agent has a specific comparative advantage. Do not use them outside their l
 | Agent | Role | Scope / Lane | Primary Function |
 |---|---|---|---|
 | **Claude** | Architect / Planner | `docs/specs/**` | Analyzes requirements, designs specs, creates Codex Task Packets. |
-| **Codex** | Developer | `src/**`, `tests/**`, `scripts/**` | Implements the code on a clean branch, runs verification gates. |
+| **Codex** | Developer | `src/**`, `tests/**` | Implements the code on a clean branch, runs verification gates. May add new tests; must not modify existing ones. |
 | **Gemini** | Critic / Reviewer *(optional, on request)* | read-only; `docs/reviews/**` | When asked, audits merged builds, runs full test gates, recommends improvements. Not a default merge gate. |
 | **Cursor** | IDE / Surgeon | Whole Project | Visual command center. Slices code changes, reviews diffs, styles UI. |
 
@@ -86,7 +86,44 @@ This triggers `scripts/gemini_auto_review.sh` to run the full test suite
 
 ---
 
-## 4. Worktree Isolation & Cleanup
+## 4. Integrity Gate (anti-reward-hacking)
+
+An unmonitored coder agent can try to "pass" the gate by attacking the harness
+instead of implementing the spec — rewriting `scripts/dev_check.sh`, redefining
+`fast_test_command` in `.agents/config.json`, weakening the spec, or deleting
+and skipping tests. `codex_auto_dev.sh` therefore brackets every run:
+
+1. **Baseline (pre-agent):** the clean worktree must be green, and the test
+   count is recorded (`test_count_command`, optional). Red baseline aborts the
+   run (`AGENT_SKIP_BASELINE=1` to bypass).
+2. **Integrity check (post-agent):** `scripts/agent_integrity_check.sh` runs
+   from the *main checkout* — never the worktree copy — and fails the run if
+   the agent touched `protected_paths` (default `scripts/`, `.github/`), the
+   spec, `.agents/config.json`, or existing tests (modified, deleted, skipped,
+   or a dropped test count). New tests are always welcome.
+3. **Restore, then gate:** protected paths and the config are restored from
+   the trusted base before `dev_check.sh fast` runs, so even an undetected
+   tamper vector cannot influence the verdict. The gate also runs the
+   property-based stage when `property_test_command` is configured —
+   randomized inputs make hardcoded fixture answers fail.
+4. **Spec critic:** `spec_coverage_verify.sh` extracts the spec's acceptance
+   criteria and the diff; when a critic CLI is configured (`critic_cmd` /
+   `$CRITIC_CMD`, falling back to `gemini_cmd`), it judges reward hacking,
+   test quality, and coverage. A `NEEDS-CHANGES` verdict fails the run.
+   Unconfigured, the check stays advisory (`NEEDS-REVIEW`, exit 0).
+5. **Mutation gate (pre-PR):** when `mutation_test_command` is configured
+   (mutmut, Stryker, …), surviving mutants block the PR — weak tests are how
+   shortcut code slips through a green gate. Runs last, only after everything
+   else passed.
+
+Overrides (human use only): `AGENT_ALLOW_TEST_EDITS=1` permits deliberate test
+refactors; `AGENT_SKIP_MUTATION=1` skips the mutation gate; `AGENT_INTEGRITY=0`
+disables the tamper check entirely (results are then untrustworthy against a
+hostile agent).
+
+---
+
+## 5. Worktree Isolation & Cleanup
 
 To prevent agents from colliding or blocking your active development inside Cursor, agents work in isolated worktrees:
 *   Use `scripts/agent_worktree.sh create <slug>` to spin up a worktree.

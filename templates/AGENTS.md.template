@@ -5,8 +5,12 @@
 Read first: `docs/AGENT_COORDINATION.md` (the multi-agent workflow).
 
 ## Your lane
-- Backend logic, API routes, frontend components, configuration scripts, and writing tests.
+- Backend logic, API routes, frontend components, and writing tests.
 - Maintain and update the task board in `docs/HANDOFF_PUNCHLIST.md`.
+- **Off-limits (mechanically enforced):** the verification harness — `scripts/`,
+  `.agents/`, `.github/` — the active spec document, and existing test files.
+  Adding new tests is expected; modifying, deleting, or skipping existing ones
+  fails the integrity gate (`scripts/agent_integrity_check.sh`).
 
 ## Engineering skills for your lane (Build + Verify + Ship)
 - `incremental-implementation` — implement thin vertical slices, committing each step.
@@ -58,3 +62,7 @@ DeerFlow is shared across Claude, Codex, Gemini, and Cursor at `/Users/jerry/age
 - Fix the root cause plus adjacent failure modes instead of applying single isolated patches.
 - Run the full test suite before merge: `./scripts/dev_check.sh full`.
 - Stay in your lane; do not modify spec docs or another agent's active work branch.
+- Never game the gate: no editing harness scripts or test commands, no deleting
+  or skipping tests, no hardcoding test fixture values as implementation logic.
+  The runner verifies and restores protected paths after you finish, so a
+  shortcut cannot pass — it only wastes an iteration.

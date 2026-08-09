@@ -75,6 +75,12 @@ doctor_check() {
     echo "  FAIL codex_auto_dev.sh not found!"
   fi
 
+  if [ -f "$ROOT/scripts/agent_integrity_check.sh" ]; then
+    echo "  OK  integrity check (anti-tamper): found"
+  else
+    echo "  FAIL agent_integrity_check.sh not found!"
+  fi
+
   if [ -f "$ROOT/scripts/gemini_auto_review.sh" ]; then
     echo "  OK  Gemini auto-review runner: found"
   else
