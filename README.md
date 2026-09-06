@@ -223,3 +223,7 @@ Use the migration script to preview or perform moves while leaving compatibility
 ```
 
 See `docs/AGENT_HOME_CONSOLIDATION.md` for the managed folder list and the safe full migration flow. Do not commit anything under `local/agent-home/`.
+
+## Shared agent efficiency
+
+Global compact command evidence, minimal Serena symbol navigation, and bounded Ollama/ArkCLI advice are installed once for Claude, Codex, Gemini CLI and Antigravity. Existing/future projects inherit short global rules. See [the deployment guide](docs/AGENT_EFFICIENCY.md) for installation, verification, exact coverage and rollback. No existing hooks or provider defaults are replaced.

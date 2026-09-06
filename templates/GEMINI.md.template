@@ -76,3 +76,7 @@ DeerFlow is shared across Claude, Codex, Gemini, and Cursor at `/Users/jerry/age
    ./scripts/notify_slack.sh "review: <feature> — <verdict> — <review path>"
    ```
 6. Ask the user whether to implement the "Room to improve" suggestions. If yes, hand them to Claude to write the next spec.
+
+## Shared development efficiency
+
+For current and future projects, use the installed `agent-run -- <check>` to retain complete private diagnostics with compact output, and activate the exact worktree in Serena for symbol lookup. Read `~/.local/share/agent-efficiency/POLICY.md` for bounded delegation across Claude, Codex, Gemini/Antigravity, Ollama and ArkCLI. Preserve this project's verification and approval rules.

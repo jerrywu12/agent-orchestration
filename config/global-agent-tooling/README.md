@@ -67,3 +67,7 @@ python3 -m unittest discover \
 For installer smoke tests against a disposable home directory, set
 `AGENT_GUARDRAILS_HOME`. `AGENT_GUARDRAILS_PYTHON` can override the interpreter
 recorded in hook configuration.
+
+## Shared agent efficiency
+
+Global compact command evidence, minimal Serena symbol navigation, and bounded Ollama/ArkCLI advice are installed once for Claude, Codex, Gemini CLI and Antigravity. Existing/future projects inherit short global rules. See [the deployment guide](../../docs/AGENT_EFFICIENCY.md) for installation, verification, exact coverage and rollback. No existing hooks or provider defaults are replaced.
