@@ -1,11 +1,21 @@
-# ArkCLI compatibility migration: approval required
+# ArkCLI approved backup and startup verification
 
-Status: **Not executed.** The efficiency rollout is installed; the live ArkCLI
-check remains blocked. Automatic approval review rejected the proposed persistent
-backup of credential-bearing state followed by the CLI's automatic compatibility
-migration. No ArkCLI retry or credential-state copy is authorized by this note.
+**Status: backup and live adapter verification completed on 2026-09-06 UTC.** The user explicitly approved the linked private backup/compatibility operation, then renewed the same account's expired SSO login when authentication reported an invalid refresh token.
 
-## Exact proposed action
+## Observed result
+
+- Private backup: `/Users/jerry/.local/state/agent-efficiency/arkcli-migration-backups/approved-auik8wnc/original`.
+- 21 regular files, 869,484 bytes. Backup directories are mode `0700`; copied files and manifests are `0600`. Content hashes and timestamps were verified. No credential content was printed or committed.
+- Original source and backup remained unchanged after the help invocation and initial authentication diagnosis. The subsequent user-performed login refresh legitimately renewed operational authentication state; the recovery copy preserves the earlier bytes.
+- Native `+chat --help` exited 0. The anticipated `~/.arkcli-bytecloud` directory was not created. The normal authentication and live inference paths worked with existing `~/.arkcli` state; no separate state move was forced or claimed.
+- After renewed sign-in, `auth status` exited 0 with `logged_in: true`, SSO authentication and active API key status. Identifying and credential fields were suppressed.
+- Installed `agent-advice --provider arkcli` returned `READY` using the existing default model `glm-5.3`, with a 512-output-token cap: 70 prompt tokens, 3 completion tokens, 73 total. The adapter neither switched profiles/models nor executed generated tools.
+
+The one-off procedure passed a disposable fake-binary test and an independent read-only security review before execution. That review covered preservation and verification, not the native binary's internal migration implementation. An initial completion heuristic expected a new directory; because none was created, the result was investigated rather than mislabeled as a completed storage migration.
+
+The private generation also contains `manifest.json` and `result.json`. Machine-local diagnostic summaries are `/private/tmp/arkcli-auth-verification-result.json` and `/private/tmp/efficiency-arkcli-live-smoke.json`. Keep the credential-bearing backup private; do not copy it into repository evidence or send it to an adviser.
+
+## Approved operation scope
 
 1. Recheck `/Users/jerry/.arkcli` and the destination
    `/Users/jerry/.arkcli-bytecloud` without invoking ArkCLI. Stop if the source is
@@ -41,7 +51,7 @@ migration. No ArkCLI retry or credential-state copy is authorized by this note.
    moved, disappeared or changed, stop and preserve the backup and resulting
    state. Do not automatically restore, delete, merge or overwrite either tree.
 
-## Limitation requiring approval
+## Original uncertainty and approval rationale
 
 The local wrapper delegates directly to a native binary; its compatibility
 migration implementation has not been inspected. We cannot currently guarantee
@@ -50,6 +60,4 @@ preserves its pre-invocation bytes; restoring them would be a separate reviewed
 action if the native migration changes the source. This uncertainty is why this
 artifact is an approval note rather than an executable migration script.
 
-Approval must explicitly cover both the persistent private credential backup
-and the native startup migration. Approval of the general efficiency deployment
-alone did not satisfy automatic approval review for this action.
+The user's subsequent explicit approval covered both the persistent private credential backup and native startup migration if performed by the CLI. General installation approval alone had not satisfied the automatic tool-permission review. That approval boundary is now resolved; this record preserves why the earlier action stopped.

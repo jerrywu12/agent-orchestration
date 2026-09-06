@@ -9,4 +9,4 @@
 
 T002 and T003 have separate files/contracts. T004 owns shared config and is serialized with T005/T007. No worker touches another worker's files or live config. Root handles git/checkpoints and all installations.
 
-Deployment source is published in PR #7. T007 validation distinguishes configured/fixture-tested ArkCLI from its approval-blocked live migration; see verification.md and arkcli_migration_approval.md. Existing GUI sessions still need MCP reconnect/new task.
+Deployment source is published in PR #7. T007 initially recorded ArkCLI as fixture-tested with live verification blocked. After the user explicitly approved the private backup/startup operation and renewed sign-in, live adapter verification passed; see verification.md and arkcli_migration_approval.md. Existing GUI sessions still need MCP reconnect/new task.

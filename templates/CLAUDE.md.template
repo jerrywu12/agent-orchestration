@@ -42,8 +42,10 @@ DeerFlow is shared across Claude, Codex, Gemini, and Cursor at `/Users/jerry/age
    ```
    `--mode local-worktree` (default) only *queues* the job; run
    `./scripts/agent_workflow.sh handoff run-next` (or `handoff watch`) to execute
-   it in an isolated worktree. Use `--mode local` to run inline in the current
-   checkout, or `--mode cloud-ready` to queue for a cloud runner.
+   it through the Codex worktree runner. `--mode local` invokes that runner
+   immediately; Codex still creates a worktree. `cloud-ready` only labels and
+   queues a job: no Cloud submission happens, and the local consumer does not
+   filter that label. Keep Cloud work in the separately configured Cloud workflow.
 
 ## Conventions
 - **Backend/Logic owns the math**: calculations must go to the core backend/engine; the API server only marshals; the UI only renders.

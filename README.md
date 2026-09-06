@@ -1,229 +1,91 @@
-# Multi-Agent Orchestration Template
+# Agent Orchestrator
 
-This repository provides a modular, configuration-driven blueprint for orchestrating multiple AI agents (**Claude Code, Codex, Gemini, and Cursor**) as specialized micro-services in a single, automated software development lifecycle.
+This project owns the shared development tooling and reusable orchestration workflow for **Claude Code, Codex, Gemini/Antigravity, Ollama and ArkCLI**. The canonical checkout on this Mac is `/Users/jerry/agent-orchestrator`. Application repositories consume its tools and templates; changes to the shared infrastructure belong here.
 
-Rather than relying on a single "omnipotent AI," this architecture divides labor into strict "lanes" and uses a git-based local task queue and worktree isolation to keep agents synchronized without conflict.
+The setup has two parts: user-wide tools and guidance that apply to existing and future projects, and an optional project-local queue with isolated worktree runners. One lead agent owns each task, delegates bounded work, and verifies the result. Agents are selected as needed; every task does not invoke every provider.
 
-> **Agent wiring.** `codex_auto_dev.sh` and `gemini_auto_review.sh` invoke a real
-> agent CLI when one is configured, and otherwise fall back to a **safe
-> placeholder** (prepare worktree + run gate; a `NEEDS-REVIEW` skeleton) — they
-> never fake a PASS. Configure the CLIs and autonomy:
->
-> | Setting | Where | Default | Effect |
-> | :-- | :-- | :-- | :-- |
-> | `codex_cmd` / `$CODEX_CMD` | `.agents/config.json` / env | `codex exec --full-auto --skip-git-repo-check` | Developer agent; the runner appends `--cd <worktree>` + prompt |
-> | `gemini_cmd` / `$GEMINI_CMD` | `.agents/config.json` / env | *(empty → skeleton)* | Reviewer agent, e.g. `gemini --prompt` |
-> | `AGENT_AUTO_PR` | env | `0` | `1` = push the branch and open a PR when the gate is green and the agent changed files |
->
-> With no CLI found, the pipeline stays a safe scaffold rather than a turnkey loop.
+## Agent roles and execution paths
 
----
+| Agent or provider | Default role | Integration provided here |
+| --- | --- | --- |
+| Claude Code | Requirements, planning and diagnosis | Global guidance, Serena MCP and project handoff instructions; planning runs through Claude's host session |
+| Codex / Codex Cloud | Implementation, tests, Git work and final verification | Global guidance and Serena MCP; local `codex_auto_dev.sh` runner; Cloud submission uses the separately configured Cloud workflow |
+| Gemini / Antigravity | Targeted review or independent work when requested | Global guidance, skills and Serena MCP for both clients; `gemini_auto_review.sh` supports a configured Gemini CLI |
+| Ollama | Bounded local development advice | `agent-advice --provider ollama --model <installed-model> --prompt-file <brief>` |
+| ArkCLI | Bounded remote development advice | `agent-advice --provider arkcli --prompt-file <brief>`, using the existing profile |
+| Cursor | Optional editing and inspection frontend | Existing project rules and shared UI-tooling configuration remain supported |
 
-## 1. The Roster (Who does what)
+Ollama and ArkCLI advice does not execute generated tools or edit repositories. The local queue executes **Codex and Gemini only**. A Claude label appears in its help but has no execution adapter; Antigravity, Ollama and ArkCLI are not queue targets. `cloud-ready` is a submission label, not a Cloud launcher; the local consumer does not filter it. Keep Cloud jobs out of a running local watcher and use the separate Cloud workflow.
 
-Each tool is assigned to tasks matching its distinct comparative advantage:
+## Shared tools for all projects
 
-| Agent / Tool | Role | Workspace Lane | Primary Duties |
-| :--- | :--- | :--- | :--- |
-| **Claude** (Claude Code) | **Architect / Planner** | `docs/specs/**` | Clarifies requirements, designs specs, and creates Codex Task Packets. |
-| **Codex** (Background Agent) | **Developer / Executor** | `src/**`, `tests/**`, `scripts/**` | Runs in isolated git worktrees, implements code, writes unit/acceptance tests, passes verification gates. |
-| **Gemini** (Gemini CLI / reviewer) | **Critic / Reviewer** *(optional, on request)* | read-only; `docs/reviews/**` | When asked, audits merged builds, runs full test gates, logs quality reports. Not a default merge gate. |
-| **Cursor** (Visual IDE) | **IDE / Surgeon** | Whole Project | The visual command center. Handled by the human developer to edit UI, polish code, and resolve Gemini's audit findings. |
+- **RTK** reduces routine discovery output.
+- **Serena** provides five navigation tools for outlines, symbols and references; activate the exact worktree and initialize its relevant languages first.
+- **`agent-run`** caps displayed command output, retains a complete private log, preserves exit status, and checks the original command with the shared safety guard.
+- **`agent-advice`** bounds Ollama/ArkCLI briefs and generated output, with no automatic provider fallback.
+- **Shared policy and skills** define compact handoffs and agent ownership while preserving each project's rules and release gates.
 
----
-
-## 2. Directory Structure
-
-When installed, the project structure is laid out as follows:
-
-```
-├── CLAUDE.md                    # Claude Code terminal instructions & project lanes
-├── AGENTS.md                    # Codex developer/TDD instructions & ship rules
-├── GEMINI.md                    # Gemini audit instructions & quality axes
-├── docs/
-│   ├── AGENT_COORDINATION.md    # Master handbook for the multi-agent cycle
-│   └── reviews/                 # Directory where Gemini writes code reviews
-├── .agents/
-│   └── config.json              # Configuration file specifying test commands
-├── config/
-│   └── global-agent-tooling/     # Tracked MCP snippets for Codex, Claude, Gemini, and Cursor
-├── scripts/
-│   ├── agent_workflow.sh        # Core task dispatcher (handoff submit, watch, status)
-│   ├── agent_worktree.sh        # Creates and prunes isolated git worktrees
-│   ├── worktree_doctor.sh       # Cleans up dead worktrees & background processes
-│   ├── codex_auto_dev.sh        # Developer wrapper (build + test gate + coverage verify)
-│   ├── gemini_auto_review.sh    # Reviewer wrapper (pull main + test check + log review)
-│   ├── spec_coverage_verify.sh  # Verifies implementation diffs against spec criteria
-│   ├── verify_for_changes.sh    # Executes test suite configured in config.json
-│   ├── dev_check.sh             # User-facing check runner
-│   └── notify_slack.sh          # Webhook notifier for commits, PRs, and review results
-├── tools/
-│   └── open-source-ui-tooling/   # Shared Playwright, Storybook, and Chrome DevTools MCP install root
-└── storage/
-    └── agent_queue/
-        └── pending/             # Handoff jobs (.job) awaiting execution
-```
-
----
-
-## 3. The Development Loop
-
-The pipeline is managed via a local, file-based queue:
-
-```
-                  ┌────────────────────────────────────────┐
-                  │ 1. Plan the feature                    │
-                  │    - Claude writes docs/specs/*.md     │
-                  └────────────────────────────────────────┘
-                                      │
-                                      ▼
-                  ┌────────────────────────────────────────┐
-                  │ 2. Implementation                      │
-                  │    - Codex runs in isolated worktree   │
-                  │    - Passes dev_check.sh fast          │
-                  └────────────────────────────────────────┘
-                                      │
-                                      ▼
-                  ┌────────────────────────────────────────┐
-                  │ 3. Peer Review (optional, on request)  │
-                  │    - Gemini runs dev_check.sh full     │
-                  │    - Generates docs/reviews/review-*.md│
-                  └────────────────────────────────────────┘
-                                      │
-                                      ▼
-                  ┌────────────────────────────────────────┐
-                  │ 4. Refine & Polish                     │
-                  │    - Developer pulls latest main       │
-                  │    - Cursor agent edits UI & code      │
-                  └────────────────────────────────────────┘
-```
-
-### A. Submitting Jobs
-After Claude designs the spec and you approve it, submit the handoff to Codex:
-```bash
-./scripts/agent_workflow.sh handoff submit docs/specs/my-feature_DEV_PLAN.md --agent codex
-```
-
-Once Codex implements, merges, and pushes, queue a review audit for Gemini:
-```bash
-./scripts/agent_workflow.sh handoff submit docs/specs/my-feature_DEV_PLAN.md --agent gemini --mode local
-```
-
-### B. Running the Daemon / Watcher
-Keep a queue runner watching for new jobs in the background:
-```bash
-./scripts/agent_workflow.sh handoff watch --interval 30
-```
-
----
-
-## 4. Installation & Project Setup
-
-1.  **Clone or copy** the template installer to your home directory:
-    ```bash
-    git clone git@github.com:jerrywu12/agent-orchestration.git ~/agent-orchestrator
-    ```
-2.  **Navigate** to the project where you want to install this pipeline and run:
-    ```bash
-    ~/agent-orchestrator/install.sh
-    ```
-3.  **Configure** `.agents/config.json` with the project name, test paths, and test commands:
-    ```json
-    {
-      "project_name": "My Project",
-      "src_directories": ["src"],
-      "test_directories": ["tests"],
-      "fast_test_command": "npm run test:fast",
-      "full_test_command": "npm run test:full"
-    }
-    ```
-4.  **Set your Slack Webhook URL** for automated channel alerts:
-    ```bash
-    ./scripts/notify_slack.sh --set "https://hooks.slack.com/services/..."
-    ```
-5.  **Verify the setup**:
-    ```bash
-    ./scripts/agent_workflow.sh doctor
-    ```
-
----
-
-## 5. Shared UI Tooling
-
-This repo also tracks the machine-wide open-source UI tooling bundle used by local agents:
+Check the existing global deployment:
 
 ```bash
-/Users/jerry/agent-orchestrator/scripts/check_open_source_ui_tooling.sh
-/Users/jerry/agent-orchestrator/scripts/install_open_source_ui_tooling.sh
+cd /Users/jerry/agent-orchestrator
+./scripts/check_agent_efficiency.sh
+./scripts/install_agent_efficiency.sh  # preview only
 ```
 
-Managed tools live under `tools/open-source-ui-tooling/` with exact versions in `package-lock.json`:
+See [installation, usage and rollback](docs/AGENT_EFFICIENCY.md), [the tracked policy](config/global-agent-tooling/agent-efficiency/POLICY.md), and [deployment evidence](specs/001-global-agent-efficiency/verification.md). Apply an intentional configuration update with `./scripts/install_agent_efficiency.sh --apply` after reviewing the preview.
 
-- Playwright CLI and `@playwright/test`
-- Playwright MCP
-- Storybook CLI
-- Chrome DevTools MCP
+The recorded rollout has live Claude/Serena and Ollama checks. Existing GUI tasks need a reconnect or a new session to load MCP changes. Gemini CLI was not on PATH at rollout. ArkCLI's private state backup and startup check were explicitly approved and executed; see the [operation record](specs/001-global-agent-efficiency/arkcli_migration_approval.md) for the observed state and live verification outcome.
 
-Wrappers are installed in `/Users/jerry/.local/bin`:
+## Optional project-local workflow
 
-- `agent-playwright`
-- `agent-playwright-test`
-- `agent-playwright-mcp`
-- `agent-storybook`
-- `agent-chrome-devtools-mcp`
-- `storybook`
-- `chrome-devtools-mcp`
-
-The desired Codex, Claude, Gemini, and Cursor MCP entries are tracked under `config/global-agent-tooling/`; the operational copies still live in each agent's home-directory config file.
-
-Cursor also receives an always-on project rule from `templates/cursor-shared-ui-tooling.mdc.template`, and the machine-wide operational copy lives at `/Users/jerry/.cursor/rules/shared-ui-tooling.mdc`.
-
-Agents should use this bundle for global inspection and bootstrap help. Repos that need durable tests should still add project-local Playwright or Storybook dependencies so CI and local runs share the repo lockfile.
-
----
-
-## 6. Shared DeerFlow
-
-DeerFlow is shared agent infrastructure, not Codex-only state. The live checkout is machine-local and ignored by git:
+Global efficiency tools need no repeated installation in each project. To add the queue, role files and verification wrappers to an application project:
 
 ```bash
-/Users/jerry/agent-orchestrator/local/agent-home/deerflow/deer-flow
+/Users/jerry/agent-orchestrator/install.sh /absolute/path/to/project
 ```
 
-Operational wrappers live in `/Users/jerry/.local/bin`:
+Copied role/config/script templates preserve existing differing files and write proposals as `*.orchestration-new`. The existing installer separately replaces `.githooks/post-commit` and makes shell scripts executable; inspect those effects before applying it to an established project. Review those proposals and configure the target project's `.agents/config.json` with its real source paths and fast/full test commands. The template test commands are placeholders and provide no acceptance evidence.
 
-- `agent-deerflow-gateway` starts the local gateway on `127.0.0.1:8001`.
-- `agent-deerflow-mcp` exposes the MCP bridge used by Codex, Claude, Gemini, and Cursor.
-- `deerflow` points at the shared checkout CLI.
-- `codex-deerflow-gateway` and `codex-deerflow-mcp` remain compatibility symlinks to the neutral wrappers.
-
-The launchd service is `local.agent.deerflow`, with config at `/Users/jerry/Library/LaunchAgents/local.agent.deerflow.plist`.
-
-Quick health check:
+Run these commands **from the target project**, after its verification commands are configured:
 
 ```bash
-curl -fsS http://127.0.0.1:8001/health
+./scripts/agent_workflow.sh doctor
+./scripts/agent_workflow.sh handoff submit docs/specs/my-feature_DEV_PLAN.md --agent codex --mode local-worktree
+./scripts/agent_workflow.sh handoff run-next
 ```
 
----
+`doctor` checks file presence; inspect every `FAIL` line even if its exit code is zero. For recurring local queue consumption, use `handoff watch --interval 30`. The lead still owns acceptance review, integration and release decisions; queue completion alone is not proof of implementation or merge.
 
-## 7. Local Agent and Model State
+| Setting | Location | Behavior |
+| --- | --- | --- |
+| `codex_cmd` / `CODEX_CMD` | Project config / environment | Default `codex exec --full-auto --skip-git-repo-check`; the runner appends its worktree and prompt |
+| `gemini_cmd` / `GEMINI_CMD` | Project config / environment | Empty by default; explicitly configure the CLI for a requested review |
+| `AGENT_AUTO_PR` | Environment | Defaults to `0`; `1` enables push/PR creation when the runner's conditions pass; it does not merge |
 
-Agent and model folders are organized under the ignored local state root:
+Without an available/configured CLI, the corresponding runner leaves a scaffold or a `NEEDS-REVIEW` report. Do not interpret that as completed agent work. Slack notifications require a separately configured webhook and authorization to send messages.
 
-```bash
-/Users/jerry/agent-orchestrator/local/agent-home
-```
+## Repository layout
 
-Use the migration script to preview or perform moves while leaving compatibility symlinks at the original paths:
+| Path | Responsibility |
+| --- | --- |
+| `AGENTS.md`, `CLAUDE.md`, `GEMINI.md` | Instructions for developing **this orchestration project** |
+| `config/global-agent-tooling/` | Shared safety guard, efficiency package and client configuration sources |
+| `scripts/` | Global installers/checkers and reusable project queue/worktree runners |
+| `templates/` | Role files and coordination handbook installed into downstream projects |
+| `tools/open-source-ui-tooling/` | Shared Playwright, Storybook and Chrome DevTools bundle |
+| `specs/`, `.specify/` | Scoped feature contracts and Spec Kit artifacts |
+| `docs/` | Operation, development, deployment and state-location guidance |
+| `local/agent-home/` | Ignored machine-local agent/model state; never commit credentials, sessions or caches |
 
-```bash
-/Users/jerry/agent-orchestrator/scripts/relocate_agent_home.sh
-/Users/jerry/agent-orchestrator/scripts/relocate_agent_home.sh --execute --only agent-skills
-```
+## Develop this project
 
-See `docs/AGENT_HOME_CONSOLIDATION.md` for the managed folder list and the safe full migration flow. Do not commit anything under `local/agent-home/`.
+Read [AGENTS.md](AGENTS.md) and [the repository development guide](docs/PROJECT_DEVELOPMENT.md). Use this repository's CI checks; the generic `dev_check.sh` and `verify_for_changes.sh` are downstream wrappers and need a project's real configuration. See [Spec Kit policy](docs/SPEC_KIT_POLICY.md) for new features and substantial changes.
 
-## Shared agent efficiency
+Shared infrastructure references:
 
-Global compact command evidence, minimal Serena symbol navigation, and bounded Ollama/ArkCLI advice are installed once for Claude, Codex, Gemini CLI and Antigravity. Existing/future projects inherit short global rules. See [the deployment guide](docs/AGENT_EFFICIENCY.md) for installation, verification, exact coverage and rollback. No existing hooks or provider defaults are replaced.
+- [Global client tooling](config/global-agent-tooling/README.md)
+- [UI tooling bundle](tools/open-source-ui-tooling/README.md)
+- [Agent-home consolidation](docs/AGENT_HOME_CONSOLIDATION.md) and [recorded path status](docs/AGENT_HOME_STATUS.md)
+
+DeerFlow's shared checkout is under `local/agent-home/deerflow/deer-flow`; the existing neutral wrappers are `agent-deerflow-gateway` and `agent-deerflow-mcp`. Check live service identity and current state before maintenance; changing this repository's documentation does not restart its services.

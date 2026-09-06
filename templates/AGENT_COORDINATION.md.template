@@ -1,94 +1,80 @@
-# Multi-Agent Coordination — Claude · Codex · Gemini · Cursor
+# Multi-Agent Coordination
 
-This handbook defines how the planning, implementation, review, and editing agents work together. By treating each agent as a specialized micro-service, we maintain a clean codebase, avoid merge conflicts, and enforce quality control.
+One lead owns each task, acceptance verification and integration. Select agents for the work needed; there is no automatic all-agent sequence. This project's instructions, owned source paths, approval boundaries and release gates remain the contract.
 
----
+## Roles and supported paths
 
-## 1. Roles & Lanes (The Roster)
+| Agent or provider | Default role | Supported execution path |
+| --- | --- | --- |
+| Claude Code | Requirements, planning and diagnosis | Claude host session; writes a bounded implementation handoff |
+| Codex / Codex Cloud | Implementation, tests, Git work and final verification | Local Codex runner; Cloud uses the separately configured Cloud workflow |
+| Gemini | Targeted review or explicitly assigned independent work | Gemini host session; configured Gemini CLI through the local review runner |
+| Antigravity | Targeted review or explicitly assigned independent work | Antigravity host session with shared guidance and tools |
+| Ollama | Bounded local development advice | `agent-advice --provider ollama --model <installed-model> --prompt-file <brief>` |
+| ArkCLI | Bounded remote development advice | `agent-advice --provider arkcli --prompt-file <brief>`, using the existing profile |
+| Cursor | Optional editing and inspection frontend | Existing project rules and shared UI tooling |
 
-Each agent has a specific comparative advantage. Do not use them outside their lane.
+These are defaults; the user's assignment determines ownership. Gemini or Antigravity review is requested work, not a mandatory stage. Ollama and ArkCLI advice does not execute repository tools or edit files. Verify advice against the actual code and tests.
 
-| Agent | Role | Scope / Lane | Primary Function |
-|---|---|---|---|
-| **Claude** | Architect / Planner | `docs/specs/**` | Analyzes requirements, designs specs, creates Codex Task Packets. |
-| **Codex** | Developer | `src/**`, `tests/**`, `scripts/**` | Implements the code on a clean branch, runs verification gates. |
-| **Gemini** | Critic / Reviewer *(optional, on request)* | read-only; `docs/reviews/**` | When asked, audits merged builds, runs full test gates, recommends improvements. Not a default merge gate. |
-| **Cursor** | IDE / Surgeon | Whole Project | Visual command center. Slices code changes, reviews diffs, styles UI. |
+The local queue executes **Codex and Gemini only**. Its help lists Claude, but there is no Claude execution adapter. Antigravity, Ollama and ArkCLI are not queue targets.
 
----
+## Bounded handoffs
 
-## 2. The Multi-Agent Pipeline
+Before delegating, provide one brief containing:
 
-The development loop starts with planning, moves to implementation, runs validation, executes peer review, and returns to the IDE for final refinement.
+- Objective, observed behavior and expected result.
+- Exact checkout/worktree root and base SHA, relevant task-packet section and evidence.
+- Owned paths, shared interfaces, dependencies and out-of-scope work.
+- Acceptance criteria and the project's focused and required final checks.
+- Return format: result, changed paths, commands and outcomes, evidence, unresolved risks.
 
-```
-                  ┌────────────────────────────────────────┐
-                  │ 1. Plan the feature                    │
-                  │    - Claude writes docs/specs/*.md     │
-                  └────────────────────────────────────────┘
-                                      │
-                                      ▼
-                  ┌────────────────────────────────────────┐
-                  │ 2. Implementation                      │
-                  │    - Codex runs in isolated worktree   │
-                  │    - Passes dev_check.sh fast          │
-                  └────────────────────────────────────────┘
-                                      │
-                                      ▼
-                  ┌────────────────────────────────────────┐
-                  │ 3. Peer Review (optional, on request)  │
-                  │    - Gemini runs dev_check.sh full     │
-                  │    - Generates docs/reviews/review-*.md│
-                  └────────────────────────────────────────┘
-                                      │
-                                      ▼
-                  ┌────────────────────────────────────────┐
-                  │ 4. Refine & Polish                     │
-                  │    - Human reviews Gemini's audit      │
-                  │    - Cursor agent edits UI & code      │
-                  └────────────────────────────────────────┘
-```
+Keep the source of truth in project files. Send the relevant evidence instead of the whole conversation. Parallelize only independent questions or worktrees with explicit ownership; serialize shared contracts, configuration and integration. Workers preserve other agents' edits. The lead reviews each result and verifies the combined behavior.
 
----
+## Shared efficiency tools
 
-## 3. Workflow Commands & Handoffs
+Read `~/.local/share/agent-efficiency/POLICY.md` when using the globally installed tools. They apply to existing and future projects without per-project installation:
 
- Handoffs are processed via a local, file-based queue managed by `scripts/agent_workflow.sh`.
+- Use RTK for compact routine discovery and raw Git diffs for final review.
+- Activate the exact worktree in Serena before symbol/reference lookup. For a new project, initialize its relevant languages with `agent-serena project create /absolute/root --language <language>`; repeat `--language` for additional languages and preserve existing settings. Use `rg` for literals and configuration.
+- Run noisy checks through `agent-run -- <project-owned check>`. It retains complete private logs and the command's exit status; inspect the full log when a failure needs detail.
+- Use `agent-advice --help` for bounded Ollama/ArkCLI options. Keep credentials and private customer data out of briefs, and preserve the selected provider/model.
 
-### Step 1: Hand off from Claude to Codex (Development)
-After Claude designs the spec and you approve it, submit it to the queue:
+Use focused checks while iterating and the project's required full gates before shipping. Compact output does not replace verification. Consult advisers when useful or project-required; revise the causal model after two failed speculative fixes.
+
+## Project workflow and queue
+
+1. Ground the task in current code and define acceptance criteria using this project's planning workflow. Obtain any approval that workflow actually requires.
+2. Assign one implementation owner and an isolated branch/worktree. Configure `.agents/config.json` with this project's real source paths and fast/full test commands; the installed placeholder commands provide no acceptance evidence.
+3. Implement and verify the behavior, including rendered/runtime evidence when applicable. The lead reviews the actual diff, test results and acceptance coverage. Request a separate review when needed.
+4. Follow the project's commit, PR, merge and release rules. Record the result in its coordination board. Queue status alone does not prove implementation, review or merge.
+
+Run queue commands from the target project:
+
 ```bash
+./scripts/agent_workflow.sh doctor
 ./scripts/agent_workflow.sh handoff submit docs/my-feature_DEV_PLAN.md --agent codex --mode local-worktree
+./scripts/agent_workflow.sh handoff run-next
+./scripts/agent_workflow.sh handoff status
 ```
-In `--mode local-worktree` (the default) this only **queues** the job. Run
-`./scripts/agent_workflow.sh handoff run-next` (or start `handoff watch`) to
-execute it: that checks out a clean branch `agent/codex/my-feature` in an
-isolated worktree `../<project>-my-feature` and runs `scripts/codex_auto_dev.sh`.
-(Use `--mode local` to run inline at submit time.)
 
-> Note: `codex_auto_dev.sh` invokes the Codex CLI when `codex_cmd`/`$CODEX_CMD`
-> resolves to an installed binary; otherwise it falls back to a safe placeholder
-> (prepare worktree + run gate, no fake implementation). Push/PR is opt-in via
-> `AGENT_AUTO_PR=1`.
+`doctor` checks required file presence. Require zero `FAIL` lines even when its exit code is zero; it does not validate test-command quality or provider availability.
 
-### Step 2: Hand off from Codex to Gemini (Review — optional, on request)
-When you want an audit, submit a review job to the queue:
+`local-worktree` only queues the job. `run-next`, or an intentionally started `handoff watch --interval 30`, invokes the runner. The Codex runner creates an isolated worktree at `../<project>-<slug>` with a configurable branch namespace. `--mode local` invokes the runner immediately; Codex still creates a worktree.
+
+`cloud-ready` only labels and queues a job; it does not submit to Cloud. The local consumer does not filter that label. Keep Cloud work out of a running local watcher and use the separately configured Cloud workflow.
+
+The Codex runner uses `codex_cmd` / `CODEX_CMD`. Without an available CLI it prepares a worktree and runs the configured gate as a placeholder. `AGENT_AUTO_PR=1` enables its conditional push/PR flow; the default is `0`, and the runner does not merge.
+
+For a requested Gemini review:
+
 ```bash
 ./scripts/agent_workflow.sh handoff submit docs/my-feature_DEV_PLAN.md --agent gemini --mode local
 ```
-This triggers `scripts/gemini_auto_review.sh` to run the full test suite
-(`./scripts/dev_check.sh full`) and write a review to
-`docs/reviews/my-feature-YYYY-MM-DD.md`.
 
-> Note: `gemini_auto_review.sh` invokes a review CLI when `gemini_cmd`/`$GEMINI_CMD`
-> is set; otherwise it runs the gate and writes a **NEEDS-REVIEW** skeleton (never
-> a fake PASS).
+The review runner checks the current project build with `./scripts/dev_check.sh full` and writes `docs/reviews/<slug>-<date>.md`. Configure `gemini_cmd` / `GEMINI_CMD` and verify the intended checkout before using it. Without a working reviewer it writes a **NEEDS-REVIEW** skeleton; a passing configured gate is not a completed audit.
 
----
+## Worktree and runtime ownership
 
-## 4. Worktree Isolation & Cleanup
+Use `scripts/agent_worktree.sh create <slug>` and `list` to manage isolated worktrees. Confirm task ownership and preserve uncommitted work before removal. `scripts/worktree_doctor.sh` can terminate orphaned processes and prune Git registrations; inspect ownership before using it. Keep feature testing separate from the user's running application.
 
-To prevent agents from colliding or blocking your active development inside Cursor, agents work in isolated worktrees:
-*   Use `scripts/agent_worktree.sh create <slug>` to spin up a worktree.
-*   Use `scripts/worktree_doctor.sh` to automatically kill zombie Node/API processes and prune stale directories.
-*   Use `scripts/notify_slack.sh` to update your Slack developer channel about progress.
+Slack notifications need a configured webhook and authorization to send messages. Do not treat installing these templates as authorization for external notifications or global configuration changes.
