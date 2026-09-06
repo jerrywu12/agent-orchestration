@@ -1,6 +1,6 @@
 # Deployment verification — 2026-09-06
 
-Source: `codex/global-agent-efficiency`, based on remote main `86170d4`; contract checkpoint `9b057af`. The implementation commit and PR provide the final source identity. Live tools are copied outside the checkout and verified against the installed SHA-256 registry, so they do not depend on a temporary worktree remaining available.
+Source: `codex/global-agent-efficiency`, based on remote main `86170d4`; contract checkpoint `9b057af`. Implementation commit `ae43ae1` is published in [PR #7](https://github.com/jerrywu12/agent-orchestration/pull/7); later closeout edits affect documentation only. Live tools are copied outside the checkout and verified against the installed SHA-256 registry, so they do not depend on a temporary worktree remaining available.
 
 ## Results
 
