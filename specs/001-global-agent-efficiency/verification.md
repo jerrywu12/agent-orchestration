@@ -17,7 +17,7 @@ Source: `codex/global-agent-efficiency`, based on remote main `86170d4`; contrac
 | Current and future projects | Installed `agent-run` succeeded from Smart-Stock-Picker and a fresh temporary directory, preserving each working directory |
 | Deployed Serena MCP | Two concurrent stdio sessions in different roots sharing basename `twin`; each exposed exactly 5 navigation tools; Python and TypeScript bodies, references and changed-file freshness all passed; no `.serena` metadata added to either repository |
 | Deployed Ollama adapter | Existing local `deepseek-r1:8b-16k` answered synthetic READY prompt; 60 prompt tokens and 326 completion tokens, 512-token cap; no model downloaded |
-| ArkCLI adapter | Fixture tests passed; live startup migration requires separate approval, described below |
+| ArkCLI adapter | Fixture tests passed; user-approved backup/startup check completed; after renewed SSO login the installed adapter passed a live synthetic check using default `glm-5.3` (70 prompt / 3 completion tokens) |
 
 ## Output measurements
 
@@ -31,7 +31,7 @@ These measure displayed command bytes, not subscription quotas, API token saving
 
 - Claude Code and Codex binaries are available. Their global configuration is validated; already-open desktop tasks must reconnect MCP or start a new task to load it. A synthetic MCP client proves the installed server protocol, not GUI reconnection.
 - Antigravity 2.3.1 is installed. Its current global MCP file is `~/.gemini/config/mcp_config.json`. Gemini CLI is not on PATH; its user-level settings and skills are ready for when that frontend is used. No new frontend or credentials were installed.
-- ArkCLI 1.0.24 attempts compatibility migration from `~/.arkcli` to `~/.arkcli-bytecloud` even for help. Automatic approval review rejected an action that would first persistently back up potentially credential-bearing legacy state and then allow migration, because general integration approval did not authorize that specific duplication/migration. That action was not executed; no ArkCLI backup or migration was performed. No workaround or alternate state path was tried after rejection. Live ArkCLI inference remains unverified pending specific approval.
+- The initial ArkCLI operation was stopped by automatic approval review because credential-state backup/migration needed specific authorization. The user subsequently approved it. A private verified backup of 21 files (869,484 bytes) was created and native help exited 0 with original state unchanged. Contrary to the earlier anticipated startup path, no `~/.arkcli-bytecloud` directory was created; no state move was forced. The existing profile's SSO refresh token had expired, and the user renewed sign-in. Authentication then passed and the installed adapter returned READY with the existing default `glm-5.3`: 70 prompt tokens, 3 completion tokens, 73 total, capped at 512 output tokens. See [the approved operation record](arkcli_migration_approval.md).
 - Initial Serena smoke exposed two upstream requirements: initial global configuration needs `projects: []`, and noninteractive language detection chooses one dominant language. The installed launcher seeds the required key; documentation requires explicit repeated `--language` initialization for mixed-language projects. Both final deployed sessions passed.
 - Existing project rules, release gates and advisory-agent requirements still apply. The global tools do not replace project verification or automatically fan every task out to every provider.
 
@@ -48,3 +48,7 @@ Private machine-local evidence (not committed):
 Initial live configuration rollback manifest: `/Users/jerry/.local/share/agent-efficiency/backups/install-30876wv_/manifest.json`. It references private mode-0600 originals. Rollback checks original/installed hashes and modes, including a recheck before each destination restore, and refuses subsequent edits. Runtime Serena state, evidence logs and package removal are intentionally separate.
 
 Run `scripts/check_agent_efficiency.sh` to compare source ownership hashes and configuration. Re-run `scripts/install_agent_efficiency.sh --apply` after an approved source update; inspect its printed rollback manifest. Reproduce the isolated 43+13 tests and fresh-project smoke with the commands in the workflow and operational documentation.
+
+## Orchestration project follow-up
+
+The repository's README and root AGENTS/CLAUDE/GEMINI instructions now identify this as the shared orchestration source project. The development guide points to its real source tests, and the downstream coordination template covers Claude, Codex, Gemini/Antigravity, Ollama and ArkCLI with bounded handoffs. Documentation explicitly distinguishes the two implemented queue adapters from host sessions/advisory providers and records existing dispatcher/installer limitations. Fresh-project installation and doctor passed with zero FAIL lines; local links and diff checks passed. No queue implementation or global tool source was changed by this follow-up.

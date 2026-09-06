@@ -25,4 +25,4 @@ Use `agent-run` for noisy checks with complete private evidence, RTK for compact
 
 Global deployment is a separate explicit step from a source edit. Preview configuration changes, preserve unrelated settings, and retain rollback evidence. Read `docs/AGENT_HOME_STATUS.md` before moving state; never commit `local/agent-home/`, credentials, provider responses containing private data, logs or backups. Do not restart unrelated applications/services for documentation or tooling work.
 
-ArkCLI's pending credential backup and startup migration are documented in `specs/001-global-agent-efficiency/arkcli_migration_approval.md`. Keep that boundary until the user specifically authorizes it. Never send Slack or other external messages without the user's authorization.
+ArkCLI's approved backup and startup verification are recorded in `specs/001-global-agent-efficiency/arkcli_migration_approval.md`. Check current authentication and preserve the existing identity/profile when using it; do not repeat a credential migration merely because the historical note describes one. Never send Slack or other external messages without the user's authorization.

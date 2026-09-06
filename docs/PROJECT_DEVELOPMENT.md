@@ -43,8 +43,8 @@ For documentation-only work, verify links and factual commands, review the diff,
 
 ## Publishing and deployment
 
-Commit, push and create a PR with the requested behavior, coverage and actual validation. Wait for required CI and review before merging, then fast-forward the clean canonical checkout. Existing differing downstream files are left intact by the installer and receive `*.orchestration-new` proposals.
+Commit, push and create a PR with the requested behavior, coverage and actual validation. Wait for required CI and review before merging, then fast-forward the clean canonical checkout. Copied downstream role/config/script templates leave differing files intact and create `*.orchestration-new` proposals. The existing installer separately replaces `.githooks/post-commit` and makes shell scripts executable; account for those effects on established projects.
 
 A source merge does not itself update user-level configuration. For changes that need global deployment, follow [the efficiency installation guide](AGENT_EFFICIENCY.md): preview, apply the authorized changes, check installed hashes/configuration, and retain the rollback manifest. Configuration changes can require a new client session or MCP reconnect. Distinguish source checks from native-client/provider checks in the result.
 
-Machine-local credentials, caches, models and sessions remain outside tracked source. Read [agent-home status](AGENT_HOME_STATUS.md) before maintenance. ArkCLI's previously blocked backup/migration remains subject to its [specific approval scope](../specs/001-global-agent-efficiency/arkcli_migration_approval.md); this repository update does not perform it.
+Machine-local credentials, caches, models and sessions remain outside tracked source. Read [agent-home status](AGENT_HOME_STATUS.md) before maintenance. ArkCLI's user-approved backup and startup verification are recorded in the [operation record](../specs/001-global-agent-efficiency/arkcli_migration_approval.md). Reuse the existing identity/profile, check current authentication, and preserve the private recovery backup.

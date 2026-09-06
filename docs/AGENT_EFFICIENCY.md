@@ -65,6 +65,10 @@ Use the manifest path printed by installation:
 
 Rollback validates every target first and refuses later edits. It restores previous bytes/modes and removes only newly created, unchanged managed files. Backups and runtime logs remain private for inspection. Reversing multiple installation generations is done newest first. RTK/Serena package removal is separate from configuration rollback.
 
-## Current rollout limitation
+## Recorded deployment status
 
-ArkCLI 1.0.24 requires a native legacy-state migration on startup. Its adapter is installed and fixture-tested, but its live call is pending specific approval for a private backup and that compatibility migration; no ArkCLI state was migrated. Do not run a migration or use alternate state-path flags to bypass the approval. Gemini CLI is not currently on PATH; Gemini settings and the installed Antigravity integration are configured. See the deployment verification record for observed versus configured behavior.
+On 2026-09-06, the user explicitly approved the ArkCLI private credential-state backup and startup compatibility check. The verified backup contains 21 files (869,484 bytes), with private directory/file permissions. Native help exited successfully and preserved the original state; the tested CLI paths did not create `~/.arkcli-bytecloud`, so no separate state move was forced. After the user renewed an expired SSO login, the installed adapter passed its synthetic live check with the existing default model `glm-5.3`: 70 prompt tokens, 3 completion tokens, 73 total. No model/profile switch was requested by the adapter.
+
+See the [operation record](../specs/001-global-agent-efficiency/arkcli_migration_approval.md) for backup and verification details. The previous approval blocker is resolved. Credentials, raw authentication output and backup files are not tracked in this repository.
+
+Gemini CLI was not on PATH at rollout; Gemini settings and the installed Antigravity integration are configured. Existing GUI tasks still need a new session or MCP reconnect. The [deployment verification record](../specs/001-global-agent-efficiency/verification.md) distinguishes tested behavior from configured integration.

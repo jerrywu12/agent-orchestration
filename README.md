@@ -35,17 +35,17 @@ cd /Users/jerry/agent-orchestrator
 
 See [installation, usage and rollback](docs/AGENT_EFFICIENCY.md), [the tracked policy](config/global-agent-tooling/agent-efficiency/POLICY.md), and [deployment evidence](specs/001-global-agent-efficiency/verification.md). Apply an intentional configuration update with `./scripts/install_agent_efficiency.sh --apply` after reviewing the preview.
 
-The recorded rollout has live Claude/Serena and Ollama checks. Existing GUI tasks need a reconnect or a new session to load MCP changes. Gemini CLI was not on PATH at rollout. ArkCLI's adapter is installed and fixture-tested; its live startup migration still requires the specific approval described in the [pending migration scope](specs/001-global-agent-efficiency/arkcli_migration_approval.md). A documentation update does not authorize that migration.
+The recorded rollout has live Claude/Serena and Ollama checks. Existing GUI tasks need a reconnect or a new session to load MCP changes. Gemini CLI was not on PATH at rollout. ArkCLI's private state backup and startup check were explicitly approved and executed; see the [operation record](specs/001-global-agent-efficiency/arkcli_migration_approval.md) for the observed state and live verification outcome.
 
 ## Optional project-local workflow
 
-Global efficiency tools need no per-project bootstrap. To add the queue, role files and verification wrappers to an application project:
+Global efficiency tools need no repeated installation in each project. To add the queue, role files and verification wrappers to an application project:
 
 ```bash
 /Users/jerry/agent-orchestrator/install.sh /absolute/path/to/project
 ```
 
-The installer preserves existing differing files and writes proposals as `*.orchestration-new`. Review those proposals and configure the target project's `.agents/config.json` with its real source paths and fast/full test commands. The template test commands are placeholders and provide no acceptance evidence.
+Copied role/config/script templates preserve existing differing files and write proposals as `*.orchestration-new`. The existing installer separately replaces `.githooks/post-commit` and makes shell scripts executable; inspect those effects before applying it to an established project. Review those proposals and configure the target project's `.agents/config.json` with its real source paths and fast/full test commands. The template test commands are placeholders and provide no acceptance evidence.
 
 Run these commands **from the target project**, after its verification commands are configured:
 
