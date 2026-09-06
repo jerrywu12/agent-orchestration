@@ -1,0 +1,15 @@
+description: Shared minimal read-only symbol navigation across coding clients
+prompt: |
+  Activate the exact absolute project or worktree before querying. Retrieve outlines,
+  then references or specific bodies. Use the host client's native tools for edits.
+  Do not perform broad onboarding or copy whole files without a specific need.
+single_project: false
+fixed_tools:
+  - activate_project
+  - get_current_config
+  - get_symbols_overview
+  - find_symbol
+  - find_referencing_symbols
+excluded_tools: []
+included_optional_tools: []
+tool_description_overrides: {}

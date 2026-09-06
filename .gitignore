@@ -13,3 +13,7 @@ local/*
 !local/agent-home/
 local/agent-home/*
 !local/agent-home/README.md
+
+# Python tooling test artifacts
+__pycache__/
+*.pyc

@@ -1,0 +1,9 @@
+{
+  "verified_on": "2026-09-06",
+  "rtk": "0.45.0",
+  "rtk_install": "brew install rtk (recorded bottle version; future brew installs may differ)",
+  "serena-agent": "1.7.0",
+  "serena_install": "uv tool install --python 3.13 serena-agent==1.7.0",
+  "installer_python": "3.13",
+  "runner_python_minimum": "3.9"
+}

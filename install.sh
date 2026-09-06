@@ -64,10 +64,19 @@ install_file "$TEMPLATE_DIR/templates/cursor-shared-ui-tooling.mdc.template" "$T
 install_file "$TEMPLATE_DIR/templates/AGENT_COORDINATION.md.template"        "$TARGET_DIR/docs/AGENT_COORDINATION.md"
 install_file "$TEMPLATE_DIR/config/.agents-config.json.template"             "$TARGET_DIR/.agents/config.json"
 
+# Shared efficiency is user-wide; do not reinstall it or copy its deployment scripts
+# into project checkouts. The role templates above point to the global policy.
+if [ -x "$HOME/.local/bin/agent-run" ]; then
+  echo "Shared agent efficiency is available globally."
+fi
+
 # 3. Copy scripts (non-destructive, per file)
 echo "Installing automation scripts..."
 for s in "$TEMPLATE_DIR"/scripts/*; do
   [ -f "$s" ] || continue
+  case "$(basename "$s")" in
+    install_agent_efficiency.sh|check_agent_efficiency.sh) continue ;;
+  esac
   install_file "$s" "$TARGET_DIR/scripts/$(basename "$s")"
 done
 chmod +x "$TARGET_DIR"/scripts/*.sh 2>/dev/null || true

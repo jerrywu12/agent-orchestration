@@ -1,0 +1,5 @@
+# CLI contract
+- agent-run [--max-bytes N] [--log-root DIR] [--timeout SECONDS] -- COMMAND ARG...: preserve argv/cwd and real child status; combine diagnostics in a private raw log; print bounded head/tail plus status/log path. No shell eval or retries. Missing executable=127; signal=128+signal; timeout=124.
+- agent-advice --provider {ollama,arkcli} [--model NAME] [--profile NAME] --prompt-file FILE [--max-input-bytes N] [--max-output-tokens N]: narrow model advice only, reject oversize prompts before invocation; cap generated output through supported provider flags; no fallback or credential writes. Exact provider-specific transport is resolved from CLI help before this slice.
+- installer --home PATH [--apply|--rollback MANIFEST]: default preview; preflight, preserve and back up operational state; repeated apply is a no-op. Rollback refuses user edits since installation.
+- check_agent_efficiency.sh: report version/config/installed-file health without printing credentials or making paid requests.
