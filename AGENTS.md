@@ -26,3 +26,20 @@ Use `agent-run` for noisy checks with complete private evidence, RTK for compact
 Global deployment is a separate explicit step from a source edit. Preview configuration changes, preserve unrelated settings, and retain rollback evidence. Read `docs/AGENT_HOME_STATUS.md` before moving state; never commit `local/agent-home/`, credentials, provider responses containing private data, logs or backups. Do not restart unrelated applications/services for documentation or tooling work.
 
 ArkCLI's approved backup and startup verification are recorded in `specs/001-global-agent-efficiency/arkcli_migration_approval.md`. Check current authentication and preserve the existing identity/profile when using it; do not repeat a credential migration merely because the historical note describes one. Never send Slack or other external messages without the user's authorization.
+
+## Board synchronisation
+
+Canonical policy: `docs/KANGENTIC_BOARD_POLICY.md` — mirrored for Claude, Codex, Gemini CLI,
+Antigravity, Cursor and ARK lanes; when mirrors disagree, the canonical doc wins.
+
+Any work item with a backlog entry, a `specs/<nnn>-<slug>/` directory, or an implementer dispatch
+carries one Kangentic ticket. Update it at four moments: start, state change, delivery, and **stop
+without delivery** — a lane that dies mid-task must leave the ticket saying so, because silence reads
+as progress. Report verified state with evidence (PR link, SHA, the check that proves it) and say
+explicitly what is NOT done; a draft PR and a green gate on an unmerged branch are both "in review",
+not "delivered".
+
+**No Kangentic integration is configured on this machine yet** (verified 2026-09-07: no MCP server,
+no CLI, no repo reference). Until one exists: do not invent an endpoint or ticket scheme, keep the
+project's own backlog and handoff board current, and tell Jerry in your reply that the ticket was not
+updated — including the text you would have posted.
