@@ -59,6 +59,35 @@ Executing; an amended scope or a wrong spec returns it to Planning. Do not skip 
 that has a ticket, and never leave a ticket in Executing with no live lane behind it — that is the
 stop-without-delivery case.
 
+**The reviewer must not be the planner.** The fallback fires often, and the agent after Codex is
+Claude, who is also the usual reviewer - which would have one agent judging an implementation against
+its own spec. When planner and default reviewer would be the same, move the *review* to the next
+agent in the chain, not the planning. If no second agent is available, say so on the ticket and leave
+the PR for Jerry; an unreviewed PR that admits it is fine, a self-review presented as review is not.
+
+**Parent tickets.** When planning finishes, children are created in `To Do` and the parent moves to
+`Executing` - a container, so it needs no branch of its own. The parent goes to `Done` when the last
+child does, and never passes through PR / Code Review. A child returning to Planning leaves the
+parent in Executing.
+
+**Blocked is a flag, not a stage.** There is no Blocked column: a blocked ticket keeps its stage and
+carries a flag naming the blocker and its owner, because "blocked three-quarters through Executing"
+and "blocked before Planning" are different objects. Blocked means paused with intent to resume - if
+the lane is gone, that is the stop-without-delivery update instead.
+
+**If you cannot post, relay.** Outside lanes (`codex_auto_dev.sh`, launchd watchdogs, handoff queue
+runners, IDE and desktop sessions) have no mechanism to reach the board, so route work that needs
+board visibility through the app - and end every outside-lane report with a paste-ready block:
+
+```
+TICKET: <id or title>
+STAGE:  <stage>  (was: <previous>)
+STATE:  <verified state>
+PROOF:  <PR link - SHA - gate command and result>
+NOT DONE: <what remains, or "nothing">
+BLOCKED: <blocker and owner, or "no">
+```
+
 **Kangentic injects a per-session MCP server into agents it launches** - it is not a service you
 connect to. Verified 2026-09-11: the app listens on `127.0.0.1` at an ephemeral port and gives each
 agent it spawns a URL `http://127.0.0.1:<port>/mcp/<projectId>/<sessionId>` plus an

@@ -75,11 +75,38 @@ queue — the routing is what makes the fallback auditable. In Smart-Stock-Picke
 enforced by `scripts/agent_quota.sh route`, whose default `IMPLEMENTER_CHAIN` is
 `codex codex-ark antigravity`; extend that variable rather than routing around it.
 
+**The reviewer must not be the planner.** Recording who planned a ticket is what makes this
+checkable, and it matters because the fallback fires often — Codex quota-blocks regularly, and the
+next agent in the chain is Claude, who is also the usual reviewer. Left alone, that produces an agent
+writing the spec and then judging an implementation against its own spec. It will find the
+implementation faithful, because it is comparing the work to the same idea it already had; the
+failure mode is not dishonesty but a blind spot that is invisible from the inside.
+
+So: when the planner and the default reviewer would be the same agent, move the **review** to the
+next available agent in the chain, not the planning. Planning quality benefits from the strongest
+available agent; review benefits from a *different* one. If no second agent is available, say so on
+the ticket and leave the PR for Jerry — an unreviewed PR that says it is unreviewed is fine, and one
+that claims a self-review as review is not.
+
 ### Parent and child tickets
 
 Planning splits a parent ticket into child tickets. Each child is then a work item in its own right
 with its own lifecycle, and the "one ticket per work item" rule applies to it. **The parent stays
 open until every child is Done** — it is a container, and closing it early hides the remainder.
+
+Where the parent sits while that happens:
+
+- When planning finishes, the children are created in **To Do** and the parent moves to
+  **Executing**. The parent is a container, so "Executing" means *its children are being built* —
+  it does not need a branch of its own.
+- The parent goes to **Done** when the last child reaches Done. It does **not** pass through PR /
+  Code Review; a container has no PR. Its evidence is the set of child tickets and their merge SHAs.
+- If a child is sent back to Planning, the parent stays in Executing. Only an amendment to the
+  *parent's own* scope returns the parent to Planning — and then its children are re-derived, not
+  quietly edited.
+
+A parent in Executing with every child still in To Do is a real state and an honest one: planning is
+done, building has not started. Do not dress it up by moving a child forward.
 
 ### Moving backwards
 
@@ -91,6 +118,20 @@ Backward moves are legitimate and must be recorded with a reason:
 
 Do not skip Planning for anything that has a ticket. A ticket sitting in **Executing** with no live
 lane behind it is the stop-without-delivery case below, not a ticket in progress.
+
+### Blocked is a flag, not a stage
+
+**There is no Blocked column.** A blocked ticket keeps its stage and carries a blocked flag, because
+the stage is information worth keeping: a ticket blocked three-quarters of the way through Executing
+is a very different object from one blocked before Planning started, and a Blocked column erases that
+distinction. Columns that erase progress become graveyards — work goes in and nobody can tell what it
+would take to get it out.
+
+A blocked flag must name the blocker and its owner ("awaiting Jerry's decision on the venue switch",
+"Codex quota until Sep 7"). Clear the flag when the blocker clears; the ticket resumes where it was.
+
+The one thing a blocked flag is **not** is a substitute for the stop-without-delivery update. Blocked
+means the work is paused and someone intends to resume it. If the lane is gone, say that instead.
 
 ## When to sync
 
@@ -171,12 +212,53 @@ In that second case:
 - **State plainly in your reply** that the ticket was not updated because this session has no
   Kangentic connection, and include the exact text you would have posted so Jerry can paste it.
 
-### The consequence worth planning around
+### Board coverage follows dispatch
 
-Board coverage follows dispatch. Work started **from inside Kangentic** updates its own ticket;
-identical work started from an outside shell cannot, however careful the agent is. So when a work
-item needs to be visible on the board, dispatch it through the app — do not rely on an outside lane
-remembering to report, because that lane has no mechanism to.
+Work started **from inside Kangentic** updates its own ticket; identical work started from an outside
+shell cannot, however careful or well-intentioned the agent is. This is not a discipline problem and
+no amount of policy text fixes it — the outside lane has no mechanism.
+
+Most automation here is structurally outside:
+
+| Lane | Started by | Can post? |
+|---|---|---|
+| Agent sessions dispatched from the Kangentic app | Kangentic | **Yes** |
+| `scripts/codex_auto_dev.sh`, `antigravity_auto_dev.sh` | A shell or the dispatcher | No |
+| launchd watchdogs (`pr-watchdog`, `lane-watchdog`) | launchd | No |
+| `agent_workflow.sh codex-handoff` queue runners | A shell or a watcher | No |
+| IDE and desktop-app sessions (Cursor, Claude desktop) | The editor | No |
+
+Two rules follow.
+
+**1. Route by visibility need.** If a work item must be visible on the board, dispatch it from the
+app. Choosing an outside lane for that item is choosing to have no board record of it — a legitimate
+choice for a throwaway task, and the wrong one for anything with a ticket.
+
+**2. An outside lane must end its report with a relay block.** It cannot post, but it can make
+posting take five seconds instead of five minutes of reconstruction. End the final report with a
+fenced block in this shape, so whoever is in the app transfers it verbatim:
+
+```
+TICKET: <id or title>
+STAGE:  <To Do | Planning | Executing | PR / Code Review | Done>  (was: <previous>)
+STATE:  <verified state — what is true right now>
+PROOF:  <PR link · SHA · the gate command and its result>
+NOT DONE: <what remains, or "nothing">
+BLOCKED: <blocker and owner, or "no">
+```
+
+The relay is the whole mitigation. An outside lane that finishes silently leaves a ticket that reads
+as in-progress forever; one that finishes with a relay block leaves a ticket that is one paste from
+correct.
+
+### Open question — a stable endpoint for outside lanes
+
+Whether the app can expose a **stable, project-scoped** endpoint (or a CLI) that outside lanes could
+post to is unresolved, and deliberately not guessed at here. If it can, rule 2 above becomes a real
+integration and this policy becomes mechanically enforceable rather than advisory. If it cannot, the
+relay block is the ceiling and routing by visibility need is the only real control.
+
+Owner: Jerry. Until it is answered, treat the relay block as the required behaviour.
 
 ## Ownership
 
