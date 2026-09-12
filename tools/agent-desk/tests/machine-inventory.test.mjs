@@ -440,3 +440,70 @@ test("cached plugin manifests are separate from installed npm packages", async (
   assert.equal(result.libraries[0].version, "1.0.0");
   assert.doesNotMatch(JSON.stringify(result), /PRIVATE_/);
 });
+
+test("Poetry declarations respect normalized installed package names in the same environment", async (t) => {
+  const f = await fixture(t);
+  await f.put(
+    "project/.venv/lib/python3.13/site-packages/example_pkg-1.2.0.dist-info/METADATA",
+    "Name: Example_Pkg\nVersion: 1.2.0\n\n",
+  );
+  await f.put(
+    "project/pyproject.toml",
+    "[tool.poetry.dependencies]\npython = '^3.13'\nexample-pkg = '^1.2.0'\nmissing-pkg = '^2.0'\n",
+  );
+  const result = await discoverMachine({
+    ...f.options,
+    customSources: [{ id: "p", path: join(f.root, "project") }],
+  });
+  const matching = result.libraries.filter(
+    (library) =>
+      library.name.toLowerCase().replace(/[-_.]/g, "-") === "example-pkg",
+  );
+  assert.equal(matching.length, 1);
+  assert.equal(matching[0].status, "installed");
+  assert.equal(matching[0].version, "1.2.0");
+  assert.ok(
+    result.libraries.some(
+      (library) =>
+        library.name === "missing-pkg" &&
+        library.status === "declared" &&
+        library.requestedVersion === "^2.0",
+    ),
+  );
+});
+
+test("prototype-shaped metadata names cannot abort known-agent discovery", async (t) => {
+  const f = await fixture(t);
+  for (const name of [
+    "constructor",
+    "__proto__",
+    "toString",
+    "ordinary-package",
+    "@openai/codex",
+  ]) {
+    await f.put(`npm/${name}/package.json`, { name, version: "1.0.0" });
+  }
+  for (const name of ["constructor", "__proto__", "toString"]) {
+    await f.put(
+      `apps/${name}.app/Contents/Info.plist`,
+      `<plist><dict><key>CFBundleIdentifier</key><string>${name}</string><key>CFBundleShortVersionString</key><string>1.0.0</string></dict></plist>`,
+    );
+  }
+  const result = await discoverMachine({
+    ...f.options,
+    paths: {
+      npmRoots: [join(f.root, "npm")],
+      appRoots: [join(f.root, "apps")],
+    },
+  });
+  assert.equal(result.agents.length, 1);
+  assert.equal(result.agents[0].deskAgentId, "codex");
+  for (const name of ["constructor", "toString", "ordinary-package"]) {
+    assert.ok(
+      result.libraries.some(
+        (library) => library.name === name && library.status === "installed",
+      ),
+    );
+  }
+  assert.ok(!result.sources.some((source) => source.status === "error"));
+});

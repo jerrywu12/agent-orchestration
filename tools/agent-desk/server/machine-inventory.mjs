@@ -31,6 +31,8 @@ const identity = (...values) =>
     .update(JSON.stringify(values))
     .digest("hex")
     .slice(0, 24);
+const own = (dictionary, key) =>
+  Object.hasOwn(dictionary, key) ? dictionary[key] : undefined;
 const packageName = (value) =>
   typeof value === "string" &&
   /^(?:@[a-z0-9][a-z0-9._-]*\/)?[a-z0-9][a-z0-9._-]{0,180}$/i.test(value)
@@ -595,9 +597,9 @@ class Discovery {
           status: "installed",
           path,
         });
-        if (npmAgents[metadata.name])
+        if (own(npmAgents, metadata.name))
           this.npmCandidates.push({
-            key: npmAgents[metadata.name],
+            key: own(npmAgents, metadata.name),
             folder,
             version: metadata.version,
           });
@@ -707,7 +709,11 @@ class Discovery {
           for (const match of section.matchAll(
             /^([A-Za-z0-9_.-]+)\s*=\s*["']([^"'\r\n]+)["']/gm,
           ))
-            if (match[1] !== "python" && requested(match[2]))
+            if (
+              match[1] !== "python" &&
+              requested(match[2]) &&
+              !this.hasInstalled(source, "python", match[1])
+            )
               this.library(source, {
                 name: match[1],
                 requestedVersion: match[2],
@@ -776,7 +782,8 @@ async function discover(options = {}) {
           try {
             const info = plistStrings(data);
             scanner.agent(
-              appDefinitions[info.CFBundleIdentifier] ?? appNames[entry.name],
+              own(appDefinitions, info.CFBundleIdentifier) ??
+                own(appNames, entry.name),
               app,
               info.CFBundleShortVersionString ?? info.CFBundleVersion,
             );
@@ -801,7 +808,7 @@ async function discover(options = {}) {
             const path = await realpath(join(root, name));
             if ((await lstat(path)).isFile())
               scanner.agent(
-                definitions[name],
+                own(definitions, name),
                 path,
                 name === "claude" ? basename(path) : null,
               );
@@ -951,7 +958,8 @@ async function discover(options = {}) {
       },
     );
   for (const candidate of scanner.npmCandidates) {
-    const definition = definitions[candidate.key];
+    const definition = own(definitions, candidate.key);
+    if (!Array.isArray(definition)) continue;
     const existing = scanner.result.agents.filter(
       (agent) =>
         agent.name === definition[0] && within(candidate.folder, agent.path),
