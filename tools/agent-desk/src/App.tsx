@@ -25,6 +25,7 @@ import { ActivityFeed } from "./components/ActivityFeed";
 import { AgentsView } from "./components/AgentsView";
 import { MachineView } from "./components/MachineView";
 import { CreateProject, CreateTicket } from "./components/CreateDialogs";
+import { InstallAppButton } from "./components/InstallAppButton";
 import { SettingsView } from "./components/SettingsView";
 import { TicketDetails } from "./components/TicketDetails";
 import { WorkView } from "./components/WorkView";
@@ -226,6 +227,9 @@ export default function App() {
           )}
         </nav>
         <div className="sidebar-bottom">
+          <div className="sidebar-install">
+            <InstallAppButton className="button small-button" />
+          </div>
           <div className="workspace-health">
             <span
               className={`live-dot ${desk.error ? "warning-dot" : !state ? "quiet" : ""}`}
@@ -409,6 +413,7 @@ export default function App() {
       </main>
       {create === "project" && (
         <CreateProject
+          projects={state?.projects}
           onClose={() => setCreate(null)}
           onCreated={async (project) => {
             await desk.refresh();
