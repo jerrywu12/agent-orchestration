@@ -15,6 +15,18 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 CONFIG_FILE="$ROOT/.agents/config.json"
 
+# Attach an explicitly linked ticket before preparing a worktree or editing files.
+if [ -f "$ROOT/scripts/agent_desk_hook.sh" ]; then
+  # shellcheck source=agent_desk_hook.sh
+  . "$ROOT/scripts/agent_desk_hook.sh"
+  agent_desk_wrap codex "$0" "$@"
+elif [ -n "${AGENT_DESK_TICKET_ID:-}" ]; then
+  echo "Agent Desk: source hook unavailable for assigned ticket; refusing execution." >&2
+  exit 1
+else
+  echo "Agent Desk: unlinked runner; no ticket or board progress will be inferred." >&2
+fi
+
 # cfg <key> [default] — read a string value from .agents/config.json.
 cfg() {
   local key="$1" def="${2:-}" v=""

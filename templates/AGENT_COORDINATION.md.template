@@ -52,7 +52,7 @@ Run queue commands from the target project:
 
 ```bash
 ./scripts/agent_workflow.sh doctor
-./scripts/agent_workflow.sh handoff submit docs/my-feature_DEV_PLAN.md --agent codex --mode local-worktree
+./scripts/agent_workflow.sh handoff submit docs/my-feature_DEV_PLAN.md --agent codex --mode local-worktree --ticket TICKET_ID
 ./scripts/agent_workflow.sh handoff run-next
 ./scripts/agent_workflow.sh handoff status
 ```
@@ -68,7 +68,7 @@ The Codex runner uses `codex_cmd` / `CODEX_CMD`. Without an available CLI it pre
 For a requested Gemini review:
 
 ```bash
-./scripts/agent_workflow.sh handoff submit docs/my-feature_DEV_PLAN.md --agent gemini --mode local
+./scripts/agent_workflow.sh handoff submit docs/my-feature_DEV_PLAN.md --agent gemini --mode local --ticket TICKET_ID
 ```
 
 The review runner checks the current project build with `./scripts/dev_check.sh full` and writes `docs/reviews/<slug>-<date>.md`. Configure `gemini_cmd` / `GEMINI_CMD` and verify the intended checkout before using it. Without a working reviewer it writes a **NEEDS-REVIEW** skeleton; a passing configured gate is not a completed audit.
@@ -82,12 +82,16 @@ Slack notifications need a configured webhook and authorization to send messages
 
 ## Ticket ownership preflight
 
-When using Kangentic, follow the canonical shared policy at
-`/Users/jerry/agent-orchestrator/docs/KANGENTIC_BOARD_POLICY.md`. Before planning
-edits or implementation, require exactly one `owner:<agent>` label, an explicit
-executor session/thread and nonoverlapping branch/worktree scope. Missing or
-ambiguous ownership blocks dispatch; do not opportunistically claim another lane.
-A provider implementation may be a bounded delegation from the accountable owner.
-Check dependencies and checkpoint handoffs; update board/issue status on stop or
-quota loss. Labels are not an atomic lock; same-agent sessions must still check
-current ownership. Use script/API access, never another process's credentials.
+Follow the canonical shared Agent Desk policy at
+`/Users/jerry/agent-orchestrator/docs/AGENT_DESK_POLICY.md`. Use the configured stable
+CLI/API/MCP connection from any agent session; verify health instead of assuming
+outside sessions cannot report. Read the exact ticket and task packet, assigned
+owner, executor session and branch/worktree scope. Preserve imported owner labels,
+dependency/blocked holds and explicit bounded delegation. Unknown ownership blocks
+launch; do not infer ownership from an AI name or spec filename. Claims are atomic;
+labels and queue metadata are not locks. Checkpoint and reconcile existing sessions
+before handoff, including imported suspended sessions. Keep custom stage semantics,
+independent review and verified merge/delivery evidence. Update start, state changes,
+delivery and stop without delivery. Linked source runners require a working claim;
+unlinked runs must say so and must not claim board progress. Installation and live
+cutover are separate from a source change. Never copy another process's credentials.

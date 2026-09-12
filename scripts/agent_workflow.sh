@@ -13,7 +13,7 @@ usage() {
 Multi-Agent Workflow Coordinator
 
 Usage:
-  scripts/agent_workflow.sh handoff submit <spec_path> [--agent <agent>] [--mode <mode>]
+  scripts/agent_workflow.sh handoff submit <spec_path> [--agent <agent>] [--mode <mode>] [--ticket <id>]
   scripts/agent_workflow.sh handoff status
   scripts/agent_workflow.sh handoff run-next
   scripts/agent_workflow.sh handoff watch [--interval <seconds>]
@@ -35,6 +35,37 @@ die() {
   echo "ERROR: $*" >&2
   exit 1
 }
+
+validate_ticket_id() {
+  local ticket="$1"
+  [ -z "$ticket" ] || { [[ "$ticket" =~ ^[A-Za-z0-9][A-Za-z0-9_-]*$ ]] && [ "${#ticket}" -le 200 ]; }
+}
+
+# A queue item owns its explicit linkage. An enclosing runner's ticket/session
+# must not leak into a different item, or into an item that has no ticket at all.
+run_ticket_child() (
+  local ticket="$1" agent="$2"
+  shift 2
+  if [ -z "$ticket" ] || [ "$ticket" != "${AGENT_DESK_TICKET_ID:-}" ] ||
+     [ "$agent" != "${AGENT_DESK_AGENT_ID:-}" ]; then
+    unset AGENT_DESK_WRAPPED AGENT_DESK_EXECUTION_ID AGENT_DESK_SESSION_ID
+  fi
+  if [ -n "${AGENT_DESK_AGENT_ID:-}" ] && [ "$agent" != "$AGENT_DESK_AGENT_ID" ]; then
+    unset AGENT_DESK_TOKEN
+  fi
+  export AGENT_DESK_TICKET_ID="$ticket" AGENT_DESK_AGENT_ID="$agent"
+  if [ "$agent" = "codex" ]; then
+    "$@"
+  elif [ -f "$ROOT/scripts/agent_desk_hook.sh" ]; then
+    /bin/bash "$ROOT/scripts/agent_desk_hook.sh" "$agent" "$@"
+  elif [ -n "$ticket" ]; then
+    echo "Agent Desk: source hook unavailable for assigned ticket; refusing execution." >&2
+    return 1
+  else
+    echo "Agent Desk: unlinked runner; no ticket or board progress will be inferred." >&2
+    "$@"
+  fi
+)
 
 doctor_check() {
   echo "Checking multi-agent workflow setup..."
@@ -91,6 +122,7 @@ submit_handoff() {
 
   local mode="local-worktree"
   local agent="codex"
+  local ticket_id=""
   
   while [ "$#" -gt 0 ]; do
     case "$1" in
@@ -102,6 +134,11 @@ submit_handoff() {
         shift
         agent="${1:-}"
         ;;
+      --ticket)
+        shift
+        ticket_id="${1:-}"
+        [ -n "$ticket_id" ] || die "--ticket requires an ID."
+        ;;
       *)
         usage >&2
         exit 1
@@ -111,6 +148,7 @@ submit_handoff() {
   done
 
   [ -f "$spec_path" ] || die "Spec file not found: $spec_path"
+  validate_ticket_id "$ticket_id" || die "Invalid Agent Desk ticket ID."
 
   local spec_name
   spec_name=$(basename "$spec_path")
@@ -121,6 +159,7 @@ submit_handoff() {
 spec_path="$spec_path"
 target_agent="$agent"
 mode="$mode"
+ticket_id="$ticket_id"
 queued_at="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
 status="pending"
 EOF
@@ -143,11 +182,14 @@ run_job() {
   local spec_path=""
   local target_agent="codex"
   local mode="local-worktree"
+  local ticket_id=""
   
   # Parse job properties
   spec_path=$(grep '^spec_path=' "$job_file" | cut -d'"' -f2 || echo "")
   target_agent=$(grep '^target_agent=' "$job_file" | cut -d'"' -f2 || echo "codex")
   mode=$(grep '^mode=' "$job_file" | cut -d'"' -f2 || echo "local-worktree")
+  ticket_id=$(grep '^ticket_id=' "$job_file" | cut -d'"' -f2 || true)
+  validate_ticket_id "$ticket_id" || die "Invalid Agent Desk ticket ID in queue metadata."
 
   echo "Starting execution of $spec_path for agent $target_agent..."
   # Mark job running by updating status
@@ -156,7 +198,7 @@ run_job() {
   local rc=0
   if [ "$target_agent" = "codex" ]; then
     if [ -f "$ROOT/scripts/codex_auto_dev.sh" ]; then
-      "$ROOT/scripts/codex_auto_dev.sh" "$spec_path" || rc=$?
+      run_ticket_child "$ticket_id" codex "$ROOT/scripts/codex_auto_dev.sh" "$spec_path" || rc=$?
     else
       die "codex_auto_dev.sh not found."
     fi
@@ -167,7 +209,7 @@ run_job() {
         | sed -E 's/_DEV_PLAN\.md$//' \
         | tr '[:upper:]' '[:lower:]' \
         | sed -E 's/[^a-z0-9]+/-/g; s/^-+//; s/-+$//')
-      "$ROOT/scripts/gemini_auto_review.sh" "$slug" || rc=$?
+      run_ticket_child "$ticket_id" gemini "$ROOT/scripts/gemini_auto_review.sh" "$slug" || rc=$?
     else
       die "gemini_auto_review.sh not found."
     fi

@@ -35,3 +35,10 @@ Adapter/capability field distinguishes local execution from externally reported 
 Priority strings urgent/high/medium/low/none. Activity newest first; stage order numeric.
 SyncStatus {projectId,state:'idle'|'syncing'|'error'|'conflict',lastSyncAt,error?,pending:number}.
 Use nullable/empty fields defensively for imported data. Label strings render as text, never HTML.
+
+## Migration reconciliation amendment (2026-09-13)
+POST /api/executions/:id/reconcile {sessionId,summary,stopped:true} is administrator-only.
+It records the operator's checkpoint/stop evidence for one exact imported source session;
+it never stops a native agent itself. An aggregate imported claim remains active until
+its primary session and all heldSessions entries are explicitly reconciled. Terminal
+agent events cannot bypass held-session reconciliation. UI requires explicit confirmation.

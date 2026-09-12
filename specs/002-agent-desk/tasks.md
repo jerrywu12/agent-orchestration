@@ -21,3 +21,5 @@
 - [ ] T014 [US5] Add Dockerfile/compose/service/backup docs in tools/agent-desk/.
 - [ ] T015 [US5] Run app and repository gates, installer smoke, independent review; commit/push/PR.
 - [ ] T016 [US5] Deploy authorized replacement, verify live source identity/browser/connectors; record evidence in specs/002-agent-desk/verification.md.
+
+- [ ] T017 Transition observer under [explicit transition contract](transition-contract.md), preserving native sessions during cutover.

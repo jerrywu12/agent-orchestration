@@ -66,12 +66,16 @@ For current and future projects, use the installed `agent-run -- <check>` to ret
 
 ## Ticket ownership preflight
 
-When using Kangentic, follow the canonical shared policy at
-`/Users/jerry/agent-orchestrator/docs/KANGENTIC_BOARD_POLICY.md`. Before planning
-edits or implementation, require exactly one `owner:<agent>` label, an explicit
-executor session/thread and nonoverlapping branch/worktree scope. Missing or
-ambiguous ownership blocks dispatch; do not opportunistically claim another lane.
-A provider implementation may be a bounded delegation from the accountable owner.
-Check dependencies and checkpoint handoffs; update board/issue status on stop or
-quota loss. Labels are not an atomic lock; same-agent sessions must still check
-current ownership. Use script/API access, never another process's credentials.
+Follow the canonical shared Agent Desk policy at
+`/Users/jerry/agent-orchestrator/docs/AGENT_DESK_POLICY.md`. Use the configured stable
+CLI/API/MCP connection from any agent session; verify health instead of assuming
+outside sessions cannot report. Read the exact ticket and task packet, assigned
+owner, executor session and branch/worktree scope. Preserve imported owner labels,
+dependency/blocked holds and explicit bounded delegation. Unknown ownership blocks
+launch; do not infer ownership from an AI name or spec filename. Claims are atomic;
+labels and queue metadata are not locks. Checkpoint and reconcile existing sessions
+before handoff, including imported suspended sessions. Keep custom stage semantics,
+independent review and verified merge/delivery evidence. Update start, state changes,
+delivery and stop without delivery. Linked source runners require a working claim;
+unlinked runs must say so and must not claim board progress. Installation and live
+cutover are separate from a source change. Never copy another process's credentials.
