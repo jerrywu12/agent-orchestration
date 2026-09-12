@@ -236,3 +236,176 @@ test("deadline and shutdown do not leave hung collectors or erase prior data", a
   await pending;
   assert.equal(monitor.snapshot().scan.state, "error");
 });
+
+test("a slow library scan cannot block the independent runtime sampling cadence", async (t) => {
+  const gate = deferred(),
+    started = deferred();
+  let held = false,
+    time = 100000,
+    probes = 0;
+  const { monitor } = setup(t, {
+    clock: () => time,
+    discover: async () => {
+      if (held) {
+        started.resolve();
+        await gate.promise;
+      }
+      return inventory();
+    },
+    probe: async () => {
+      probes++;
+      return runtime();
+    },
+  });
+  t.after(() => gate.resolve());
+  await monitor.refresh();
+  const firstTime = monitor.snapshot().scan.runtimeAt;
+  held = true;
+  const scan = monitor.refresh();
+  await started.promise;
+  time += 15000;
+  const sampling = monitor.refresh({ inventory: false });
+  await new Promise(setImmediate);
+  assert.equal(probes, 2);
+  assert.notEqual(monitor.snapshot().scan.runtimeAt, firstTime);
+  assert.equal(monitor.snapshot().scan.state, "scanning");
+  gate.resolve();
+  await Promise.all([scan, sampling]);
+});
+
+test("concurrent source additions enforce the limit after path validation", async (t) => {
+  const root = await mkdtemp(join(tmpdir(), "machine-source-limit-"));
+  const a = await mkdtemp(join(root, "a-")),
+    b = await mkdtemp(join(root, "b-"));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const { monitor, store } = setup(t);
+  for (let i = 0; i < 19; i++)
+    store.put("machine-source", {
+      id: String(i),
+      label: `Fixture ${i}`,
+      path: `/fixture/source-${i}`,
+    });
+  const result = await Promise.allSettled([
+    monitor.addSource({ path: a }),
+    monitor.addSource({ path: b }),
+  ]);
+  assert.equal(result.filter((r) => r.status === "fulfilled").length, 1);
+  assert.equal(
+    result.find((r) => r.status === "rejected").reason.code,
+    "SOURCE_LIMIT",
+  );
+  assert.equal(monitor.snapshot().customSources.length, 20);
+  await monitor.pending;
+});
+
+test("custom sources survive closing and reopening the SQLite database", async (t) => {
+  const root = await mkdtemp(join(tmpdir(), "machine-source-restart-"));
+  const db = join(root, "desk.db");
+  t.after(() => rm(root, { recursive: true, force: true }));
+  let store = new Store(db);
+  let monitor = new MachineMonitor(new Service(store), {
+    auto: false,
+    discover: async () => inventory(),
+    probe: async () => runtime(),
+  });
+  const source = await monitor.addSource({
+    path: root,
+    label: "Persisted environment",
+  });
+  await monitor.pending;
+  monitor.close();
+  store.close();
+  store = new Store(db);
+  monitor = new MachineMonitor(new Service(store), {
+    auto: false,
+    discover: async () => inventory(),
+    probe: async () => runtime(),
+  });
+  t.after(() => {
+    monitor.close();
+    store.close();
+  });
+  assert.deepEqual(
+    monitor
+      .snapshot()
+      .customSources.map((s) => ({ id: s.id, label: s.label, path: s.path })),
+    [
+      {
+        id: source.id,
+        label: "Persisted environment",
+        path: await realpath(root),
+      },
+    ],
+  );
+});
+
+test("runtime deadlines abort collectors and mark metrics unknown without losing the catalog", async (t) => {
+  let cancelled = false;
+  const { monitor } = setup(t, {
+    probeTimeoutMs: 15,
+    probe: ({ signal }) =>
+      new Promise((_, reject) =>
+        signal.addEventListener(
+          "abort",
+          () => {
+            cancelled = true;
+            reject(Error("cancelled"));
+          },
+          { once: true },
+        ),
+      ),
+  });
+  await monitor.refresh();
+  assert.equal(cancelled, true);
+  assert.ok(monitor.snapshot().scan.runtimeError);
+  assert.equal(monitor.snapshot().agents[0].version, "1.2.3");
+  assert.equal(monitor.snapshot().agents[0].status, "unknown");
+});
+
+test("a rejected probe for an obsolete catalog retries the newly discovered agents", async (t) => {
+  let catalog = "a",
+    rejectProbe;
+  const calls = [];
+  const held = new Promise((_, reject) => {
+    rejectProbe = reject;
+  });
+  const started = deferred();
+  const { monitor } = setup(t, {
+    discover: async () => ({
+      ...inventory(),
+      agents: [{ ...agent, id: catalog }],
+    }),
+    probe: async ({ agents }) => {
+      const current = agents[0]?.id;
+      calls.push(current);
+      if (calls.length === 2) {
+        started.resolve();
+        await held;
+      }
+      return {
+        ...runtime(),
+        agents: {
+          [current]: {
+            status: "running",
+            processes: [],
+            cpuPercent: 0,
+            memoryBytes: 0,
+          },
+        },
+      };
+    },
+  });
+  t.after(() => rejectProbe(Error("cleanup")));
+  await monitor.refresh();
+  const sampling = monitor.refresh({ inventory: false });
+  await started.promise;
+  catalog = "b";
+  const discovering = monitor.refresh();
+  await new Promise(setImmediate);
+  assert.equal(monitor.snapshot().agents[0].id, "b");
+  rejectProbe(Error("obsolete probe failed"));
+  await Promise.all([sampling, discovering]);
+  assert.deepEqual(calls, ["a", "a", "b"]);
+  assert.equal(monitor.snapshot().agents[0].status, "running");
+  assert.equal(monitor.snapshot().scan.runtimeError, null);
+});

@@ -21,9 +21,9 @@ export interface MachineLibrary {
   name: string;
   version: string | null;
   requestedVersion?: string | null;
-  ecosystem: "npm" | "python";
+  ecosystem: "npm" | "python" | "plugin";
   sourceId: string;
-  status: "installed" | "declared";
+  status: "installed" | "declared" | "cached";
   path: string;
 }
 export interface MachineSource {

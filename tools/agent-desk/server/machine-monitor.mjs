@@ -66,7 +66,9 @@ export class MachineMonitor {
     this.inventoryError = null;
     this.runtimeError = null;
     this.revision = 0;
-    this.pending = null;
+    this.inventoryPending = null;
+    this.runtimePending = null;
+    this.inventoryRevision = 0;
     this.closed = false;
     this.scanningInventory = false;
     this.inventoryRequested = false;
@@ -133,69 +135,96 @@ export class MachineMonitor {
       this.controllers.delete(controller);
     }
   }
+  get pending() {
+    return this.inventoryPending || this.runtimePending;
+  }
   refresh({ inventory = true } = {}) {
     if (this.closed) return Promise.resolve();
-    if (inventory && !this.scanningInventory) this.inventoryRequested = true;
-    if (this.pending) return this.pending;
-    this.pending = this.collect()
+    const due =
+      this.inventoryRequested ||
+      this.inventoryAttemptAt === null ||
+      this.clock() - this.inventoryAttemptAt >= this.inventoryIntervalMs;
+    if (inventory) return this.scanInventory();
+    // Sampling always uses the last completed catalog while discovery performs
+    // slow metadata I/O. A due inventory scan must never hold this path hostage.
+    const sampling = this.sampleRuntime();
+    if (due && !this.inventoryPending)
+      return Promise.all([sampling, this.scanInventory()]);
+    return sampling;
+  }
+  scanInventory() {
+    if (this.closed) return Promise.resolve();
+    if (this.inventoryPending) return this.inventoryPending;
+    this.inventoryPending = this.collectInventory()
       .catch(() => {
         if (!this.closed)
           this.inventoryError =
             "Machine observation failed. Last successful data is retained.";
       })
       .finally(() => {
-        this.pending = null;
+        this.inventoryPending = null;
       });
-    return this.pending;
+    return this.inventoryPending;
   }
-  async collect() {
+  async collectInventory() {
     do {
       const revision = this.revision;
-      const shouldDiscover =
-        this.inventoryRequested ||
-        this.inventoryAttemptAt === null ||
-        this.clock() - this.inventoryAttemptAt >= this.inventoryIntervalMs;
       this.inventoryRequested = false;
-      if (shouldDiscover) {
-        this.scanningInventory = true;
-        this.inventoryAttemptAt = this.clock();
-        try {
-          const result = await this.bounded(
-            (signal) =>
-              this.discover({
-                home: this.home,
-                appRoot: this.appRoot,
-                platform: this.platform,
-                projects: this.service.store
-                  .list("project")
-                  .map(({ id, name, path }) => ({ id, name, path })),
-                customSources: this.customSources(),
-                signal,
-              }),
-            this.scanTimeoutMs,
-          );
-          if (this.closed) return;
-          // Source changes during slow I/O invalidate the entire observation.
-          if (revision !== this.revision) {
-            this.inventoryRequested = true;
-            continue;
-          }
-          this.inventory = result;
-          this.inventoryAt = new Date(this.clock()).toISOString();
-          this.inventoryError = null;
-        } catch {
-          if (this.closed) return;
-          this.inventoryError =
-            "Inventory could not be refreshed. Last successful inventory is retained.";
-        } finally {
-          this.scanningInventory = false;
+      this.scanningInventory = true;
+      this.inventoryAttemptAt = this.clock();
+      try {
+        const result = await this.bounded(
+          (signal) =>
+            this.discover({
+              home: this.home,
+              appRoot: this.appRoot,
+              platform: this.platform,
+              projects: this.service.store
+                .list("project")
+                .map(({ id, name, path }) => ({ id, name, path })),
+              customSources: this.customSources(),
+              signal,
+            }),
+          this.scanTimeoutMs,
+        );
+        if (this.closed) return;
+        if (revision !== this.revision) {
+          this.inventoryRequested = true;
+          continue;
         }
+        this.inventory = result;
+        this.inventoryRevision++;
+        this.inventoryAt = new Date(this.clock()).toISOString();
+        this.inventoryError = null;
+      } catch {
+        if (this.closed) return;
+        this.inventoryError =
+          "Inventory could not be refreshed. Last successful inventory is retained.";
+      } finally {
+        this.scanningInventory = false;
       }
       if (this.closed) return;
       if (revision !== this.revision) {
         this.inventoryRequested = true;
         continue;
       }
+      // Match any newly discovered artifacts immediately, independently of the
+      // normal timer. An already running sample coalesces and reruns if needed.
+      await this.sampleRuntime();
+      if (revision !== this.revision) this.inventoryRequested = true;
+    } while (!this.closed && this.inventoryRequested);
+  }
+  sampleRuntime() {
+    if (this.closed) return Promise.resolve();
+    if (this.runtimePending) return this.runtimePending;
+    this.runtimePending = this.collectRuntime().finally(() => {
+      this.runtimePending = null;
+    });
+    return this.runtimePending;
+  }
+  async collectRuntime() {
+    while (!this.closed) {
+      const revision = this.inventoryRevision;
       try {
         const result = await this.bounded(
           (signal) =>
@@ -207,10 +236,7 @@ export class MachineMonitor {
           this.probeTimeoutMs,
         );
         if (this.closed) return;
-        if (revision !== this.revision) {
-          this.inventoryRequested = true;
-          continue;
-        }
+        if (revision !== this.inventoryRevision) continue;
         if (result.processError) {
           result.agents = Object.fromEntries(
             this.inventory.agents.map((agent) => [
@@ -230,6 +256,7 @@ export class MachineMonitor {
         this.runtime = result;
       } catch {
         if (this.closed) return;
+        if (revision !== this.inventoryRevision) continue;
         this.runtimeError =
           "Runtime observation failed. Last successful values are retained and stale.";
         this.runtime = {
@@ -242,7 +269,8 @@ export class MachineMonitor {
           ),
         };
       }
-    } while (!this.closed && this.inventoryRequested);
+      return;
+    }
   }
   async addSource(input) {
     if (this.closed)
