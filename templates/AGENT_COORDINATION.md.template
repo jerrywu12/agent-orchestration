@@ -78,3 +78,16 @@ The review runner checks the current project build with `./scripts/dev_check.sh 
 Use `scripts/agent_worktree.sh create <slug>` and `list` to manage isolated worktrees. Confirm task ownership and preserve uncommitted work before removal. `scripts/worktree_doctor.sh` can terminate orphaned processes and prune Git registrations; inspect ownership before using it. Keep feature testing separate from the user's running application.
 
 Slack notifications need a configured webhook and authorization to send messages. Do not treat installing these templates as authorization for external notifications or global configuration changes.
+
+
+## Ticket ownership preflight
+
+When using Kangentic, follow the canonical shared policy at
+`/Users/jerry/agent-orchestrator/docs/KANGENTIC_BOARD_POLICY.md`. Before planning
+edits or implementation, require exactly one `owner:<agent>` label, an explicit
+executor session/thread and nonoverlapping branch/worktree scope. Missing or
+ambiguous ownership blocks dispatch; do not opportunistically claim another lane.
+A provider implementation may be a bounded delegation from the accountable owner.
+Check dependencies and checkpoint handoffs; update board/issue status on stop or
+quota loss. Labels are not an atomic lock; same-agent sessions must still check
+current ownership. Use script/API access, never another process's credentials.

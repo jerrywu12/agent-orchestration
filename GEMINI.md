@@ -80,3 +80,14 @@ your reply that the ticket was not updated - including the text Jerry can paste.
 
 Board coverage follows dispatch: work started from inside Kangentic updates its ticket, identical
 work started from an outside shell cannot. Dispatch through the app when a work item must be visible.
+
+## Required ticket ownership before work
+
+Follow `docs/KANGENTIC_BOARD_POLICY.md#explicit-owner-labels-and-dispatch-preflight-2026-09-12`.
+Every nonterminal ticket needs exactly one `owner:<agent>` label; missing/ambiguous/
+`owner:unassigned` means do not start. Preserve the exact current executor session,
+branch and scope; the same AI name on two sessions does not permit overlapping work.
+Respect explicit bounded delegation, dependency holds and checkpointed handoffs.
+Owner labels are not locks: verify the live task/session and agent routing before
+any edits or dispatch. Use scripts/API only. Existing configured project MCP access
+is allowed; never reconstruct another session's endpoint/token or mutate app DBs.

@@ -62,3 +62,16 @@ DeerFlow is shared across Claude, Codex, Gemini, and Cursor at `/Users/jerry/age
 ## Shared development efficiency
 
 For current and future projects, use the installed `agent-run -- <check>` to retain complete private diagnostics with compact output, and activate the exact worktree in Serena for symbol lookup. Read `~/.local/share/agent-efficiency/POLICY.md` for bounded delegation across Claude, Codex, Gemini/Antigravity, Ollama and ArkCLI. Preserve this project's verification and approval rules.
+
+
+## Ticket ownership preflight
+
+When using Kangentic, follow the canonical shared policy at
+`/Users/jerry/agent-orchestrator/docs/KANGENTIC_BOARD_POLICY.md`. Before planning
+edits or implementation, require exactly one `owner:<agent>` label, an explicit
+executor session/thread and nonoverlapping branch/worktree scope. Missing or
+ambiguous ownership blocks dispatch; do not opportunistically claim another lane.
+A provider implementation may be a bounded delegation from the accountable owner.
+Check dependencies and checkpoint handoffs; update board/issue status on stop or
+quota loss. Labels are not an atomic lock; same-agent sessions must still check
+current ownership. Use script/API access, never another process's credentials.

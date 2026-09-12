@@ -1,6 +1,6 @@
 # Kangentic Board Policy (All AI Agents)
 
-Last updated: 2026-09-11
+Last updated: 2026-09-12
 
 This is the canonical board-synchronisation policy for every AI coding agent Jerry uses: Claude Code,
 Codex / Codex Cloud, Gemini CLI, Antigravity, Cursor, ARK/arkcli lanes, and any agent added later.
@@ -265,3 +265,121 @@ Owner: Jerry. Until it is answered, treat the relay block as the required behavi
 The agent that owns the work owns its ticket. When work is handed to another lane, the handing agent
 records the handoff before the new lane starts; the receiving lane owns it from there. A reviewing
 agent does not silently re-own a ticket — it comments and hands back.
+
+## Explicit owner labels and dispatch preflight (2026-09-12)
+
+The user requires visible AI ownership to prevent overlapping work. Every nonterminal
+board/backlog ticket must carry exactly one `owner:<agent>` label. Reuse normalized
+agent names (`owner:codex`, `owner:claude`, `owner:arkcli`, `owner:ollama`,
+`owner:antigravity`, `owner:gemini`, `owner:cursor`). If ownership is unknown, use
+`owner:unassigned` plus `blocked:needs-owner`; do not guess from a title or label a
+running session as another agent. Completed tickets may retain their verified last
+owner; do not invent historical authorship.
+
+The owner is accountable for the ticket, not necessarily the model doing every
+step. Separate optional `implementer:<provider>` and `reviewer:<agent>` labels.
+P077's explicit user instruction keeps Codex accountable for specifications,
+acceptance and review, with Ollama→ARK CLI→Antigravity implementation. P024 keeps
+its Codex/ARK division. P072 remains reserved to Claude; a conflicting Codex session
+is a conflict to reconcile, not permission to take the program over.
+
+Before any planning edits, production work, retry or handoff, the dispatching and
+receiving agents MUST:
+
+1. Read the exact ticket and canonical task packet. Require one real owner label;
+   missing, multiple or `owner:unassigned` means stop before work and report the
+   assignment gap. Preserve other labels when updating ownership.
+2. Compare the owner with the intended lane, task-level agent/profile and existing
+   session. An explicit bounded delegation may name a different implementer; record
+   who delegated it, its files/contract and receiving session first. An arbitrary
+   agent may not pick a card merely because its column is To Do or Planning.
+3. Record the exact executor session/thread ID, branch/worktree and scope, then
+   inspect existing sessions and worktrees. `owner:codex` does not distinguish two
+   Codex sessions. If another session owns the same scope, attach/hand back or wait;
+   do not create a competing worktree, regenerate its code or overwrite its tests.
+4. Check dependencies, holds and required approvals. A reserved owner is not a
+   claim that work is active or that dependencies are met. Preserve paused work.
+5. On handoff, the old executor checkpoints and relinquishes the bounded scope
+   before the new executor starts. Update owner/delegation labels, routing and
+   session record, then read back. Quota expiry alone does not prove a process
+   stopped. Do not auto-expire or steal a claim based on an old timestamp.
+6. At start, state change, delivery and stop, sync the exact owner/executor and
+   evidence to Kangentic and the linked GitHub issue/Project. Leave unknown reset
+   times and unverified test results unknown. Independent review remains required.
+
+### Assigning To Do and Planning to a particular agent
+
+Set ownership while a card is still in To Do. For an existing card, call
+`kangentic_update_task` with `taskId` and the complete preserved label list plus
+one `owner:<agent>`. Record the assignment/delegation in the description. This is
+metadata only: it does not launch work or grant permissions.
+
+**Agent assignment and routing are different controls.** The API's `agent` field
+updates the recorded assignment. Inspection of Kangentic0.40.0 showed that
+`agent: codex` alone left `agent_override` null and `run_mode: column_settings`.
+Even changing `runMode` on a previously started task did not fill `agent_override`.
+Do not claim those updates pin an existing task to that agent across column moves.
+
+For a new ticket, `kangentic_create_task` supports `agentOverride` and implies an
+agent override for the task lifetime. For existing tickets, a named Board Profile
+can explicitly set `agentOverride` for Planning, Executing and PR / Code Review;
+apply it using `kangentic_update_task` with `profile`. A profile can instead choose
+different agents per phase. Preserve existing model/effort/permission choices;
+profile changes and pins can clear each other, so inspect before applying.
+
+Use the live `kangentic_list_board_profiles` and `tools/list` schemas. Do not enter
+an Ollama model name where a registered agent adapter name is required. An Ollama
+provider behind a coordinator is not automatically a native Kangentic agent.
+
+Assigning a label or profile does not require moving the card. To Do never spawns
+an agent. Moving into Planning may auto-start one: complete ownership preflight
+before that move. For an already active Planning ticket, do not switch its running
+agent or start another session; checkpoint and hand off first. A whole-task pin
+also applies to review, so explicitly hand off to the required independent reviewer
+rather than having the author self-approve.
+
+### Enforcement and limits
+
+The startup instruction for Planning, Executing and PR / Code Review must include
+the owner/session/dependency preflight, retaining existing column instructions.
+The rule also applies to external shell/IDE agents through AGENTS/CLAUDE/GEMINI
+instructions. Missing ownership or an overlap is a dispatch refusal, not an
+invitation to pick an owner opportunistically. An owner change requires an explicit
+coordinator/owner/user assignment and a completed handoff.
+
+Labels and prompt instructions are cooperative controls, **not a transactional
+lease or a security boundary**. Native assignment/profile routing determines which
+adapter Kangentic starts; it does not prevent a separate external process from
+ignoring the rule. No atomic compare-and-set claim tool was verified in the exposed
+MCP API. Do not describe sequential read/update/read-back as an exclusive lock.
+Future hard enforcement must use an atomic shared lease and integrate every dispatch
+entry point, with tests for concurrent claims, stale owners and crash recovery.
+This rule does not silently patch the Kangentic application or disable existing
+column auto-start behavior.
+
+Acceptance: each nonterminal card has one owner label or explicit unassigned block;
+known P077/P024/P072 ownership is preserved; other labels survive; conflicts name
+both owners; no work launches during labeling; column instructions retain previous
+content and refuse unowned/overlapping dispatch; updates are verified by API reads.
+
+### Verified project API access for outside sessions
+
+In addition to injected per-session tools, Smart-Stock-Picker has an existing
+project-level configuration at `.kangentic/mcp-config.json` in its registered root.
+Its configured loopback endpoint was verified through `tools/list` and scoped task
+read/update calls on2026-09-12. External sessions may use that existing explicitly
+configured endpoint; no endpoint reconstruction or another process's token is
+permitted. Keep authentication in memory and out of logs/git/prompts. Never write
+Kangentic SQLite databases. When neither injected tools nor a working configured
+project endpoint is available, use the relay block described above. This verified
+exception supersedes older blanket statements that all outside sessions cannot
+post. Use scripts/API only, not browser automation/screenshots for board work.
+
+
+### Duplicate imported references
+
+An issue imported into backlog may duplicate a task already on the board. Link it
+to the canonical card and label it `blocked:duplicate-reference`; never treat it
+as another independently executable task. Ownership preflight must check this
+flag even when the owner label matches. Do not delete or overwrite user backlog
+items to resolve duplication without verifying the canonical mapping.
