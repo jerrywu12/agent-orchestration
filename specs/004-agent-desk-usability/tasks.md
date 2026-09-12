@@ -27,3 +27,9 @@
 - [ ] T014 Commit/push/PR, green CI and review, merge and ff main; preview/backup/redeploy app with existing bin/install.mjs, install Chrome app through Chrome UI, verify exact live root/SHA/claims and owned-ticket delivery. Record evidence and rollback paths.
 
 Dependencies: T001→T002. Parser T005 and PWA T004 are independent after contracts; frontend T003/T007/T009/T011 follows frozen shared types and runs alongside lead backend work. Lead serializes all shared service/http/lockfile changes. Final T012→T013→T014. MVP slices stay checkpointed; all four stories are required for user completion.
+
+Delivery checkpoint (2026-09-13): T002–T012 passed; 175 Node tests, 34 browser tests,
+build, independent source review and all three CI jobs green. PR17 merged and the exact
+runtime is deployed with backup/rollback and claim preservation verified. T013/T014 remain
+open only for completing the native folder chooser and Chrome standalone installation:
+macOS is locked and the unlock request is pending. See verification.md for exact evidence.
