@@ -309,3 +309,34 @@ test("in-flight first import holds repository identity before any ticket exists"
     (e) => e.code === "LINKED_REPOSITORY",
   );
 });
+
+test("heartbeat payloads cannot persist a non-renderable or oversized summary", (t) => {
+  const { app, store, project } = fixture(t);
+  const x = ticket(app, project);
+  const run = app.claim(x.id, {
+    agentId: "codex",
+    sessionId: "heartbeat-session",
+  });
+  for (const summary of [{ bad: true }, 42, null, "x".repeat(4001)])
+    assert.throws(
+      () =>
+        app.event(run.id, {
+          agentId: "codex",
+          sessionId: run.sessionId,
+          eventId: "bad",
+          seq: 1,
+          type: "heartbeat",
+          summary,
+        }),
+      (e) => e.code === "VALIDATION",
+    );
+  assert.equal(store.execution(run.id).lastSeq, 0);
+  app.event(run.id, {
+    agentId: "codex",
+    sessionId: run.sessionId,
+    eventId: "valid",
+    seq: 1,
+    type: "heartbeat",
+  });
+  assert.equal(store.execution(run.id).summary, run.summary);
+});

@@ -534,8 +534,8 @@ export class Service extends EventEmitter {
       )
         fail(422, "VALIDATION", "Progress must be between 0 and 100.");
       const summary =
-        input.type === "heartbeat"
-          ? (input.summary ?? execution.summary)
+        input.type === "heartbeat" && input.summary === undefined
+          ? execution.summary
           : text(input.summary, "Progress summary", 4000);
       const terminal = ["checkpoint", "complete", "failed", "stopped"].includes(
         input.type,

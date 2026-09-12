@@ -335,10 +335,13 @@ function updateHermes(text, command, path) {
     );
   if (!servers) doc.set("mcp_servers", doc.createNode({}));
   doc.deleteIn(["mcp_servers", "kangentic"]);
-  doc.setIn(["mcp_servers", "agent_desk"], doc.createNode({
-    command,
-    args: ["--agent", "hermes"],
-  }));
+  doc.setIn(
+    ["mcp_servers", "agent_desk"],
+    doc.createNode({
+      command,
+      args: ["--agent", "hermes"],
+    }),
+  );
   return String(doc);
 }
 

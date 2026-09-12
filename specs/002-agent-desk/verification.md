@@ -21,6 +21,8 @@ not the source of this app. Source base: 221345c51a545075b066b2f0106310070b376ef
 
 - Existing shared tooling: 43 efficiency tests and 13 guardrail tests passed.
 - Source shell syntax and fresh template installation/doctor passed (no FAIL lines).
+- App suite:107 passed on Node22.22.0, plus the final malformed-heartbeat regression
+  and its13-test core lane passed after correction (108 total cases).
 - App production build passed on Node 22.22.0; browser suite: 11 passed.
 - Browser checks cover ticket creation/edit/comment/reload, stage customization, filters/board,
   320/390/768px layouts and keyboard focus, offline recovery, concurrent drafts and external

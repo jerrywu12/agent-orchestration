@@ -420,6 +420,9 @@ export async function startServer() {
   });
   const { SyncManager } = await import("./sync.mjs");
   const syncManager = new SyncManager(service);
+  const { LegacyObserver } = await import("./legacy-observer.mjs");
+  const legacyObserver = new LegacyObserver(service);
+  legacyObserver.tick();
   const server = createAppServer({
     service,
     runner,
@@ -432,8 +435,12 @@ export async function startServer() {
     server.once("error", reject);
     server.listen(port, host, r);
   });
+  server.on("close", () => {
+    legacyObserver.close();
+    clearInterval(syncManager.timer);
+  });
   console.log(`Agent Desk listening at http://${host}:${port}`);
-  return { server, service, runner, syncManager };
+  return { server, service, runner, syncManager, legacyObserver };
 }
 if (
   process.argv[1] &&
