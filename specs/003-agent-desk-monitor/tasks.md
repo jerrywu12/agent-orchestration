@@ -1,0 +1,8 @@
+# Tasks
+
+- [x] T01: Lock requirements, plan, shared JSON/TypeScript contract and acceptance catalogue. Files: specs/003-agent-desk-monitor/**, .specify/feature.json, tools/agent-desk/src/machine-types.ts. Verify contract field consistency before parallel implementation.
+- [ ] T02: Implement read-only inventory and runtime collectors with fixture tests. Owner collector; files server/machine-inventory.mjs, tests/machine-inventory.test.mjs. Verify node --test tests/machine-inventory.test.mjs. Acceptance stories 1-3,5; safe bounds, privacy, honest discovery.
+- [ ] T03: Add cached coordinator, source persistence and admin-only HTTP lifecycle. Owner lead; files server/machine-monitor.mjs, server/http.mjs, tests/machine-monitor.test.mjs, tests/machine-http.test.mjs. Verify focused Node tests. Acceptance 1-5, overlap/retention/config race.
+- [ ] T04: Build responsive Machine list with search, sources, freshness and refresh; tests first. Owner frontend; files src/components/MachineView.tsx, src/App.tsx, src/types.ts, src/styles.css, tests/machine-browser.spec.ts. Verify npm run build and targeted Playwright. Acceptance 1-6.
+- [ ] T05: Integrate, independent review, full app suites and browser/native proof. Owner lead/reviewer; files above only for review fixes; docs/PROJECT_DEVELOPMENT.md, tools/agent-desk/README.md, README.md, specs/003-agent-desk-monitor/verification.md. Verify npm test/build/test:e2e, git diff --check, CI and live health.
+- [ ] T06: Commit/push/PR/review/merge then preview and upgrade local installed Agent Desk preserving DB, configuration and rollback; verify live Machine page, custom source persistence, actual host coverage, no unrelated session mutation. Update verification and ticket with delivery evidence.
