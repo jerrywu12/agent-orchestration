@@ -41,6 +41,15 @@ Require zero `FAIL` lines in doctor output; doctor currently returns zero even w
 
 For documentation-only work, verify links and factual commands, review the diff, and run the fresh-project smoke if distributed templates changed. CI retains the full source suites.
 
+## Agent Desk verification
+
+The app under `tools/agent-desk/` requires Node 22.22+. Run `npm test`, `npm run build`,
+and `npm run test:e2e` from that directory. The browser suite uses an isolated temporary
+SQLite database and server; connector tests use injected GitHub responses and fake agents.
+CI runs the same checks on Node 22 and Chromium. Native installation, source import and
+client reconnection are separate live cutover checks, recorded in
+[the verification record](../specs/002-agent-desk/verification.md).
+
 ## Publishing and deployment
 
 Commit, push and create a PR with the requested behavior, coverage and actual validation. Wait for required CI and review before merging, then fast-forward the clean canonical checkout. Copied downstream role/config/script templates leave differing files intact and create `*.orchestration-new` proposals. The existing installer separately replaces `.githooks/post-commit` and makes shell scripts executable; account for those effects on established projects.

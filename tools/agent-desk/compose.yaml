@@ -1,0 +1,18 @@
+services:
+  agent-desk:
+    build:
+      context: .
+      args:
+        SOURCE_SHA: ${SOURCE_SHA:-unavailable}
+    ports:
+      - "127.0.0.1:4310:4310"
+    environment:
+      AGENT_DESK_ADMIN_TOKEN: ${AGENT_DESK_ADMIN_TOKEN:?Set a private administrator token}
+      AGENT_DESK_PUBLIC_HOST: ${AGENT_DESK_PUBLIC_HOST:-localhost:4310}
+      AGENT_DESK_HTTPS: ${AGENT_DESK_HTTPS:-0}
+      GH_TOKEN: ${GH_TOKEN:-}
+    volumes:
+      - agent-desk-data:/data
+    restart: unless-stopped
+volumes:
+  agent-desk-data:

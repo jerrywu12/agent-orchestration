@@ -4,6 +4,23 @@ This project owns the shared development tooling and reusable orchestration work
 
 The setup has two parts: user-wide tools and guidance that apply to existing and future projects, and an optional project-local queue with isolated worktree runners. One lead agent owns each task, delegates bounded work, and verifies the result. Agents are selected as needed; every task does not invoke every provider.
 
+## Agent Desk project management
+
+[Agent Desk](tools/agent-desk/README.md) is the self-hosted board for independent AI agents,
+replacing Kangentic. It includes compact list/board views, configurable stages, ticket ownership,
+exact executor claims and progress, dependencies, audit history, GitHub Issues/Projects v2 sync,
+CLI/MCP reporting, safe source import, macOS installation and Docker hosting.
+
+```sh
+cd tools/agent-desk
+npm ci
+npm run build
+npm start
+```
+
+Open http://127.0.0.1:4310. See the [coordination policy](docs/AGENT_DESK_POLICY.md) and
+[feature contract](specs/002-agent-desk/spec.md) for assignment, session recovery and delivery rules.
+
 ## Agent roles and execution paths
 
 | Agent or provider | Default role | Integration provided here |
