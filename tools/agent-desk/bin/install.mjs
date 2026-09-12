@@ -396,7 +396,7 @@ function launchAgent(options) {
     AGENT_DESK_HOST: "127.0.0.1",
     AGENT_DESK_PORT: "4310",
     AGENT_DESK_DATA_DIR: dataDir,
-    PATH: `${dirname(node)}:${join(options.home, ".local/bin")}:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin`,
+    PATH: `${dirname(node)}:${join(options.home, ".local/bin")}:/opt/homebrew/opt/gemini-cli/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin`,
   };
   return `<?xml version="1.0" encoding="UTF-8"?>\n<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">\n<plist version="1.0"><dict>\n<key>Label</key><string>local.agent.agent-desk</string>\n<key>ProgramArguments</key><array><string>${xml(node)}</string><string>${xml(join(appPath, "server/http.mjs"))}</string></array>\n<key>WorkingDirectory</key><string>${xml(appPath)}</string>\n<key>EnvironmentVariables</key><dict>${Object.entries(
     environment,

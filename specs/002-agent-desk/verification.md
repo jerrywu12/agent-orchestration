@@ -84,3 +84,8 @@ Fresh work starts through Agent Desk or an explicitly ticket-linked CLI/MCP clie
 project-specific SSP queue scripts are not auto-associated by title: they can be launched through
 agent-desk wrap with an exact ticket, and their native clients report through the installed MCP.
 No heuristic claim adoption or provider task dispatch was introduced.
+
+Gemini CLI was found in Homebrew's opt/gemini-cli/bin directory and its installed help
+confirmed the fixed prompt/stream-json adapter. The service PATH now includes that directory.
+Cursor agent CLI is absent; its MCP connector is verified, while direct launch remains
+unavailable until the separate CLI is installed. The editor launcher was not substituted.
