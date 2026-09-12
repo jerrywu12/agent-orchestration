@@ -94,7 +94,7 @@ function AgentRow({
   const assigned = state.tickets.filter(
     (ticket) => ticket.ownerId === agent.id && !ticket.archived,
   );
-  const running = assigned.filter((ticket) => isActive(ticket.execution));
+  const reserved = assigned.filter((ticket) => isActive(ticket.execution));
   const external = agent.adapter === "external";
   async function update(fields: Partial<Agent>) {
     setBusy(true);
@@ -194,15 +194,15 @@ function AgentRow({
         <span>{assigned.length} assigned</span>
         <span>
           <CircleDot size={12} />
-          {running.length} active
+          {reserved.length} reserved
         </span>
         {integration?.reason && (
           <span className="agent-reason">{integration.reason}</span>
         )}
       </div>
-      {running.length > 0 && (
+      {reserved.length > 0 && (
         <div className="agent-sessions">
-          {running.map((ticket) => (
+          {reserved.map((ticket) => (
             <button key={ticket.id} onClick={() => onOpen(ticket.id)}>
               <span className="ticket-id">
                 {ticketKey(ticket, state.projects)}

@@ -171,8 +171,8 @@ export function WorkView({
         <span>
           <span className={`live-dot ${activeCount ? "" : "quiet"}`} />
           {activeCount
-            ? `${activeCount} agent ${activeCount === 1 ? "session" : "sessions"} active`
-            : "No active agent sessions"}
+            ? `${activeCount} agent ${activeCount === 1 ? "session" : "sessions"} reserved`
+            : "No reserved agent sessions"}
         </span>
         <span>
           {

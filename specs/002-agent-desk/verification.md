@@ -22,7 +22,7 @@ not the source of this app. Source base: 221345c51a545075b066b2f0106310070b376ef
 - Existing shared tooling: 43 efficiency tests and 13 guardrail tests passed.
 - Source shell syntax and fresh template installation/doctor passed (no FAIL lines).
 - App suite:107 passed on Node22.22.0, plus the final malformed-heartbeat regression
-  and its13-test core lane passed after correction (108 total cases).
+  and its13-test core lane passed after correction. CI then passed all108 cases.
 - App production build passed on Node 22.22.0; browser suite: 11 passed.
 - Browser checks cover ticket creation/edit/comment/reload, stage customization, filters/board,
   320/390/768px layouts and keyboard focus, offline recovery, concurrent drafts and external
@@ -47,5 +47,40 @@ so that source transfer did not occur.
 
 ## Live cutover
 
-Pending final test/review checkpoint, deployment and GitHub verification. Original source data
-and live native executors must remain intact. The transition contract is recorded separately.
+Completed on 2026-09-13 Asia/Shanghai. Installed runtime is served from
+`~/.local/share/agent-desk/app` at http://127.0.0.1:4310 by LaunchAgent
+`local.agent.agent-desk`. Health verified initial release862d4a0f1838f548e6108cfc5fe45261582a6489
+with ready storage and the installed path, followed by the final reviewed UI label update.
+The runtime build-info and private installer manifest identify the exact installed revision.
+
+- Imported49 source work items,6 stages,14 sessions and6 attachment references. Preserved10
+  unresolved claims. Observer reported1 running and9 suspended source sessions at verification.
+  Counts explicitly describe reserved sessions; suspended claims are not presented as running agents.
+- Retired only the verified legacy synchronization watcher and replaced its two Python writers
+  plus project MCP wiring. Native Kangentic/agent processes and original databases were preserved.
+- Installed/scoped MCP handshake and task-read checks passed for Codex, Claude, Gemini,
+  Antigravity, Cursor and Hermes (four tools each); per-agent results contained only assigned work.
+  Native clients already open still need reconnect; no active client was forcibly restarted.
+- GitHub authenticated as the existing account. Smart-Stock-Picker Project1 read successfully;
+  five stages mapped to existing Status options, with Parked deliberately retaining its local hold.
+  First pull imported8 additional issue records; existing source links did not duplicate.
+- Published the actual delivery ticket as agent-orchestration issue13, edited its title locally
+  and verified the GitHub title changed, then appended verified evidence on GitHub and proved
+  its return to Agent Desk. Both project sync states returned idle/error-null/pending0.
+- Real CLI-wrapped verification reported progress seq1 with exact execution/session and PR12,
+  then wrapper completion seq2 became awaiting_review and released only that execution. Delivery
+  remained unclaimed pending the reviewed merge; the10 imported reservations remained intact.
+- Updated the P077 automation to stable Agent Desk CLI/MCP references, retaining PAUSED status,
+  its schedule, target task and provider/ownership constraints.
+- Consistent live backup and restore passed integrity_check=ok with58 tickets. Source, private
+  import/installer/cutover backups and attachment bytes remain outside Git.
+- PR12: independent review APPROVE; all three CI jobs passed, including108 app tests and browser.
+
+Private recovery evidence is under `~/.local/state/agent-desk/installations/`, `migrations/`,
+`cutovers/20260912T165114Z/manifest.json`, and `backups/20260912T1700-post-cutover.db`.
+Do not commit these artifacts. Source change and global cutover are separately verified.
+
+Fresh work starts through Agent Desk or an explicitly ticket-linked CLI/MCP client. Older
+project-specific SSP queue scripts are not auto-associated by title: they can be launched through
+agent-desk wrap with an exact ticket, and their native clients report through the installed MCP.
+No heuristic claim adoption or provider task dispatch was introduced.
