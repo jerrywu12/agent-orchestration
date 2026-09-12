@@ -209,7 +209,11 @@ function inventory(): MachineSnapshot {
   };
 }
 
-async function fixture(page: Page, initial = inventory()) {
+async function fixture(
+  page: Page,
+  initial = inventory(),
+  initialResponseDelayMs = 0,
+) {
   let current = initial;
   let disconnected = false;
   let reads = 0;
@@ -223,6 +227,12 @@ async function fixture(page: Page, initial = inventory()) {
     const path = new URL(request.url()).pathname;
     if (path === "/api/machine" && request.method() === "GET") {
       reads += 1;
+      const observed = current;
+      if (reads === 1 && initialResponseDelayMs) {
+        await new Promise((resolve) =>
+          setTimeout(resolve, initialResponseDelayMs),
+        );
+      }
       if (disconnected)
         return route.fulfill({
           status: 503,
@@ -233,7 +243,7 @@ async function fixture(page: Page, initial = inventory()) {
             },
           },
         });
-      return route.fulfill({ json: current });
+      return route.fulfill({ json: observed });
     }
     const body = request.postData() ? request.postDataJSON() : null;
     mutations.push({ path, method: request.method(), body });
@@ -554,8 +564,11 @@ test("refresh is asynchronous and disconnected or older observations retain the 
 test("new inventory and source changes remain usable after restart when runtime probing fails", async ({
   page,
 }) => {
-  const mocked = await fixture(page);
+  const mocked = await fixture(page, inventory(), 300);
   await openMachine(page);
+  await expect(
+    page.getByRole("tab", { name: "Libraries 57", exact: true }),
+  ).toBeVisible();
   const restarted = inventory();
   mocked.set({
     ...restarted,
@@ -620,8 +633,11 @@ test("new inventory and source changes remain usable after restart when runtime 
 test("fresh runtime does not erase retained inventory while discovery restarts", async ({
   page,
 }) => {
-  const mocked = await fixture(page);
+  const mocked = await fixture(page, inventory(), 300);
   await openMachine(page);
+  await expect(
+    page.getByRole("tab", { name: "Libraries 57", exact: true }),
+  ).toBeVisible();
   const restarted = inventory();
   mocked.set({
     ...restarted,

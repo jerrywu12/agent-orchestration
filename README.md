@@ -9,7 +9,9 @@ The setup has two parts: user-wide tools and guidance that apply to existing and
 [Agent Desk](tools/agent-desk/README.md) is the self-hosted board for independent AI agents,
 replacing Kangentic. It includes compact list/board views, configurable stages, ticket ownership,
 exact executor claims and progress, dependencies, audit history, GitHub Issues/Projects v2 sync,
-CLI/MCP reporting, safe source import, macOS installation and Docker hosting.
+CLI/MCP reporting, read-only Mac agent/service/library monitoring, safe source import,
+macOS installation and Docker hosting. Machine observations include explicit scan coverage,
+process resource usage and installed-versus-declared library versions.
 
 ```sh
 cd tools/agent-desk

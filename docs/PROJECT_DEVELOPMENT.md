@@ -46,6 +46,9 @@ For documentation-only work, verify links and factual commands, review the diff,
 The app under `tools/agent-desk/` requires Node 22.22+. Run `npm test`, `npm run build`,
 and `npm run test:e2e` from that directory. The browser suite uses an isolated temporary
 SQLite database and server; connector tests use injected GitHub responses and fake agents.
+Machine monitor tests inject fixture roots/probes and the browser server disables native
+collection; tests must not discover the developer or CI host. Collector/API/coordinator tests
+cover metadata bounds, source races, stale observations and administrator-only access.
 CI runs the same checks on Node 22 and Chromium. Native installation, source import and
 client reconnection are separate live cutover checks, recorded in
 [the verification record](../specs/002-agent-desk/verification.md).

@@ -935,7 +935,7 @@ function Libraries({ snapshot }: { snapshot: MachineSnapshot }) {
           <option value="">All sources</option>
           {snapshot.sources.map((item) => (
             <option key={item.id} value={item.id}>
-              {item.label}
+              {item.label} · {item.path}
             </option>
           ))}
         </select>
