@@ -3,7 +3,7 @@
   font-synthesis: none;
   color: #292e2b;
   background: #fff;
-  font-size: 13px;
+  font-size: 16px;
   --ink: #292e2b;
   --muted: #687066;
   --faint: #747c70;
@@ -105,39 +105,39 @@ p {
   margin: 0;
 }
 h1 {
-  font-size: 27px;
+  font-size: 30px;
   font-weight: 650;
   letter-spacing: -0.85px;
   line-height: 1.3;
 }
 h2 {
-  font-size: 15px;
+  font-size: 18px;
   font-weight: 600;
   letter-spacing: -0.2px;
 }
 h3 {
-  font-size: 13px;
+  font-size: 16px;
   font-weight: 600;
 }
 label {
   display: flex;
   flex-direction: column;
   gap: 7px;
-  font-size: 12px;
+  font-size: 15px;
   font-weight: 550;
 }
 label input,
 label select,
 label textarea {
   font-weight: 400;
-  font-size: 13px;
+  font-size: 16px;
 }
 svg {
   flex-shrink: 0;
 }
 kbd {
   font:
-    10px -apple-system,
+    13px -apple-system,
     BlinkMacSystemFont,
     sans-serif;
   background: #f5f6f2;
@@ -160,7 +160,7 @@ summary {
   border: 1px solid #dfe4db;
   background: #fff;
   border-radius: var(--radius);
-  font-size: 12px;
+  font-size: 15px;
   font-weight: 550;
   white-space: nowrap;
   transition: background 0.12s ease;
@@ -201,7 +201,7 @@ summary {
 .button.small-button {
   min-height: 30px;
   padding: 6px 10px;
-  font-size: 11px;
+  font-size: 14px;
 }
 .icon-button {
   display: inline-flex;
@@ -222,7 +222,7 @@ summary {
   gap: 5px;
   align-items: center;
   padding: 0;
-  font-size: 12px;
+  font-size: 15px;
   color: var(--green);
   text-align: left;
 }
@@ -233,12 +233,12 @@ summary {
   color: var(--muted);
 }
 .small {
-  font-size: 11px;
+  font-size: 14px;
 }
 .count,
 .heading-count {
   color: #8a9287;
-  font-size: 11px;
+  font-size: 14px;
   font-weight: 500;
 }
 .count {
@@ -251,12 +251,12 @@ summary {
 .optional {
   display: contents;
   color: #969e93;
-  font-size: 11px;
+  font-size: 14px;
   font-weight: 400;
 }
 .field-hint {
   color: var(--muted);
-  font-size: 11px;
+  font-size: 14px;
   font-weight: 400;
   line-height: 1.7;
 }
@@ -309,7 +309,7 @@ summary {
   display: flex;
   align-items: center;
   gap: 10px;
-  font-size: 17px;
+  font-size: 20px;
   font-weight: 650;
   letter-spacing: -0.6px;
   padding: 0 11px;
@@ -329,7 +329,7 @@ summary {
   display: block;
   margin-top: 3px;
   color: #9aa292;
-  font-size: 7px;
+  font-size: 10px;
   font-weight: 500;
   letter-spacing: 1.1px;
 }
@@ -343,7 +343,7 @@ summary {
   background: #fdfefb;
   padding: 10px;
   margin: 29px 3px 21px;
-  font-size: 11px;
+  font-size: 14px;
   font-weight: 600;
 }
 .workspace-switch > svg {
@@ -354,7 +354,7 @@ summary {
   display: block;
   color: #929a8d;
   font-weight: 400;
-  font-size: 10px;
+  font-size: 13px;
   margin-top: 3px;
 }
 .workspace-icon {
@@ -383,7 +383,7 @@ summary {
   padding: 8px 11px;
   border-radius: 5px;
   text-align: left;
-  font-size: 12px;
+  font-size: 15px;
   color: #777f70;
 }
 .nav-item > span:nth-child(2) {
@@ -406,7 +406,7 @@ summary {
 .nav-count {
   margin-left: auto;
   color: #949e8b;
-  font-size: 10px;
+  font-size: 13px;
   font-weight: 400;
   flex-shrink: 0;
 }
@@ -416,7 +416,7 @@ summary {
   justify-content: space-between;
   padding-left: 12px;
   margin: 29px 1px 6px;
-  font-size: 9px;
+  font-size: 12px;
   font-weight: 600;
   color: #959e8d;
   text-transform: uppercase;
@@ -427,7 +427,7 @@ summary {
   min-height: 0;
 }
 .project-glyph {
-  font-size: 8px;
+  font-size: 11px;
   font-weight: 600;
   letter-spacing: -0.3px;
   border: 1px solid #dde4d5;
@@ -442,7 +442,7 @@ summary {
   flex-shrink: 0;
 }
 .sidebar-empty {
-  font-size: 11px;
+  font-size: 14px;
   color: #90998a;
   line-height: 1.8;
   padding: 8px 12px;
@@ -455,7 +455,7 @@ summary {
   display: flex;
   align-items: center;
   gap: 7px;
-  font-size: 10px;
+  font-size: 13px;
   color: #7c8873;
 }
 .live-dot {
@@ -478,7 +478,7 @@ summary {
   justify-content: space-between;
   margin-top: 8px;
   color: #a3aa9c;
-  font-size: 9px;
+  font-size: 12px;
 }
 .version-label {
   max-width: 55px;
@@ -489,7 +489,7 @@ summary {
 .logout {
   margin-top: 13px;
   color: #7c8774;
-  font-size: 10px;
+  font-size: 13px;
 }
 .main-content {
   width: calc(100% - 225px);
@@ -509,7 +509,7 @@ summary {
   padding: 40px 36px 17px;
 }
 .page-kicker {
-  font-size: 9px;
+  font-size: 12px;
   color: #9ba295;
   font-weight: 550;
   letter-spacing: 1.3px;
@@ -536,7 +536,7 @@ summary {
 .work-heading p,
 .standard-heading p {
   color: #8c9487;
-  font-size: 12px;
+  font-size: 15px;
   line-height: 1.7;
   margin-top: 8px;
 }
@@ -544,7 +544,7 @@ summary {
   display: flex;
   align-items: center;
   gap: 17px;
-  font-size: 10px;
+  font-size: 13px;
   color: #939c8c;
   padding: 0 36px 24px;
 }
@@ -582,7 +582,7 @@ summary {
   box-shadow: none;
   padding: 7px 0;
   width: 100%;
-  font-size: 11px;
+  font-size: 14px;
 }
 .search-field kbd {
   margin-right: 10px;
@@ -594,7 +594,7 @@ summary {
 }
 .toolbar-filters > select,
 .extra-filters > select {
-  font-size: 10px;
+  font-size: 13px;
   border: 1px solid #e6eae1;
   background: #fafbf8;
   color: #7a8572;
@@ -603,7 +603,7 @@ summary {
   max-width: 145px;
 }
 .toolbar-filters .button {
-  font-size: 10px;
+  font-size: 13px;
   padding: 6px 8px;
   min-height: 28px;
   color: #849078;
@@ -648,7 +648,7 @@ summary {
   flex-direction: row;
   align-items: center;
   gap: 6px;
-  font-size: 11px;
+  font-size: 14px;
   white-space: nowrap;
   font-weight: 400;
 }
@@ -664,7 +664,7 @@ summary {
 .list-columns {
   color: #a0a897;
   min-height: 37px;
-  font-size: 9px;
+  font-size: 12px;
 }
 .list-columns > span:not(:first-child) {
   padding-left: 1px;
@@ -688,12 +688,12 @@ summary {
 }
 .stage-toggle h2 {
   color: #56694a;
-  font-size: 10px;
+  font-size: 13px;
   font-weight: 600;
   letter-spacing: 0;
 }
 .stage-toggle .count {
-  font-size: 9px;
+  font-size: 12px;
   color: #a0ad94;
 }
 .stage-icon {
@@ -704,7 +704,7 @@ summary {
   align-items: center;
   gap: 7px;
   text-align: left;
-  font-size: 10px;
+  font-size: 13px;
   color: #a1aa97;
   width: 100%;
   padding: 15px 56px;
@@ -727,20 +727,21 @@ summary {
   gap: 13px;
 }
 .ticket-id {
-  font-size: 9px;
+  font-size: 12px;
   color: #9fa994;
   white-space: nowrap;
   font-variant-numeric: tabular-nums;
   letter-spacing: 0.2px;
 }
 .ticket-main > .ticket-id {
-  width: 66px;
+  width: max-content;
+  max-width: 100%;
   flex-shrink: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  overflow: visible;
+  text-overflow: clip;
 }
 .ticket-title {
-  font-size: 11px;
+  font-size: 14px;
   font-weight: 500;
   line-height: 1.55;
   text-align: left;
@@ -769,7 +770,7 @@ summary {
 }
 .label {
   display: inline-block;
-  font-size: 8px;
+  font-size: 11px;
   color: #8a9780;
   border: 1px solid #e5eadf;
   background: #fafbf7;
@@ -784,7 +785,7 @@ summary {
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  font-size: 9px;
+  font-size: 12px;
   font-weight: 450;
   line-height: 1.4;
   border: 1px solid #e1e7da;
@@ -821,7 +822,7 @@ summary {
   border-color: transparent;
   background: transparent;
   width: 100%;
-  font-size: 9px;
+  font-size: 12px;
   color: #89947e;
   padding: 7px 2px 7px 22px;
   appearance: none;
@@ -864,7 +865,7 @@ summary {
   color: var(--item-color);
   background: color-mix(in srgb, var(--item-color) 9%, white);
   border: 1px solid color-mix(in srgb, var(--item-color) 16%, white);
-  font-size: 10px;
+  font-size: 13px;
   font-weight: 550;
   flex-shrink: 0;
 }
@@ -872,7 +873,7 @@ summary {
   width: 19px;
   height: 19px;
   border-radius: 50%;
-  font-size: 7px;
+  font-size: 10px;
 }
 .avatar-unassigned {
   border: 1px dashed #ced6c5;
@@ -881,18 +882,18 @@ summary {
 }
 .updated-cell {
   color: #a0aa95;
-  font-size: 9px;
+  font-size: 12px;
 }
 .list-footer {
   display: flex;
   justify-content: space-between;
   padding: 17px 36px;
   color: #a4ad99;
-  font-size: 9px;
+  font-size: 12px;
 }
 .list-footer kbd {
   margin-left: 11px;
-  font-size: 8px;
+  font-size: 11px;
 }
 .work-board {
   display: flex;
@@ -918,7 +919,7 @@ summary {
   cursor: default;
 }
 .board-column .stage-toggle h2 {
-  font-size: 11px;
+  font-size: 14px;
 }
 .board-column .stage-tickets {
   display: flex;
@@ -948,7 +949,7 @@ summary {
   white-space: normal;
   overflow-wrap: anywhere;
   padding: 9px 0;
-  font-size: 12px;
+  font-size: 15px;
 }
 .board-ticket > .status-chip {
   margin: 0 5px 8px 0;
@@ -986,13 +987,13 @@ summary {
   margin-bottom: 22px;
 }
 .empty-state h2 {
-  font-size: 17px;
+  font-size: 20px;
   font-weight: 550;
   color: #5f7051;
   letter-spacing: -0.4px;
 }
 .empty-state p {
-  font-size: 12px;
+  font-size: 15px;
   color: #98a18f;
   line-height: 1.8;
   max-width: 355px;
@@ -1004,7 +1005,7 @@ summary {
   align-items: center;
   justify-content: space-between;
   padding: 12px 30px;
-  font-size: 11px;
+  font-size: 14px;
   color: #a47637;
   background: #fffbf0;
   border-bottom: 1px solid #f0e5cd;
@@ -1026,7 +1027,7 @@ summary {
   gap: 8px;
   border-radius: 5px;
   padding: 10px 12px;
-  font-size: 11px;
+  font-size: 14px;
   line-height: 1.6;
   margin-bottom: 12px;
 }
@@ -1048,7 +1049,7 @@ summary {
 .warning-notice .text-button {
   display: block;
   margin-top: 5px;
-  font-size: 11px;
+  font-size: 14px;
 }
 .success-notice {
   color: #60824a;
@@ -1109,7 +1110,7 @@ summary {
   gap: 8px;
 }
 .section-title h2 {
-  font-size: 14px;
+  font-size: 17px;
 }
 .activity-filter {
   display: flex;
@@ -1122,13 +1123,13 @@ summary {
   flex-direction: row;
   align-items: center;
   gap: 13px;
-  font-size: 11px;
+  font-size: 14px;
   color: var(--muted);
 }
 .activity-filter select {
   min-width: 160px;
   padding: 7px 10px;
-  font-size: 11px;
+  font-size: 14px;
 }
 .activity-feed {
   list-style: none;
@@ -1162,7 +1163,7 @@ summary {
   display: flex;
   gap: 8px;
   align-items: baseline;
-  font-size: 10px;
+  font-size: 13px;
   color: #a1ab95;
 }
 .activity-meta strong {
@@ -1171,11 +1172,11 @@ summary {
 }
 .activity-meta time {
   margin-left: auto;
-  font-size: 9px;
+  font-size: 12px;
   white-space: nowrap;
 }
 .activity-content > p {
-  font-size: 12px;
+  font-size: 15px;
   line-height: 1.8;
   margin-top: 7px;
   color: #77886a;
@@ -1184,7 +1185,7 @@ summary {
 }
 .activity-ticket {
   margin-top: 8px;
-  font-size: 10px;
+  font-size: 13px;
 }
 .activity-feed.compact {
   padding: 0;
@@ -1198,7 +1199,7 @@ summary {
   width: 24px;
 }
 .activity-feed.compact .activity-content > p {
-  font-size: 11px;
+  font-size: 14px;
 }
 .activity-empty {
   padding: 16px 0;
@@ -1232,7 +1233,7 @@ summary {
   margin-bottom: 5px;
 }
 .rename-agent {
-  font-size: 10px;
+  font-size: 13px;
   color: #96a58a;
   opacity: 0;
 }
@@ -1244,7 +1245,7 @@ summary {
   display: flex;
   align-items: center;
   gap: 6px;
-  font-size: 10px;
+  font-size: 13px;
   white-space: nowrap;
 }
 .availability.available {
@@ -1263,7 +1264,7 @@ summary {
   align-items: center;
   gap: 18px;
   margin: 15px 0 0 48px;
-  font-size: 10px;
+  font-size: 13px;
   color: #97a38c;
 }
 .agent-row-body > span {
@@ -1273,7 +1274,7 @@ summary {
 }
 .agent-row-body .agent-reason {
   color: #aaa48e;
-  font-size: 10px;
+  font-size: 13px;
 }
 .agent-sessions {
   margin: 13px 0 0 48px;
@@ -1288,7 +1289,7 @@ summary {
   align-items: center;
   text-align: left;
   padding: 10px;
-  font-size: 10px;
+  font-size: 13px;
   color: #859675;
 }
 .agent-sessions button > span:nth-child(2) {
@@ -1346,7 +1347,7 @@ summary {
 }
 .quiet-note p {
   line-height: 1.9;
-  font-size: 11px;
+  font-size: 14px;
   max-width: 650px;
 }
 .inline-name-form {
@@ -1406,12 +1407,12 @@ summary {
 }
 .sync-row strong {
   display: block;
-  font-size: 11px;
+  font-size: 14px;
   font-weight: 550;
   margin-bottom: 5px;
 }
 .sync-row span {
-  font-size: 10px;
+  font-size: 13px;
   color: var(--muted);
 }
 .stage-mapping {
@@ -1437,7 +1438,7 @@ summary {
 .stage-mapping select,
 .stage-mapping input {
   padding: 7px 10px;
-  font-size: 11px;
+  font-size: 14px;
 }
 .stage-editor-list {
   margin-top: 18px;
@@ -1454,7 +1455,7 @@ summary {
   width: 120px;
   padding: 6px 8px;
   border-color: transparent;
-  font-size: 11px;
+  font-size: 14px;
 }
 .stage-editor > input:hover,
 .stage-editor > input:focus {
@@ -1462,12 +1463,12 @@ summary {
 }
 .stage-editor > select {
   padding: 5px 7px;
-  font-size: 10px;
+  font-size: 13px;
   width: 93px;
 }
 .auto-start {
   color: var(--muted);
-  font-size: 10px;
+  font-size: 13px;
 }
 .stage-actions {
   display: flex;
@@ -1490,7 +1491,7 @@ summary {
 .new-stage-form input {
   flex: 1;
   border-color: transparent;
-  font-size: 11px;
+  font-size: 14px;
   padding: 7px;
 }
 .new-stage-form input:focus {
@@ -1503,7 +1504,7 @@ summary {
   display: grid;
   grid-template-columns: 90px 1fr;
   gap: 11px;
-  font-size: 11px;
+  font-size: 14px;
   margin-top: 20px;
 }
 .service-facts dt {
@@ -1538,11 +1539,11 @@ summary {
   border-bottom: 1px solid var(--line);
 }
 .dialog-heading h2 {
-  font-size: 17px;
+  font-size: 20px;
   font-weight: 600;
 }
 .eyebrow {
-  font-size: 9px;
+  font-size: 12px;
   color: #9fac93;
   margin-bottom: 6px;
   letter-spacing: 0.4px;
@@ -1591,12 +1592,12 @@ summary {
   flex-shrink: 0;
 }
 .drawer .dialog-heading h2 {
-  font-size: 12px;
+  font-size: 15px;
   color: #7f926a;
   letter-spacing: 0.2px;
 }
 .drawer .dialog-heading .eyebrow {
-  font-size: 10px;
+  font-size: 13px;
   margin-bottom: 5px;
 }
 .drawer-scroll {
@@ -1616,7 +1617,7 @@ summary {
   width: 100%;
   border: 0;
   border-radius: 0;
-  font-size: 21px;
+  font-size: 24px;
   line-height: 1.4;
   font-weight: 550;
   color: #4e6240;
@@ -1633,35 +1634,35 @@ summary {
   gap: 15px 18px;
 }
 .detail-properties label {
-  font-size: 10px;
+  font-size: 13px;
   color: #94a287;
   gap: 6px;
 }
 .detail-properties input,
 .detail-properties select {
-  font-size: 11px;
+  font-size: 14px;
   padding: 7px 9px;
   color: #788f65;
 }
 .detail-label {
-  font-size: 11px;
+  font-size: 14px;
   color: #8da17b;
 }
 .detail-label textarea {
-  font-size: 12px;
+  font-size: 15px;
   color: #7e916d;
   min-height: 130px;
   padding: 12px;
 }
 .detail-disclosure {
-  font-size: 11px;
+  font-size: 14px;
   color: #8b9c7b;
 }
 .detail-disclosure > summary {
   padding: 7px 0;
 }
 .detail-disclosure > summary > span {
-  font-size: 9px;
+  font-size: 12px;
   margin-left: 5px;
   color: #a3b296;
 }
@@ -1672,11 +1673,11 @@ summary {
   padding: 12px 0 5px;
 }
 .relationship-fields label {
-  font-size: 10px;
+  font-size: 13px;
 }
 .relationship-fields select,
 .relationship-fields input {
-  font-size: 11px;
+  font-size: 14px;
   padding: 8px;
 }
 .relationship-fields select[multiple] option {
@@ -1689,7 +1690,7 @@ summary {
 }
 .detail-section .section-title h3 {
   color: #728961;
-  font-size: 11px;
+  font-size: 14px;
 }
 .execution-owner {
   display: flex;
@@ -1700,14 +1701,14 @@ summary {
   flex: 1;
 }
 .execution-owner strong {
-  font-size: 11px;
+  font-size: 14px;
   font-weight: 550;
   color: #799367;
   display: block;
 }
 .execution-owner > div > span {
   display: block;
-  font-size: 10px;
+  font-size: 13px;
   color: #a2af96;
   margin-top: 3px;
 }
@@ -1722,7 +1723,7 @@ summary {
   margin: 15px 0;
 }
 .execution-details > p {
-  font-size: 11px;
+  font-size: 14px;
   color: #8aa075;
   line-height: 1.7;
   white-space: pre-wrap;
@@ -1733,7 +1734,7 @@ summary {
   align-items: center;
   gap: 12px;
   margin-top: 12px;
-  font-size: 9px;
+  font-size: 12px;
   color: #97aa85;
 }
 progress {
@@ -1761,7 +1762,7 @@ progress::-moz-progress-bar {
   flex-wrap: wrap;
   gap: 12px;
   margin-top: 12px;
-  font-size: 9px;
+  font-size: 12px;
   color: #a1b18f;
 }
 .execution-facts > span,
@@ -1775,10 +1776,10 @@ progress::-moz-progress-bar {
 .execution-details > .warning-text {
   color: var(--warning);
   margin-top: 10px;
-  font-size: 10px;
+  font-size: 13px;
 }
 .session-reference {
-  font-size: 9px;
+  font-size: 12px;
   color: #a0b08e;
   margin-top: 12px;
 }
@@ -1794,7 +1795,7 @@ progress::-moz-progress-bar {
 }
 .detail-section > .text-button {
   margin-top: 14px;
-  font-size: 10px;
+  font-size: 13px;
   color: #8fa679;
 }
 .handoff-form {
@@ -1808,12 +1809,12 @@ progress::-moz-progress-bar {
   border-radius: 5px;
 }
 .handoff-form label {
-  font-size: 10px;
+  font-size: 13px;
 }
 .handoff-form input,
 .handoff-form select,
 .handoff-form textarea {
-  font-size: 11px;
+  font-size: 14px;
 }
 .handoff-form .button {
   align-self: flex-start;
@@ -1822,11 +1823,11 @@ progress::-moz-progress-bar {
   display: inline-flex;
   align-items: center;
   gap: 7px;
-  font-size: 11px;
+  font-size: 14px;
   color: #86a16e;
 }
 .github-empty p {
-  font-size: 11px;
+  font-size: 14px;
   color: #a2b194;
   line-height: 1.7;
   margin-bottom: 12px;
@@ -1842,17 +1843,17 @@ progress::-moz-progress-bar {
   display: flex;
   align-items: flex-start;
   gap: 7px;
-  font-size: 11px;
+  font-size: 14px;
   color: #ab934f;
   line-height: 1.7;
 }
 .github-conflict details {
   color: #b3a269;
-  font-size: 10px;
+  font-size: 13px;
   margin: 12px 0;
 }
 .github-conflict pre {
-  font-size: 10px;
+  font-size: 13px;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
   max-height: 200px;
@@ -1868,7 +1869,7 @@ progress::-moz-progress-bar {
   width: 100%;
   text-align: left;
   color: #8aa374;
-  font-size: 11px;
+  font-size: 14px;
 }
 .comment-form {
   border: 1px solid #dfead4;
@@ -1885,16 +1886,16 @@ progress::-moz-progress-bar {
   padding: 8px 2px;
   border: 0;
   box-shadow: none;
-  font-size: 11px;
+  font-size: 14px;
   resize: vertical;
   color: #8ca478;
 }
 .comment-form .button {
-  font-size: 10px;
+  font-size: 13px;
 }
 .detail-timestamps {
   margin-top: 25px;
-  font-size: 9px;
+  font-size: 12px;
   color: #afbda3;
 }
 .drawer-footer {
@@ -1908,12 +1909,12 @@ progress::-moz-progress-bar {
   flex-shrink: 0;
 }
 .drawer-footer > .muted {
-  font-size: 9px;
+  font-size: 12px;
   margin-left: auto;
   color: #a2b294;
 }
 .drawer-footer > .button {
-  font-size: 11px;
+  font-size: 14px;
 }
 .discard-confirm {
   display: flex;
@@ -1927,7 +1928,7 @@ progress::-moz-progress-bar {
   border-radius: 4px;
 }
 .discard-confirm p {
-  font-size: 11px;
+  font-size: 14px;
   flex: 1;
   min-width: 150px;
   color: #ac8c4a;
@@ -1945,7 +1946,7 @@ progress::-moz-progress-bar {
   display: flex;
   align-items: center;
   gap: 12px;
-  font-size: 22px;
+  font-size: 25px;
   font-weight: 600;
   letter-spacing: -0.7px;
   margin-bottom: 33px;
@@ -1970,25 +1971,25 @@ progress::-moz-progress-bar {
   color: #94a881;
 }
 .login-panel h1 {
-  font-size: 21px;
+  font-size: 24px;
   letter-spacing: -0.6px;
   margin-bottom: -8px;
 }
 .login-panel > p {
   color: #94a187;
-  font-size: 12px;
+  font-size: 15px;
   line-height: 1.7;
 }
 .login-panel > label {
   margin-top: 8px;
 }
 .login-panel > .field-hint {
-  font-size: 10px;
+  font-size: 13px;
   text-align: center;
 }
 .login-footer {
   color: #a8b29d;
-  font-size: 10px;
+  font-size: 13px;
   margin-top: 25px;
 }
 .spin {
@@ -2070,19 +2071,19 @@ progress::-moz-progress-bar {
   color: var(--ink);
 }
 .ticket-title {
-  font-size: 12px;
+  font-size: 15px;
 }
 .ticket-id,
 .updated-cell,
 .list-columns,
 .list-footer {
-  font-size: 10px;
+  font-size: 13px;
 }
 .inline-select select {
-  font-size: 10px;
+  font-size: 13px;
 }
 .stage-toggle h2 {
-  font-size: 11px;
+  font-size: 14px;
 }
 .status-chip {
   color: #5f6d55;
@@ -2120,7 +2121,7 @@ progress::-moz-progress-bar {
   padding: 14px;
 }
 .reconciliation > p {
-  font-size: 11px;
+  font-size: 14px;
   color: var(--muted);
   line-height: 1.7;
   margin-bottom: 14px;
@@ -2134,12 +2135,12 @@ progress::-moz-progress-bar {
   margin-bottom: 9px;
 }
 .reconcile-session h4 {
-  font-size: 11px;
+  font-size: 14px;
   font-weight: 550;
   margin: 0;
 }
 .source-identity {
-  font-size: 10px;
+  font-size: 13px;
   color: var(--muted);
   margin: 8px 0 12px;
   overflow-wrap: anywhere;
@@ -2151,7 +2152,7 @@ progress::-moz-progress-bar {
   gap: 12px;
 }
 .reconcile-session textarea {
-  font-size: 11px;
+  font-size: 14px;
 }
 .reconcile-session .checkbox-label {
   white-space: normal;
@@ -2179,12 +2180,12 @@ progress::-moz-progress-bar {
     grid-template-columns: minmax(320px, 1fr) 150px 95px 135px 80px;
   }
   .ticket-title {
-    font-size: 12px;
+    font-size: 15px;
   }
   .inline-select select,
   .updated-cell,
   .ticket-id {
-    font-size: 10px;
+    font-size: 13px;
   }
 }
 @media (max-width: 1200px) {
@@ -2217,7 +2218,7 @@ progress::-moz-progress-bar {
     gap: 9px;
   }
   .ticket-main > .ticket-id {
-    width: 55px;
+    width: max-content;
   }
   .ticket-indicators > .label {
     display: none;
@@ -2243,12 +2244,12 @@ progress::-moz-progress-bar {
     width: calc(100% - 202px);
   }
   .brand {
-    font-size: 15px;
+    font-size: 18px;
     gap: 8px;
     padding-left: 7px;
   }
   .brand-subtitle {
-    font-size: 6px;
+    font-size: 9px;
   }
   .list-columns,
   .ticket-row {
@@ -2325,7 +2326,7 @@ progress::-moz-progress-bar {
     display: flex;
     align-items: center;
     gap: 8px;
-    font-size: 13px;
+    font-size: 16px;
     font-weight: 550;
     color: #72855f;
   }
@@ -2337,22 +2338,22 @@ progress::-moz-progress-bar {
     padding: 26px 22px 14px;
   }
   h1 {
-    font-size: 24px;
+    font-size: 27px;
   }
   .work-heading > .button {
     min-height: 34px;
-    font-size: 11px;
+    font-size: 14px;
   }
   .work-heading > .button kbd {
     display: none;
   }
   .work-heading p {
     max-width: 240px;
-    font-size: 11px;
+    font-size: 14px;
   }
   .work-context {
     padding: 0 22px 20px;
-    font-size: 9px;
+    font-size: 12px;
     gap: 12px;
   }
   .work-toolbar {
@@ -2390,11 +2391,11 @@ progress::-moz-progress-bar {
     min-height: 55px;
   }
   .ticket-title {
-    font-size: 11px;
+    font-size: 14px;
   }
   .inline-select select {
     min-height: 34px;
-    font-size: 10px;
+    font-size: 13px;
   }
   .stage-heading {
     min-height: 39px;
@@ -2406,7 +2407,7 @@ progress::-moz-progress-bar {
     width: 30px;
   }
   .stage-toggle h2 {
-    font-size: 11px;
+    font-size: 14px;
   }
   .list-footer {
     padding: 17px 22px;
@@ -2440,7 +2441,7 @@ progress::-moz-progress-bar {
     gap: 12px;
   }
   .work-heading .page-kicker {
-    font-size: 8px;
+    font-size: 11px;
     letter-spacing: 1px;
   }
   .work-heading > .button {
@@ -2448,7 +2449,7 @@ progress::-moz-progress-bar {
     padding: 7px 9px;
   }
   .work-heading p {
-    font-size: 10px;
+    font-size: 13px;
     max-width: 220px;
   }
   .work-context {
@@ -2478,7 +2479,7 @@ progress::-moz-progress-bar {
   .toolbar-filters > select {
     flex: 1;
     max-width: none;
-    font-size: 11px;
+    font-size: 14px;
     min-height: 32px;
   }
   .toolbar-filters .button {
@@ -2503,7 +2504,7 @@ progress::-moz-progress-bar {
     flex-basis: 100%;
     width: auto;
     margin-bottom: 1px;
-    font-size: 8px;
+    font-size: 11px;
   }
   .ticket-title {
     padding: 0;
@@ -2516,7 +2517,7 @@ progress::-moz-progress-bar {
     display: none;
   }
   .owner-cell select {
-    font-size: 9px;
+    font-size: 12px;
   }
   .ticket-indicators {
     gap: 4px;
@@ -2531,33 +2532,33 @@ progress::-moz-progress-bar {
     margin-bottom: 23px;
   }
   .standard-heading p {
-    font-size: 11px;
+    font-size: 14px;
   }
   .activity-meta {
     flex-wrap: wrap;
     gap: 5px;
   }
   .activity-meta time {
-    font-size: 8px;
+    font-size: 11px;
   }
   .activity-feed li {
     gap: 10px;
   }
   .activity-content > p {
-    font-size: 11px;
+    font-size: 14px;
   }
   .agent-identity h3 {
-    font-size: 12px;
+    font-size: 15px;
   }
   .agent-row-heading {
     gap: 9px;
   }
   .rename-agent {
     opacity: 1;
-    font-size: 9px;
+    font-size: 12px;
   }
   .availability {
-    font-size: 9px;
+    font-size: 12px;
     gap: 4px;
   }
   .agent-row-body {
@@ -2573,7 +2574,7 @@ progress::-moz-progress-bar {
   }
   .agent-sessions button {
     gap: 7px;
-    font-size: 9px;
+    font-size: 12px;
   }
   .agent-sessions button > span:nth-child(3) {
     display: none;
@@ -2612,7 +2613,7 @@ progress::-moz-progress-bar {
   }
   .service-facts {
     grid-template-columns: 70px 1fr;
-    font-size: 10px;
+    font-size: 13px;
   }
   .drawer .dialog-heading {
     padding: 16px 20px;
@@ -2628,7 +2629,7 @@ progress::-moz-progress-bar {
     display: none;
   }
   .detail-title {
-    font-size: 19px;
+    font-size: 22px;
   }
   .detail-properties {
     gap: 14px;
@@ -2651,7 +2652,7 @@ progress::-moz-progress-bar {
     padding: 25px;
   }
   .login-panel h1 {
-    font-size: 19px;
+    font-size: 22px;
   }
 }
 @media (prefers-reduced-motion: reduce) {
@@ -2681,7 +2682,7 @@ progress::-moz-progress-bar {
 }
 .machine-heading p {
   color: var(--muted);
-  font-size: 12px;
+  font-size: 15px;
   line-height: 1.7;
   margin-top: 8px;
 }
@@ -2718,14 +2719,14 @@ progress::-moz-progress-bar {
 }
 .machine-host-identity strong {
   display: block;
-  font-size: 14px;
+  font-size: 17px;
   font-weight: 600;
   overflow-wrap: anywhere;
 }
 .machine-host-identity div > span {
   display: block;
   margin-top: 5px;
-  font-size: 10px;
+  font-size: 13px;
   color: var(--muted);
 }
 .machine-host-stat {
@@ -2740,17 +2741,17 @@ progress::-moz-progress-bar {
   display: flex;
   align-items: center;
   gap: 6px;
-  font-size: 10px;
+  font-size: 13px;
   color: var(--muted);
 }
 .machine-host-stat > strong {
-  font-size: 16px;
+  font-size: 19px;
   font-weight: 550;
   font-variant-numeric: tabular-nums;
   letter-spacing: -0.3px;
 }
 .machine-host-stat small {
-  font-size: 9px;
+  font-size: 12px;
   color: var(--muted);
   font-weight: 400;
   letter-spacing: 0;
@@ -2767,7 +2768,7 @@ progress::-moz-progress-bar {
   gap: 16px;
   padding: 13px 0 24px;
   color: var(--muted);
-  font-size: 10px;
+  font-size: 13px;
 }
 .machine-freshness > span {
   display: flex;
@@ -2779,7 +2780,7 @@ progress::-moz-progress-bar {
 }
 .machine-cadence {
   margin-left: auto;
-  font-size: 9px;
+  font-size: 12px;
 }
 .machine-tabs {
   display: flex;
@@ -2791,7 +2792,7 @@ progress::-moz-progress-bar {
   align-items: center;
   gap: 7px;
   padding: 13px 1px;
-  font-size: 12px;
+  font-size: 15px;
   color: var(--muted);
   border-bottom: 2px solid transparent;
   margin-bottom: -1px;
@@ -2802,7 +2803,7 @@ progress::-moz-progress-bar {
   color: var(--green);
 }
 .machine-tab-count {
-  font-size: 9px;
+  font-size: 12px;
   padding: 2px 5px;
   background: #f1f4ed;
   border-radius: 4px;
@@ -2815,7 +2816,7 @@ progress::-moz-progress-bar {
   display: flex;
   align-items: flex-start;
   gap: 10px;
-  font-size: 11px;
+  font-size: 14px;
   padding: 12px 14px;
   background: #fff9ec;
   border: 1px solid #f0e3c8;
@@ -2836,7 +2837,7 @@ progress::-moz-progress-bar {
 }
 .machine-alert .text-button {
   margin-top: 2px;
-  font-size: 11px;
+  font-size: 14px;
   flex-shrink: 0;
 }
 .machine-notice {
@@ -2844,7 +2845,7 @@ progress::-moz-progress-bar {
   align-items: center;
   gap: 7px;
   color: var(--green);
-  font-size: 11px;
+  font-size: 14px;
   line-height: 1.7;
   margin: -6px 0 16px;
 }
@@ -2852,7 +2853,7 @@ progress::-moz-progress-bar {
   display: flex;
   align-items: flex-start;
   gap: 7px;
-  font-size: 11px;
+  font-size: 14px;
   line-height: 1.7;
   color: #89612b;
   padding: 10px 12px;
@@ -2875,11 +2876,11 @@ progress::-moz-progress-bar {
 }
 .machine-first-observation strong {
   color: var(--ink);
-  font-size: 13px;
+  font-size: 16px;
   font-weight: 550;
 }
 .machine-first-observation p {
-  font-size: 11px;
+  font-size: 14px;
   color: var(--muted);
   margin-top: 6px;
   line-height: 1.7;
@@ -2898,7 +2899,7 @@ progress::-moz-progress-bar {
   height: 91px;
 }
 .machine-loading p {
-  font-size: 11px;
+  font-size: 14px;
   color: var(--muted);
 }
 .machine-list-toolbar {
@@ -2924,7 +2925,7 @@ progress::-moz-progress-bar {
   background: transparent;
   padding: 8px 0;
   width: 100%;
-  font-size: 11px;
+  font-size: 14px;
 }
 .machine-search:focus-within {
   border-color: #8aa17a;
@@ -2937,7 +2938,7 @@ progress::-moz-progress-bar {
 .machine-list-toolbar > select,
 .machine-library-toolbar > select {
   min-width: 0;
-  font-size: 11px;
+  font-size: 14px;
   color: var(--muted);
   background: #fcfdf9;
   padding: 8px 9px;
@@ -2945,7 +2946,7 @@ progress::-moz-progress-bar {
 .machine-toolbar-note {
   margin-left: auto;
   color: var(--muted);
-  font-size: 10px;
+  font-size: 13px;
 }
 .machine-table-wrap {
   width: 100%;
@@ -2960,7 +2961,7 @@ progress::-moz-progress-bar {
 }
 .machine-data-table th {
   color: var(--muted);
-  font-size: 10px;
+  font-size: 13px;
   font-weight: 400;
   padding: 10px 11px;
   border-top: 1px solid var(--line);
@@ -2973,7 +2974,7 @@ progress::-moz-progress-bar {
 .machine-data-table td {
   padding: 15px 11px;
   border-bottom: 1px solid #edf1e7;
-  font-size: 11px;
+  font-size: 14px;
   overflow-wrap: anywhere;
   vertical-align: middle;
   color: var(--ink);
@@ -3012,14 +3013,14 @@ progress::-moz-progress-bar {
   min-width: 0;
 }
 .machine-agent-name strong {
-  font-size: 12px;
+  font-size: 15px;
   font-weight: 550;
   display: block;
   overflow-wrap: anywhere;
 }
 .machine-agent-name small {
   display: block;
-  font-size: 9px;
+  font-size: 12px;
   color: var(--muted);
   font-weight: 400;
   margin-top: 5px;
@@ -3050,7 +3051,7 @@ progress::-moz-progress-bar {
   align-items: center;
   gap: 5px;
   color: #677260;
-  font-size: 10px;
+  font-size: 13px;
   font-weight: 450;
   line-height: 1.5;
 }
@@ -3106,7 +3107,7 @@ progress::-moz-progress-bar {
 }
 .machine-cell-secondary {
   display: block;
-  font-size: 9px;
+  font-size: 12px;
   line-height: 1.6;
   font-weight: 400;
   color: var(--muted);
@@ -3119,11 +3120,11 @@ progress::-moz-progress-bar {
 }
 .machine-work-count {
   color: #5f7152;
-  font-size: 10px;
+  font-size: 13px;
 }
 .machine-work-count small {
   display: block;
-  font-size: 9px;
+  font-size: 12px;
   color: var(--muted);
   margin-top: 5px;
 }
@@ -3131,7 +3132,7 @@ progress::-moz-progress-bar {
   display: flex;
   gap: 6px;
   align-items: flex-start;
-  font-size: 10px;
+  font-size: 13px;
   color: var(--muted);
   line-height: 1.8;
   margin-top: 15px;
@@ -3152,19 +3153,19 @@ progress::-moz-progress-bar {
   min-width: 0;
 }
 .machine-agent-detail h3 {
-  font-size: 10px;
+  font-size: 13px;
   font-weight: 550;
   margin-bottom: 8px;
 }
 .machine-agent-detail code {
   display: block;
-  font-size: 10px;
+  font-size: 13px;
   color: var(--muted);
   overflow-wrap: anywhere;
   margin-bottom: 18px;
 }
 .machine-agent-detail p {
-  font-size: 10px;
+  font-size: 13px;
   line-height: 1.8;
   color: var(--muted);
   margin-bottom: 10px;
@@ -3180,7 +3181,7 @@ progress::-moz-progress-bar {
   align-items: center;
   gap: 11px;
   margin-bottom: 8px;
-  font-size: 10px;
+  font-size: 13px;
   color: var(--muted);
 }
 .machine-process-list b {
@@ -3194,7 +3195,7 @@ progress::-moz-progress-bar {
   padding: 8px 0;
   text-align: left;
   color: var(--green);
-  font-size: 11px;
+  font-size: 14px;
   border-top: 1px solid #e5ecdd;
 }
 .machine-task-button > span:nth-child(2) {
@@ -3216,11 +3217,11 @@ progress::-moz-progress-bar {
   display: flex;
   gap: 8px;
   align-items: center;
-  font-size: 13px;
+  font-size: 16px;
   font-weight: 550;
 }
 .machine-section-title > span {
-  font-size: 10px;
+  font-size: 13px;
   color: var(--muted);
 }
 .machine-service-table th:nth-child(1) {
@@ -3236,16 +3237,16 @@ progress::-moz-progress-bar {
   width: 37%;
 }
 .machine-service-name {
-  font-size: 12px;
+  font-size: 15px;
   font-weight: 550;
 }
 .machine-service-detail {
-  font-size: 10px !important;
+  font-size: 13px !important;
   color: var(--muted) !important;
   line-height: 1.7;
 }
 .machine-empty-inline {
-  font-size: 11px;
+  font-size: 14px;
   color: var(--muted);
   line-height: 1.8;
   padding: 12px 0;
@@ -3256,14 +3257,14 @@ progress::-moz-progress-bar {
   justify-content: space-between;
   gap: 15px;
   margin-bottom: 15px;
-  font-size: 11px;
+  font-size: 14px;
   color: var(--muted);
 }
 .machine-library-intro > span {
   display: flex;
   align-items: center;
   gap: 5px;
-  font-size: 10px;
+  font-size: 13px;
   flex-shrink: 0;
 }
 .machine-library-toolbar {
@@ -3306,13 +3307,13 @@ progress::-moz-progress-bar {
   color: #9baa8c;
 }
 .machine-library-name strong {
-  font-size: 11px;
+  font-size: 14px;
   font-weight: 500;
   overflow-wrap: anywhere;
 }
 .machine-ecosystem {
   display: inline-flex;
-  font-size: 9px;
+  font-size: 12px;
   border: 1px solid #e6e7de;
   background: #fafbf7;
   border-radius: 4px;
@@ -3330,20 +3331,20 @@ progress::-moz-progress-bar {
   border-color: #ece5da;
 }
 .machine-version {
-  font-size: 10px;
+  font-size: 13px;
   font-variant-numeric: tabular-nums;
 }
 .machine-library-source {
   color: var(--muted) !important;
-  font-size: 10px !important;
+  font-size: 13px !important;
 }
 .machine-library-detail code {
-  font-size: 10px;
+  font-size: 13px;
   overflow-wrap: anywhere;
   color: var(--muted);
 }
 .machine-library-detail p {
-  font-size: 10px;
+  font-size: 13px;
   line-height: 1.7;
   color: var(--muted);
   margin-top: 7px;
@@ -3352,7 +3353,7 @@ progress::-moz-progress-bar {
   display: flex;
   align-items: center;
   gap: 15px;
-  font-size: 10px;
+  font-size: 13px;
   color: var(--muted);
   padding: 13px 0;
   border-bottom: 1px solid var(--line);
@@ -3363,11 +3364,11 @@ progress::-moz-progress-bar {
   align-items: center;
   gap: 7px;
   margin-left: auto;
-  font-size: 10px;
+  font-size: 13px;
   font-weight: 400;
 }
 .machine-pagination select {
-  font-size: 10px;
+  font-size: 13px;
   padding: 5px 7px;
 }
 .machine-pagination > div {
@@ -3376,7 +3377,7 @@ progress::-moz-progress-bar {
   gap: 5px;
 }
 .machine-coverage-intro {
-  font-size: 11px;
+  font-size: 14px;
   color: var(--muted);
   line-height: 1.8;
   margin-bottom: 16px;
@@ -3403,24 +3404,24 @@ progress::-moz-progress-bar {
   gap: 10px;
 }
 .machine-source-heading h3 {
-  font-size: 12px;
+  font-size: 15px;
   font-weight: 550;
 }
 .machine-source-row code {
   display: block;
-  font-size: 10px;
+  font-size: 13px;
   color: var(--muted);
   margin-top: 6px;
   overflow-wrap: anywhere;
 }
 .machine-source-row p {
   margin-top: 6px;
-  font-size: 10px;
+  font-size: 13px;
   color: var(--muted);
   line-height: 1.7;
 }
 .machine-source-count {
-  font-size: 13px;
+  font-size: 16px;
   text-align: right;
   font-weight: 500;
   color: #5f7450;
@@ -3428,7 +3429,7 @@ progress::-moz-progress-bar {
 }
 .machine-source-count small {
   display: block;
-  font-size: 9px;
+  font-size: 12px;
   color: var(--muted);
   font-weight: 400;
   margin-top: 5px;
@@ -3439,18 +3440,18 @@ progress::-moz-progress-bar {
   padding: 12px;
   margin-top: 5px;
   background: #fafbf7;
-  font-size: 11px;
+  font-size: 14px;
   color: var(--muted);
 }
 .machine-coverage-issues summary > span {
-  font-size: 9px;
+  font-size: 12px;
   margin-left: 5px;
 }
 .machine-coverage-issues ul {
   padding-left: 17px;
   margin-bottom: 0;
   line-height: 1.8;
-  font-size: 10px;
+  font-size: 13px;
 }
 .machine-custom-section {
   margin-top: 30px;
@@ -3477,12 +3478,12 @@ progress::-moz-progress-bar {
   min-width: 0;
 }
 .machine-custom-list strong {
-  font-size: 11px;
+  font-size: 14px;
   font-weight: 500;
 }
 .machine-custom-list code {
   display: block;
-  font-size: 10px;
+  font-size: 13px;
   overflow-wrap: anywhere;
   color: var(--muted);
   margin-top: 5px;
@@ -3495,24 +3496,24 @@ progress::-moz-progress-bar {
 }
 .machine-source-form label {
   min-width: 0;
-  font-size: 11px;
+  font-size: 14px;
 }
 .machine-source-form input {
-  font-size: 11px;
+  font-size: 14px;
   padding: 9px;
 }
 .machine-source-form > .button {
   height: 34px;
-  font-size: 11px;
+  font-size: 14px;
 }
 .machine-page .empty-state {
   padding: 50px 20px 65px;
 }
 .machine-page .empty-state h2 {
-  font-size: 16px;
+  font-size: 19px;
 }
 .machine-page .empty-state p {
-  font-size: 11px;
+  font-size: 14px;
 }
 
 @media (max-width: 1100px) {
@@ -3558,13 +3559,13 @@ progress::-moz-progress-bar {
     margin-bottom: 22px;
   }
   .machine-heading p {
-    font-size: 11px;
+    font-size: 14px;
   }
   .machine-host-strip {
     padding: 18px;
   }
   .machine-host-identity strong {
-    font-size: 13px;
+    font-size: 16px;
   }
   .machine-freshness {
     gap: 10px 14px;
@@ -3589,23 +3590,23 @@ progress::-moz-progress-bar {
     padding-left: 14px;
   }
   .machine-host-stat > strong {
-    font-size: 13px;
+    font-size: 16px;
   }
   .machine-host-stat > span {
-    font-size: 9px;
+    font-size: 12px;
   }
   .machine-tabs {
     gap: 17px;
   }
   .machine-tabs > button {
-    font-size: 11px;
+    font-size: 14px;
     gap: 5px;
   }
   .machine-tabs > button > svg {
     display: none;
   }
   .machine-tab-count {
-    font-size: 8px;
+    font-size: 11px;
     padding: 2px 4px;
   }
   .machine-toolbar-note {
@@ -3616,10 +3617,10 @@ progress::-moz-progress-bar {
   }
   .machine-list-toolbar > select {
     max-width: 115px;
-    font-size: 10px;
+    font-size: 13px;
   }
   .machine-search input {
-    font-size: 10px;
+    font-size: 13px;
   }
   .machine-data-table,
   .machine-data-table tbody {
@@ -3649,7 +3650,7 @@ progress::-moz-progress-bar {
   .machine-data-table td[data-label]::before {
     content: attr(data-label);
     display: block;
-    font-size: 9px;
+    font-size: 12px;
     color: var(--muted);
     margin-bottom: 6px;
   }
@@ -3685,27 +3686,27 @@ progress::-moz-progress-bar {
     gap: 8px;
   }
   .machine-library-toolbar select {
-    font-size: 10px;
+    font-size: 13px;
   }
   .machine-library-name strong {
-    font-size: 12px;
+    font-size: 15px;
   }
   .machine-library-table tbody > tr {
     gap: 12px 14px;
   }
   .machine-pagination {
     gap: 8px;
-    font-size: 9px;
+    font-size: 12px;
   }
   .machine-pagination > label {
     gap: 5px;
-    font-size: 9px;
+    font-size: 12px;
   }
   .machine-pagination .icon-button {
     width: 24px;
   }
   .machine-source-count {
-    font-size: 11px;
+    font-size: 14px;
   }
   .machine-source-row {
     gap: 9px;
@@ -3717,7 +3718,7 @@ progress::-moz-progress-bar {
     gap: 6px;
   }
   .machine-source-heading h3 {
-    font-size: 11px;
+    font-size: 14px;
   }
   .machine-source-form {
     grid-template-columns: 1fr;
@@ -3731,5 +3732,335 @@ progress::-moz-progress-bar {
   }
   .machine-alert .text-button {
     margin-left: 26px;
+  }
+}
+
+/* Document intake and task packets use the enlarged typography scale. */
+.ticket-creation-fields {
+  border: 0;
+  padding: 0;
+  margin: 0;
+  min-width: 0;
+  display: grid;
+  gap: 18px;
+}
+.ticket-id {
+  overflow-wrap: anywhere;
+  white-space: normal;
+}
+.ticket-main {
+  flex-wrap: wrap;
+}
+.ticket-main > .ticket-title {
+  flex: 1 1 120px;
+}
+.sidebar-install {
+  margin-bottom: 16px;
+}
+.sidebar-install .button {
+  width: 100%;
+  justify-content: flex-start;
+}
+.sidebar-install p {
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--muted);
+  margin: 8px 0;
+}
+.dialog-form > *,
+.brief-fields,
+.document-intake,
+.folder-picker {
+  min-width: 0;
+}
+.brief-fields {
+  border: 0;
+  padding: 18px 0 0;
+  margin: 4px 0 0;
+  border-top: 1px solid var(--line);
+  display: grid;
+  gap: 15px;
+}
+.brief-fields legend {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 0 0 10px;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--ink);
+}
+.brief-fields > .field-hint {
+  margin: 0;
+}
+.brief-fields label {
+  display: grid;
+  gap: 7px;
+  font-size: 14px;
+}
+.brief-fields textarea {
+  width: 100%;
+  font-size: 15px;
+  line-height: 1.65;
+  resize: vertical;
+}
+.intake-section-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+.intake-section-title h3,
+.intake-section-title strong {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 15px;
+  margin: 0;
+}
+.intake-section-title > span {
+  font-size: 13px;
+  color: var(--muted);
+}
+.document-intake {
+  margin-top: 8px;
+}
+.document-dropzone {
+  border: 1px dashed #a6b69d;
+  border-radius: 6px;
+  background: #f8faf5;
+  padding: 18px;
+  display: flex;
+  gap: 13px;
+  align-items: center;
+}
+.document-dropzone.dragging {
+  border-color: var(--green);
+  background: #edf3e6;
+  box-shadow: inset 0 0 0 1px var(--green);
+}
+.document-dropzone > svg {
+  flex-shrink: 0;
+  color: var(--green);
+}
+.document-dropzone > div {
+  flex: 1;
+  min-width: 0;
+}
+.document-dropzone strong {
+  display: block;
+  font-size: 15px;
+}
+.document-dropzone span {
+  display: block;
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--muted);
+  margin-top: 4px;
+}
+.document-list {
+  display: grid;
+  gap: 10px;
+  margin-top: 12px;
+}
+.document-item {
+  border: 1px solid var(--line);
+  padding: 13px;
+  border-radius: 5px;
+  min-width: 0;
+}
+.document-item-heading {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.document-item-heading > svg {
+  flex-shrink: 0;
+  color: var(--muted);
+}
+.document-item-heading > div {
+  min-width: 0;
+  flex: 1;
+}
+.document-item-heading strong {
+  display: block;
+  font-size: 14px;
+  font-weight: 550;
+  overflow-wrap: anywhere;
+}
+.document-item-heading span {
+  display: block;
+  margin-top: 4px;
+  font-size: 13px;
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+.document-item-heading .icon-button {
+  flex-shrink: 0;
+}
+.document-preview {
+  margin-top: 10px;
+  min-width: 0;
+}
+.document-preview summary {
+  cursor: pointer;
+  color: var(--green);
+  font-size: 13px;
+  line-height: 1.7;
+}
+.document-preview pre {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font-family: inherit;
+  font-size: 14px;
+  line-height: 1.65;
+  max-height: 320px;
+  overflow-y: auto;
+  background: #f7f8f5;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  padding: 13px;
+  margin: 10px 0;
+}
+.intake-warning {
+  color: var(--warning);
+  background: #fffaf0;
+  border-radius: 4px;
+  padding: 9px 11px;
+  margin: 10px 0 0;
+  font-size: 14px;
+  line-height: 1.6;
+  overflow-wrap: anywhere;
+}
+.folder-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.folder-picker > .field-hint {
+  display: flex;
+  gap: 7px;
+  align-items: center;
+}
+.folder-browser {
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  padding: 13px;
+  margin-top: 14px;
+}
+.folder-browser-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 15px;
+  margin-bottom: 10px;
+}
+.folder-current-path {
+  display: block;
+  margin-bottom: 12px;
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+.folder-directory-list {
+  list-style: none;
+  margin: 12px 0 0;
+  padding: 0;
+  max-height: 220px;
+  overflow-y: auto;
+}
+.folder-directory-list button {
+  display: flex;
+  align-items: center;
+  text-align: left;
+  width: 100%;
+  padding: 10px 8px;
+  border-bottom: 1px solid var(--line);
+  gap: 9px;
+  font-size: 14px;
+}
+.folder-directory-list button:hover {
+  background: #f5f7f1;
+}
+.folder-directory-list button span {
+  overflow-wrap: anywhere;
+  min-width: 0;
+}
+.folder-inspection {
+  background: #f5f8f1;
+  border: 1px solid #dbe5d2;
+  border-radius: 5px;
+  padding: 14px;
+  margin-top: 14px;
+}
+.folder-inspection > code {
+  display: block;
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+.folder-inspection > p {
+  font-size: 13px;
+  line-height: 1.7;
+  margin: 9px 0 0;
+  overflow-wrap: anywhere;
+}
+.folder-inspection > .button {
+  margin-top: 12px;
+}
+.workflow-checklist > ul {
+  padding: 0;
+  margin: 0;
+  list-style: none;
+}
+.workflow-checklist > ul > li {
+  display: flex;
+  gap: 10px;
+  padding: 11px 0;
+  border-bottom: 1px solid var(--line);
+}
+.workflow-checklist > ul > li > svg {
+  margin-top: 3px;
+  flex-shrink: 0;
+  color: var(--green);
+}
+.workflow-checklist li strong {
+  font-size: 14px;
+}
+.workflow-checklist li p {
+  margin: 4px 0 0;
+  font-size: 13px;
+  color: var(--muted);
+  line-height: 1.65;
+  overflow-wrap: anywhere;
+}
+.workflow-checklist li > div {
+  min-width: 0;
+}
+@media (max-width: 740px) {
+  .ticket-main > .ticket-title {
+    flex-basis: 100%;
+  }
+  .document-dropzone {
+    display: grid;
+    grid-template-columns: 20px minmax(0, 1fr);
+    align-items: start;
+    padding: 14px;
+  }
+  .document-dropzone .button {
+    grid-column: 2;
+    justify-self: start;
+    margin-left: 0;
+  }
+  .intake-section-title {
+    flex-wrap: wrap;
+  }
+  .workflow-checklist .intake-section-title > button {
+    width: 100%;
+    justify-content: center;
+  }
+  .folder-inspection .intake-section-title {
+    align-items: flex-start;
   }
 }

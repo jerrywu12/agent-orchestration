@@ -1,15 +1,22 @@
-import { useState, type FormEvent } from "react";
+import { useRef, useState, type FormEvent } from "react";
 import { FolderPlus, Plus } from "lucide-react";
 import { api, errorMessage } from "../api";
 import type { DeskState, Priority, Project, Ticket } from "../types";
 import { capitalize, ErrorNotice, Modal, priorities } from "./shared";
+import type { Attachment, FolderInspection } from "../intake-types";
+import { emptyBrief } from "../intake";
+import { DocumentAttachments } from "./DocumentAttachments";
+import { FolderPicker } from "./FolderPicker";
+import { BriefFields } from "./WorkflowBrief";
 
 export function CreateProject({
   onClose,
   onCreated,
+  projects = [],
 }: {
   onClose: () => void;
   onCreated: (project: Project) => Promise<void>;
+  projects?: Project[];
 }) {
   const [name, setName] = useState("");
   const [key, setKey] = useState("");
@@ -17,9 +24,42 @@ export function CreateProject({
   const [repo, setRepo] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [folderBusy, setFolderBusy] = useState(false);
+  const [inspection, setInspection] = useState<FolderInspection | null>(null);
+  const touched = useRef({ name: false, key: false, repo: false });
+  async function openExisting(id: string) {
+    setBusy(true);
+    setError("");
+    try {
+      const project =
+        projects.find((item) => item.id === id) ||
+        (await api<DeskState>("/state")).projects.find(
+          (item) => item.id === id,
+        );
+      if (!project)
+        throw new Error(
+          "The existing project is no longer available. Refresh and inspect the folder again.",
+        );
+      await onCreated(project);
+    } catch (failure) {
+      setError(errorMessage(failure));
+    } finally {
+      setBusy(false);
+    }
+  }
   async function submit(event: FormEvent) {
     event.preventDefault();
     setError("");
+    if (path.trim() && inspection?.path !== path.trim()) {
+      setError(
+        "Inspect the working directory before registering this project.",
+      );
+      return;
+    }
+    if (inspection?.existingProjectId && inspection.path === path.trim()) {
+      await openExisting(inspection.existingProjectId);
+      return;
+    }
     setBusy(true);
     try {
       const project = await api<Project>("/projects", "POST", {
@@ -40,7 +80,7 @@ export function CreateProject({
       title="Create a project"
       subtitle="A place for work to happen"
       onClose={() => {
-        if (!busy) onClose();
+        if (!busy && !folderBusy) onClose();
       }}
     >
       <form onSubmit={submit} className="dialog-form">
@@ -52,7 +92,10 @@ export function CreateProject({
             required
             maxLength={160}
             value={name}
-            onChange={(event) => setName(event.target.value)}
+            onChange={(event) => {
+              touched.current.name = true;
+              setName(event.target.value);
+            }}
             placeholder="e.g. Research tools"
           />
         </label>
@@ -60,7 +103,10 @@ export function CreateProject({
           Identifier <span className="optional">optional</span>
           <input
             value={key}
-            onChange={(event) => setKey(event.target.value.toUpperCase())}
+            onChange={(event) => {
+              touched.current.key = true;
+              setKey(event.target.value.toUpperCase());
+            }}
             maxLength={12}
             placeholder="RESEARCH"
           />
@@ -72,18 +118,37 @@ export function CreateProject({
           Working directory <span className="optional">optional</span>
           <input
             value={path}
-            onChange={(event) => setPath(event.target.value)}
+            onChange={(event) => {
+              setPath(event.target.value);
+              setInspection(null);
+            }}
             placeholder="/absolute/path/to/project"
           />
           <span className="field-hint">
             Agents need an existing local project directory to start.
           </span>
         </label>
+        <FolderPicker
+          path={path}
+          disabled={busy}
+          onBusy={setFolderBusy}
+          onExisting={(id) => void openExisting(id)}
+          onInspection={(result) => {
+            setInspection(result);
+            setPath(result.path);
+            if (!touched.current.name) setName(result.name);
+            if (!touched.current.key) setKey(result.key);
+            if (!touched.current.repo) setRepo(result.repo);
+          }}
+        />
         <label>
           GitHub repository <span className="optional">optional</span>
           <input
             value={repo}
-            onChange={(event) => setRepo(event.target.value)}
+            onChange={(event) => {
+              touched.current.repo = true;
+              setRepo(event.target.value);
+            }}
             placeholder="owner/repository"
           />
         </label>
@@ -92,13 +157,20 @@ export function CreateProject({
             type="button"
             className="button"
             onClick={onClose}
-            disabled={busy}
+            disabled={busy || folderBusy}
           >
             Cancel
           </button>
-          <button className="button primary" disabled={busy || !name.trim()}>
+          <button
+            className="button primary"
+            disabled={busy || folderBusy || !name.trim()}
+          >
             <FolderPlus size={15} />
-            {busy ? "Creating…" : "Create project"}
+            {busy
+              ? "Opening…"
+              : inspection?.existingProjectId
+                ? "Open project"
+                : "Create project"}
           </button>
         </div>
       </form>
@@ -127,6 +199,11 @@ export function CreateTicket({
   const [stage, setStage] = useState(stageId || "");
   const [owner, setOwner] = useState("");
   const [priority, setPriority] = useState<Priority>("none");
+  const [brief, setBrief] = useState(emptyBrief);
+  const [attachments, setAttachments] = useState<Attachment[]>([]);
+  const [documentsIncomplete, setDocumentsIncomplete] = useState(false);
+  const created = useRef<Ticket | null>(null);
+  const [createdTicket, setCreatedTicket] = useState<Ticket | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const stages = state.stages
@@ -134,17 +211,24 @@ export function CreateTicket({
     .sort((a, b) => a.position - b.position);
   async function submit(event: FormEvent) {
     event.preventDefault();
+    if (documentsIncomplete) return;
     setError("");
     setBusy(true);
     try {
-      const ticket = await api<Ticket>("/tickets", "POST", {
-        projectId: project,
-        title: title.trim(),
-        description,
-        ownerId: owner || null,
-        priority,
-        ...(stage ? { stageId: stage } : {}),
-      });
+      const ticket =
+        created.current ||
+        (await api<Ticket>("/tickets", "POST", {
+          projectId: project,
+          title: title.trim(),
+          description,
+          ownerId: owner || null,
+          priority,
+          brief,
+          attachmentIds: attachments.map((attachment) => attachment.id),
+          ...(stage ? { stageId: stage } : {}),
+        }));
+      created.current = ticket;
+      setCreatedTicket(ticket);
       await onCreated(ticket);
     } catch (failure) {
       setError(errorMessage(failure));
@@ -162,51 +246,26 @@ export function CreateTicket({
     >
       <form onSubmit={submit} className="dialog-form">
         {error && <ErrorNotice>{error}</ErrorNotice>}
-        <label>
-          Project
-          <select
-            value={project}
-            onChange={(event) => {
-              setProject(event.target.value);
-              setStage("");
-            }}
-          >
-            {state.projects.map((item) => (
-              <option key={item.id} value={item.id}>
-                {item.name}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label>
-          Title
-          <input
-            autoFocus
-            required
-            maxLength={500}
-            value={title}
-            onChange={(event) => setTitle(event.target.value)}
-            placeholder="What needs to be done?"
-          />
-        </label>
-        <label>
-          Description <span className="optional">optional</span>
-          <textarea
-            rows={5}
-            value={description}
-            onChange={(event) => setDescription(event.target.value)}
-            placeholder="Add context, acceptance criteria, and useful links…"
-          />
-        </label>
-        <div className="form-grid">
+        {createdTicket && (
+          <p className="success-notice" role="status">
+            Your ticket was created. Its documents and brief are saved. Open the
+            created ticket to continue editing.
+          </p>
+        )}
+        <fieldset
+          className="ticket-creation-fields"
+          disabled={busy || !!createdTicket}
+        >
           <label>
-            Stage
+            Project
             <select
-              value={stage}
-              onChange={(event) => setStage(event.target.value)}
+              value={project}
+              onChange={(event) => {
+                setProject(event.target.value);
+                setStage("");
+              }}
             >
-              <option value="">Default stage</option>
-              {stages.map((item) => (
+              {state.projects.map((item) => (
                 <option key={item.id} value={item.id}>
                   {item.name}
                 </option>
@@ -214,38 +273,85 @@ export function CreateTicket({
             </select>
           </label>
           <label>
-            Priority
+            Title
+            <input
+              autoFocus
+              required
+              maxLength={500}
+              value={title}
+              onChange={(event) => setTitle(event.target.value)}
+              placeholder="What needs to be done?"
+            />
+          </label>
+          <label>
+            Description <span className="optional">optional</span>
+            <textarea
+              rows={5}
+              value={description}
+              onChange={(event) => setDescription(event.target.value)}
+              placeholder="Add background and useful links…"
+            />
+          </label>
+          <BriefFields value={brief} onChange={setBrief} disabled={busy} />
+          <DocumentAttachments
+            isCommitted={() => !!created.current}
+            disabled={busy || !!created.current}
+            onChange={(items, incomplete) => {
+              setAttachments(items);
+              setDocumentsIncomplete(incomplete);
+            }}
+          />
+          <div className="form-grid">
+            <label>
+              Stage
+              <select
+                value={stage}
+                onChange={(event) => setStage(event.target.value)}
+              >
+                <option value="">Default stage</option>
+                {stages.map((item) => (
+                  <option key={item.id} value={item.id}>
+                    {item.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label>
+              Priority
+              <select
+                value={priority}
+                onChange={(event) =>
+                  setPriority(event.target.value as Priority)
+                }
+              >
+                {priorities.map((item) => (
+                  <option key={item} value={item}>
+                    {capitalize(item)}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
+          <label>
+            Owner
             <select
-              value={priority}
-              onChange={(event) => setPriority(event.target.value as Priority)}
+              value={owner}
+              onChange={(event) => setOwner(event.target.value)}
             >
-              {priorities.map((item) => (
-                <option key={item} value={item}>
-                  {capitalize(item)}
+              <option value="">Unassigned</option>
+              {state.agents.map((item) => (
+                <option key={item.id} value={item.id}>
+                  {item.name}
+                  {!item.enabled ? " (disabled)" : ""}
                 </option>
               ))}
             </select>
+            <span className="field-hint">
+              Assignment records responsibility. Start an agent explicitly from
+              the ticket.
+            </span>
           </label>
-        </div>
-        <label>
-          Owner
-          <select
-            value={owner}
-            onChange={(event) => setOwner(event.target.value)}
-          >
-            <option value="">Unassigned</option>
-            {state.agents.map((item) => (
-              <option key={item.id} value={item.id}>
-                {item.name}
-                {!item.enabled ? " (disabled)" : ""}
-              </option>
-            ))}
-          </select>
-          <span className="field-hint">
-            Assignment records responsibility. Start an agent explicitly from
-            the ticket.
-          </span>
-        </label>
+        </fieldset>
         <div className="dialog-footer">
           <button
             type="button"
@@ -253,14 +359,20 @@ export function CreateTicket({
             onClick={onClose}
             disabled={busy}
           >
-            Cancel
+            {createdTicket ? "Close" : "Cancel"}
           </button>
           <button
             className="button primary"
-            disabled={busy || !title.trim() || !project}
+            disabled={busy || documentsIncomplete || !title.trim() || !project}
           >
             <Plus size={15} />
-            {busy ? "Creating…" : "Create ticket"}
+            {createdTicket
+              ? busy
+                ? "Opening…"
+                : "Open created ticket"
+              : busy
+                ? "Creating…"
+                : "Create ticket"}
           </button>
         </div>
       </form>

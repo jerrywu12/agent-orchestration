@@ -1,3 +1,4 @@
+import type { Attachment, TaskBrief } from "./intake-types";
 export type Priority = "urgent" | "high" | "medium" | "low" | "none";
 export type StageRole =
   "backlog" | "planning" | "active" | "review" | "done" | "parked";
@@ -65,6 +66,9 @@ export interface GitHubLink {
   conflict?: unknown;
 }
 export interface Ticket {
+  brief?: TaskBrief;
+  attachments?: Attachment[];
+  attachmentContext?: Attachment[];
   id: string;
   projectId: string;
   number: number;
@@ -132,5 +136,6 @@ export type TicketDraft = Pick<
   | "parentId"
   | "dependsOn"
   | "blockedReason"
+  | "brief"
 >;
 export type Page = "work" | "activity" | "agents" | "machine" | "settings";

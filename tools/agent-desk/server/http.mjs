@@ -14,6 +14,11 @@ import { homedir } from "node:os";
 import { Store, fail, id } from "./store.mjs";
 import { Service } from "./service.mjs";
 import { Runner } from "./runner.mjs";
+import {
+  inspectProjectFolder,
+  listProjectFolders,
+  pickProjectFolder,
+} from "./project-folders.mjs";
 import { MachineMonitor } from "./machine-monitor.mjs";
 const appRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const mime = {
@@ -23,6 +28,7 @@ const mime = {
   ".svg": "image/svg+xml",
   ".png": "image/png",
   ".ico": "image/x-icon",
+  ".webmanifest": "application/manifest+json; charset=utf-8",
 };
 const equal = (a, b) =>
   typeof a === "string" &&
@@ -55,15 +61,24 @@ function identity() {
     storage: "ready",
   };
 }
-async function body(req) {
+async function body(req, limit = 1024 * 1024) {
   if (!/^application\/json\b/i.test(req.headers["content-type"] ?? ""))
     fail(415, "CONTENT_TYPE", "Use application/json.");
-  let raw = "";
-  for await (const chunk of req) {
-    raw += chunk;
-    if (Buffer.byteLength(raw) > 1024 * 1024)
-      fail(413, "BODY_TOO_LARGE", "Request is too large.");
+  const chunks = [];
+  let size = 0;
+  if (Number(req.headers["content-length"] ?? 0) > limit) {
+    req.resume();
+    fail(413, "BODY_TOO_LARGE", "Request is too large.");
   }
+  for await (const chunk of req.iterator({ destroyOnReturn: false })) {
+    size += chunk.length;
+    if (size > limit) {
+      req.resume();
+      fail(413, "BODY_TOO_LARGE", "Request is too large.");
+    }
+    chunks.push(chunk);
+  }
+  const raw = Buffer.concat(chunks).toString("utf8");
   try {
     const value = JSON.parse(raw || "{}");
     if (!value || typeof value !== "object" || Array.isArray(value))
@@ -81,7 +96,11 @@ export function createAppServer({
   allowedHost = "",
   syncManager = null,
   machineMonitor = null,
+  documentProcessor = async (input, options) =>
+    (await import("./document-processor.mjs")).processDocument(input, options),
+  folderOptions = {},
 }) {
+  const documentJobs = new Set();
   const sessions = new Map();
   const clients = new Set();
   const loginAttempts = new Map();
@@ -234,7 +253,12 @@ export function createAppServer({
           actor.role === "agent" &&
           !(
             (resource === "tickets" && action === "claim") ||
-            (resource === "executions" && action === "events")
+            (resource === "executions" && action === "events") ||
+            (method === "GET" && resource === "tickets" && key && !action) ||
+            (method === "GET" &&
+              resource === "attachments" &&
+              key &&
+              (!action || action === "download"))
           )
         )
           fail(
@@ -243,8 +267,165 @@ export function createAppServer({
             "Agent credentials can only claim assigned work and report their own execution.",
           );
         const input = ["POST", "PATCH", "PUT"].includes(method)
-          ? await body(req)
+          ? await body(
+              req,
+              resource === "attachments" && !key
+                ? 14 * 1024 * 1024
+                : 1024 * 1024,
+            )
           : {};
+        if (actor.role === "agent" && method === "GET") {
+          const ticketId =
+            resource === "attachments"
+              ? service.attachments.get(key).ticketId
+              : key;
+          if (
+            !ticketId ||
+            service.require("ticket", ticketId).ownerId !== actor.agentId
+          )
+            fail(
+              403,
+              "AGENT_SCOPE",
+              "This context is not assigned to your agent.",
+            );
+        }
+        if (resource === "attachments") {
+          if (!key && method === "POST") {
+            if (
+              typeof input.name !== "string" ||
+              !input.name.trim() ||
+              input.name.length > 255 ||
+              /[\x00-\x1f\x7f/\\]/.test(input.name)
+            )
+              fail(
+                422,
+                "ATTACHMENT_NAME",
+                "Use a short file name without paths or control characters.",
+              );
+            if (
+              typeof input.contentBase64 !== "string" ||
+              !input.contentBase64.length ||
+              input.contentBase64.length % 4 ||
+              !/^[A-Za-z0-9+/]*={0,2}$/.test(input.contentBase64)
+            )
+              fail(
+                422,
+                "ATTACHMENT_DATA",
+                "Expected valid base64 document data.",
+              );
+            const bytes = Buffer.from(input.contentBase64, "base64");
+            if (bytes.toString("base64") !== input.contentBase64)
+              fail(
+                422,
+                "ATTACHMENT_DATA",
+                "Expected canonical base64 document data.",
+              );
+            if (!bytes.length || bytes.length > 10 * 1024 * 1024)
+              fail(
+                413,
+                "ATTACHMENT_SIZE",
+                "Each document must be between 1 byte and 10 MiB.",
+              );
+            const controller = new AbortController();
+            documentJobs.add(controller);
+            const cancelled = () => {
+              if (!res.writableEnded) controller.abort();
+            };
+            res.once("close", cancelled);
+            let result;
+            try {
+              result = await documentProcessor(
+                { name: input.name, bytes },
+                { signal: controller.signal },
+              );
+            } catch (error) {
+              if (error.status) throw error;
+              const known = [
+                "unsupported_type",
+                "invalid_document",
+                "encrypted_document",
+                "no_text",
+                "document_limit",
+                "processing_timeout",
+                "processing_busy",
+                "processing_cancelled",
+                "processing_failed",
+              ];
+              fail(
+                error.code === "processing_busy" ? 429 : 422,
+                known.includes(error.code) ? error.code : "DOCUMENT_PROCESSING",
+                known.includes(error.code)
+                  ? error.message
+                  : "This document could not be processed. Try a readable TXT, DOC, DOCX or text-based PDF file.",
+              );
+            } finally {
+              documentJobs.delete(controller);
+              res.off("close", cancelled);
+            }
+            if (controller.signal.aborted)
+              fail(
+                422,
+                "processing_cancelled",
+                "Document processing was cancelled.",
+              );
+            const attachment = service.attachments.save({
+              name: input.name,
+              bytes,
+              result,
+            });
+            return json(attachment, 201);
+          }
+          if (key && !action && method === "GET")
+            return json(service.attachments.get(key));
+          if (key && !action && method === "DELETE")
+            return json(service.attachments.removeDraft(key));
+          if (key && action === "download" && method === "GET") {
+            const attachment = service.attachments.original(key);
+            const filename = encodeURIComponent(attachment.name).replace(
+              /[!'()*]/g,
+              (c) => "%" + c.charCodeAt(0).toString(16).toUpperCase(),
+            );
+            res.writeHead(200, {
+              "Content-Type": "application/octet-stream",
+              "Content-Length": attachment.bytes.length,
+              "Content-Disposition": `attachment; filename="document"; filename*=UTF-8''${filename}`,
+            });
+            return res.end(attachment.bytes);
+          }
+          fail(404, "NOT_FOUND", "Attachment endpoint not found.");
+        }
+        if (resource === "project-folders" && !key && method === "GET")
+          return json(
+            await listProjectFolders(url.searchParams.get("path") || undefined),
+          );
+        if (
+          resource === "project-folder" &&
+          key === "pick" &&
+          method === "POST"
+        ) {
+          if (
+            !loopback(req.socket.remoteAddress) ||
+            !["127.0.0.1", "localhost", "[::1]"].includes(hostname)
+          )
+            fail(
+              409,
+              "PICKER_UNAVAILABLE",
+              "Use Browse server folders from a remote connection.",
+            );
+          return json(
+            await pickProjectFolder({
+              ...folderOptions,
+              projects: service.store.list("project"),
+            }),
+          );
+        }
+        if (resource === "projects" && key === "inspect" && method === "POST")
+          return json(
+            await inspectProjectFolder(
+              input.path,
+              service.store.list("project"),
+            ),
+          );
         if (resource === "machine") {
           if (!machineMonitor)
             fail(
@@ -299,8 +480,32 @@ export function createAppServer({
           method === "POST"
         )
           return json(service.reconcileExternal(key, input));
-        if (resource === "projects" && !key && method === "POST")
-          return json(service.createProject(input), 201);
+        if (resource === "projects" && !key && method === "POST") {
+          if (!input.path?.trim?.())
+            return json(service.createProject(input), 201);
+          const inspection = await inspectProjectFolder(
+            input.path.trim(),
+            service.store.list("project"),
+          );
+          // Recheck after all async probes: parallel requests must not register the same root twice.
+          const existing = service.store
+            .list("project")
+            .find(
+              (p) =>
+                p.path === inspection.path ||
+                p.id === inspection.existingProjectId,
+            );
+          if (existing) return json(existing);
+          return json(
+            service.createProject({
+              ...input,
+              name: input.name?.trim() || inspection.name,
+              path: inspection.path,
+              repo: input.repo?.trim() || inspection.repo,
+            }),
+            201,
+          );
+        }
         if (resource === "projects" && key && !action && method === "PATCH")
           return json(service.updateProject(key, input));
         if (resource === "stages" && !key && method === "POST")
@@ -401,12 +606,16 @@ export function createAppServer({
     }
   });
   server.on("close", () => {
+    for (const controller of documentJobs) controller.abort();
     machineMonitor?.close();
     for (const res of clients) res.end();
   });
   return server;
 }
-export async function startServer({ machineOptions = {} } = {}) {
+export async function startServer({
+  machineOptions = {},
+  folderOptions = {},
+} = {}) {
   const host = process.env.AGENT_DESK_HOST ?? "127.0.0.1";
   const port = Number(process.env.AGENT_DESK_PORT ?? 4310);
   const adminToken = process.env.AGENT_DESK_ADMIN_TOKEN ?? "";
@@ -461,6 +670,7 @@ export async function startServer({ machineOptions = {} } = {}) {
     allowedHost: process.env.AGENT_DESK_PUBLIC_HOST ?? "",
     syncManager,
     machineMonitor,
+    folderOptions,
   });
   await new Promise((r, reject) => {
     server.once("error", reject);

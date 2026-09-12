@@ -19,6 +19,9 @@ import { api, ApiError, errorMessage, pathId } from "../api";
 import type { DeskState, Integrations, Ticket, TicketDraft } from "../types";
 import { ActivityFeed } from "./ActivityFeed";
 import { ReconcileSessions } from "./ReconcileSessions";
+import { TicketDocuments } from "./DocumentAttachments";
+import { BriefFields, WorkflowBrief } from "./WorkflowBrief";
+import { emptyBrief } from "../intake";
 import {
   AgentAvatar,
   capitalize,
@@ -43,6 +46,7 @@ function draftFrom(ticket: Ticket): TicketDraft {
     parentId: ticket.parentId || null,
     dependsOn: ticket.dependsOn || [],
     blockedReason: ticket.blockedReason || "",
+    brief: { ...emptyBrief(), ...ticket.brief },
   };
 }
 export function TicketDetails({
@@ -303,9 +307,14 @@ export function TicketDetails({
               rows={7}
               value={draft.description || ""}
               onChange={(event) => change("description", event.target.value)}
-              placeholder="Add context, acceptance criteria, and useful links…"
+              placeholder="Add background and useful links…"
             />
           </label>
+          <BriefFields
+            value={draft.brief}
+            onChange={(value) => change("brief", value)}
+            disabled={!!busy}
+          />
           <details className="detail-disclosure">
             <summary>
               Relationships & blockers{" "}
@@ -370,6 +379,12 @@ export function TicketDetails({
             </div>
           </details>
         </form>
+        <TicketDocuments ticket={ticket} />
+        <WorkflowBrief
+          ticket={{ ...ticket, ...draft }}
+          state={state}
+          unsaved={dirty}
+        />
         <section className="detail-section">
           <div className="section-title">
             <h3>Agent execution</h3>

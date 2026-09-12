@@ -1,0 +1,3 @@
+# Validation guide
+Use Node22.22+ in tools/agent-desk. Run npm test, npm run build, npm run test:e2e. Browser fixture server must inject machine probes and folder picker; native collection/pickers are never allowed in CI. Parser fixtures are synthetic and contain no private documents.
+Exercise install/offline fallback; new ticket document drop, preview/removal/error/create/reload and owner-scoped content; project directory browse/native cancellation, Git discovery and existing project reuse; task-brief edit/copy/dispatch; long identifiers and +3px at desktop/mobile. Preserve captured baseline and final health path/SHA. Deploy only reviewed merged code after backup/preview, then verify live claims remain unchanged.

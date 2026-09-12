@@ -49,6 +49,14 @@ SQLite database and server; connector tests use injected GitHub responses and fa
 Machine monitor tests inject fixture roots/probes and the browser server disables native
 collection; tests must not discover the developer or CI host. Collector/API/coordinator tests
 cover metadata bounds, source races, stale observations and administrator-only access.
+Document tests use synthetic TXT/DOC/DOCX/PDF fixtures and exercise malformed archives,
+Unicode, extraction limits, worker cancellation, draft expiry, quota and scoped access.
+Folder tests create temporary Git repositories and inject native picker results; browser
+tests must not open native dialogs. Intake browser tests cover full identifiers at desktop
+and mobile widths, typography, document previews, project reuse and task briefs. PWA tests
+check install metadata and the absence of private-data/offline-write caching. Use the
+[desktop/intake verification record](../specs/004-agent-desk-usability/verification.md)
+for native Chrome installation and live deployment proof.
 CI runs the same checks on Node 22 and Chromium. Native installation, source import and
 client reconnection are separate live cutover checks, recorded in
 [the verification record](../specs/002-agent-desk/verification.md).

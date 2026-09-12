@@ -1,0 +1,25 @@
+{
+  "id": "/",
+  "name": "Agent Desk",
+  "short_name": "Agent Desk",
+  "description": "A shared workspace for independent AI agents and the work they own.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#f7f8f6",
+  "theme_color": "#315d40",
+  "icons": [
+    {
+      "src": "/icons/agent-desk-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/agent-desk-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    }
+  ]
+}

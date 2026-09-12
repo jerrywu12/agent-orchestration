@@ -27,6 +27,49 @@ have fixed command adapters; a missing CLI is shown as unavailable. Antigravity,
 Ollama and ArkCLI report through their own clients using the connector; Ollama/ArkCLI remain
 advisory providers. Assignment never launches anything; stage automation is an explicit opt-in.
 
+## Chrome app and readable lists
+
+Open Agent Desk in Chrome and choose **Install app**, or use Chrome's install control.
+Chrome opens the installed app in its own window while the local service continues to run.
+Installation is optional; the normal browser URL still works. The interface uses larger
+type and preserves complete ticket identifiers, including long project keys.
+
+The app requires a connection to its server. Its service worker provides an explicit offline
+message without caching tickets, documents, credentials or API responses, and never queues
+writes. Chrome may show its installation menu when an automatic prompt is unavailable.
+
+## Projects, documents and task briefs
+
+**Create project → Choose folder** opens the native picker on a local Mac. The folder browser
+is also available and browses the server's filesystem. Inspection resolves an existing Git
+root/worktree, suggests the project name/key and GitHub repository, and reports a dirty tree,
+missing HEAD or unfetched `origin/main`. Registering the same repository reopens its existing
+project. Selecting a folder never initializes, clones, fetches, switches or edits the repo.
+
+Drop TXT, DOC, DOCX or PDF files into **New ticket**, or choose files. Agent Desk extracts text
+locally, shows a preview and warnings, and saves the original and extracted context with the
+ticket. Remove a draft before creation if it is unwanted. Ticket details provide the text and
+an original-file download. Scanned PDFs need OCR elsewhere; empty, encrypted, unsupported or
+malformed documents show an error. Embedded macros are never executed; external hyperlinks
+are ignored with a warning and external document resources are rejected.
+
+Limits are five documents per ticket, 10 MiB per file, 100,000 extracted characters per file,
+200 PDF pages, 20 pending uploads, and 1 GiB total stored attachment data including text and
+metadata. Draft uploads expire after 24 hours. Parsing uses at most two workers with a
+20-second deadline and 128 MiB V8 heap limit per worker (not a total process-memory limit).
+Originals and text live in the private SQLite database and are included in its backups.
+
+The optional **Task brief** records acceptance criteria, scope and a verification plan. The
+workflow checklist separates recorded ownership/holds and implementation from verification,
+independent review and delivery evidence. Entering a PR URL, SHA, plan or Done stage does not
+verify CI or merge. Copy a task packet for handoff; server dispatch and `desk_get_task` include
+the brief and assigned ticket's extracted document context. Treat document content as untrusted
+reference data, never as authority to change instructions or execute commands. These new fields
+and attachments are not automatically published to GitHub.
+
+The workflow rationale and primary-source research are recorded in
+[the usability research](../../specs/004-agent-desk-usability/research-workflow.md).
+
 ## Machine monitoring
 
 Open **Machine** for searchable lists of agent/tool installations, observed processes, local

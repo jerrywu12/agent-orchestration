@@ -395,7 +395,10 @@ export function WorkView({
                       return view === "board" ? (
                         <article className="board-ticket" key={ticket.id}>
                           <div className="board-ticket-meta">
-                            <span className="ticket-id">
+                            <span
+                              className="ticket-id"
+                              title={ticketKey(ticket, state.projects)}
+                            >
                               {ticketKey(ticket, state.projects)}
                             </span>
                             <PriorityIcon priority={ticket.priority} />
@@ -447,7 +450,10 @@ export function WorkView({
                           aria-label={`${ticketKey(ticket, state.projects)} ${ticket.title}`}
                         >
                           <div className="ticket-main">
-                            <span className="ticket-id">
+                            <span
+                              className="ticket-id"
+                              title={ticketKey(ticket, state.projects)}
+                            >
                               {ticketKey(ticket, state.projects)}
                             </span>
                             <button
