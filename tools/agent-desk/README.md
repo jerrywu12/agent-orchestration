@@ -2,7 +2,8 @@
 
 A self-hosted workspace for tickets owned by independent AI agents. Compact list and board
 views, custom stages, dependencies, priorities, labels, exact executor ownership, reported
-progress, audit history, GitHub Issues/Projects v2 sync, and non-destructive Kangentic import.
+progress, audit history, GitHub Issues/Projects v2 sync, Mac agent/library monitoring, and
+non-destructive Kangentic import.
 
 ## Run locally
 
@@ -25,6 +26,34 @@ It keeps the installed CLI's model and permission defaults. Codex, Claude, Gemin
 have fixed command adapters; a missing CLI is shown as unavailable. Antigravity, Hermes,
 Ollama and ArkCLI report through their own clients using the connector; Ollama/ArkCLI remain
 advisory providers. Assignment never launches anything; stage automation is an explicit opt-in.
+
+## Machine monitoring
+
+Open **Machine** for searchable lists of agent/tool installations, observed processes, local
+services and npm/Python libraries. Registered project folders and known shared/global agent
+environments are discovered automatically. Add another absolute library/environment folder
+under Sources when you keep tools elsewhere; removing it only removes monitoring configuration.
+Up to 20 extra folders persist in the existing Agent Desk database.
+
+Installed versions come from package/app metadata. A declared dependency is labeled separately
+when an installed copy cannot be observed. Cached plugin versions have their own status and
+do not imply installation or enablement. Exact executable paths identify process CPU and RSS;
+generic Node/Python processes are not assigned to a provider by guesswork. Process counts are
+not task/session counts, and process observation never changes ticket claims, stages or progress.
+Local endpoint responsiveness does not prove model readiness, authentication or quota availability.
+
+Runtime sampling occurs every 15 seconds and metadata discovery every five minutes. Refresh
+requests coalesce; prior observations remain visible with stale/error indicators when a probe
+fails. Coverage lists the scanned, missing, unreadable or limited sources. Discovery is bounded
+and reads selected metadata fields; it does not recursively scan the whole disk or claim to know
+every dynamically loaded library. No agent CLI is run to obtain a version, and monitoring never
+installs, updates, authenticates, launches or stops another agent.
+
+Machine endpoints require administrator access; per-agent credentials cannot read the inventory.
+Snapshots stay in memory and exclude prompts, transcripts, environment variables, full process
+arguments, package scripts and credential/config values. The host shown is the machine running
+the server: use the native macOS installation to monitor this Mac. A Docker deployment reports
+its own container and explicitly configured mounted library roots, not the host's process table.
 
 ## Independent clients
 

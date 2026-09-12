@@ -1,0 +1,21 @@
+# Agent Desk machine monitoring
+
+Status: locked for implementation, 2026-09-13. User authorizes build and local adoption in jerrywu12/agent-orchestration. Agent Desk remains list-first.
+
+## Objective and assumptions
+Give the administrator a searchable inventory of AI agents, supporting tools, services and libraries on the server Mac, including independent agents outside Agent Desk. This is read-only observation. Library installation and project declarations are evidence of availability/dependency, not proof of runtime use. Host inventory belongs to the machine running Agent Desk; a Docker container cannot automatically inspect its Mac host.
+
+## User stories and acceptance
+1. P1: Open Machine in the sidebar to see the host identity, resource totals, observation times, and compact agent/tool rows with installation/version/path, observed process count/CPU/RSS and exact registered-agent ticket counts. Installed, running and endpoint responsiveness are independent facts. Generic Node/Python processes must not be falsely attributed to an agent. Existing execution claims/stages are never changed by process observation.
+2. P1: Search/filter local libraries by name, ecosystem and source. Show installed npm/Python package name/version and source folder, or explicitly declared package requirements where installation is absent. Discover standard global npm/uv environments, known agent environments, shared tooling, the app and registered project roots; support additional administrator-selected folders. Show coverage and skipped/error/limited sources rather than claim an exhaustive disk scan. Cached plugin manifests are a separate plugin ecosystem with cached status; their presence never implies installation, enablement or runtime use.
+3. P1: Observe runtime/service data on a 15-second cadence and inventory on a five-minute cadence; request an immediate refresh. Coalesce overlapping scans. Slow or failed probes preserve prior successful observations with a stale/error indicator. API/UI remain responsive while scanning. Fixed localhost probes have deadlines, no redirects, no model/auth requests or remote egress.
+4. P1: Additional library folders persist across restart, can be removed without deleting their contents, are bounded to 20 and must be existing absolute directories. They only enable metadata discovery; they never define executable commands or URLs.
+5. P1: Machine API and source configuration require existing administrator access. Scoped agent credentials and unauthenticated remote users cannot inspect machine inventory or configure it. No secrets, config values, environment variables, full command arguments, transcripts, prompts or package scripts appear in snapshots, logs or version control.
+6. P2: Accessible responsive list UI with loading/empty/error states, retained data on disconnection, keyboard controls, source coverage details and bounded rendering of large package sets. Existing list/stage/claim/GitHub journeys stay green.
+
+## Boundaries
+Always preserve installed agents, sessions, credentials, source data and unrelated repository work. No automatic installation, updates, auth checks, provider generation, process termination, arbitrary shell command execution or broad recursive home/disk scan. Version metadata may be unavailable. Read only known metadata fields in bounded regular files; avoid following arbitrary metadata-file symlinks. Resource totals are OS snapshots; RSS is not private memory. Unknown process identity stays unknown. Agent registration/launch capabilities remain separate from discovery.
+
+## Commands / structure / style
+Source: tools/agent-desk/server/machine-{inventory,monitor}.mjs; existing http.mjs integration; src/machine-types.ts and components/MachineView.tsx; tests/machine-*.test.mjs and machine-browser.spec.ts. Existing React/TS and Node22.22+ SQLite architecture and formatting; no dependencies or schema migration. Follow async collector injection and explicit records, e.g. `{ status: 'declared', version: null, requestedVersion: '^1.0.0' }`.
+From tools/agent-desk: `npm test`, `npm run build`, `npm run test:e2e`. Run focused failing boundary tests before implementation; fixture discovery must not inspect the CI/user machine. Final live proof uses a separate test instance before merging and upgrading the installed app with rollback evidence.

@@ -14,6 +14,7 @@ import { homedir } from "node:os";
 import { Store, fail, id } from "./store.mjs";
 import { Service } from "./service.mjs";
 import { Runner } from "./runner.mjs";
+import { MachineMonitor } from "./machine-monitor.mjs";
 const appRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const mime = {
   ".html": "text/html; charset=utf-8",
@@ -79,6 +80,7 @@ export function createAppServer({
   agentTokens = {},
   allowedHost = "",
   syncManager = null,
+  machineMonitor = null,
 }) {
   const sessions = new Map();
   const clients = new Set();
@@ -243,6 +245,32 @@ export function createAppServer({
         const input = ["POST", "PATCH", "PUT"].includes(method)
           ? await body(req)
           : {};
+        if (resource === "machine") {
+          if (!machineMonitor)
+            fail(
+              503,
+              "MONITOR_UNAVAILABLE",
+              "Machine monitoring is unavailable.",
+            );
+          if (path === "/api/machine" && method === "GET")
+            return json(machineMonitor.snapshot());
+          if (path === "/api/machine/refresh" && method === "POST") {
+            machineMonitor.refresh();
+            return json(machineMonitor.snapshot(), 202);
+          }
+          if (path === "/api/machine/sources" && method === "POST")
+            return json(await machineMonitor.addSource(input), 201);
+          if (
+            key === "sources" &&
+            action &&
+            parts.length === 4 &&
+            method === "DELETE"
+          )
+            return json(
+              machineMonitor.removeSource(decodeURIComponent(action)),
+            );
+          fail(404, "NOT_FOUND", "Machine endpoint not found.");
+        }
         if (resource === "tickets" && action === "claim" && method === "POST") {
           if (actor.role === "agent" && input.agentId !== actor.agentId)
             fail(
@@ -373,11 +401,12 @@ export function createAppServer({
     }
   });
   server.on("close", () => {
+    machineMonitor?.close();
     for (const res of clients) res.end();
   });
   return server;
 }
-export async function startServer() {
+export async function startServer({ machineOptions = {} } = {}) {
   const host = process.env.AGENT_DESK_HOST ?? "127.0.0.1";
   const port = Number(process.env.AGENT_DESK_PORT ?? 4310);
   const adminToken = process.env.AGENT_DESK_ADMIN_TOKEN ?? "";
@@ -423,6 +452,7 @@ export async function startServer() {
   const { LegacyObserver } = await import("./legacy-observer.mjs");
   const legacyObserver = new LegacyObserver(service);
   legacyObserver.tick();
+  const machineMonitor = new MachineMonitor(service, machineOptions);
   const server = createAppServer({
     service,
     runner,
@@ -430,17 +460,26 @@ export async function startServer() {
     agentTokens,
     allowedHost: process.env.AGENT_DESK_PUBLIC_HOST ?? "",
     syncManager,
+    machineMonitor,
   });
   await new Promise((r, reject) => {
     server.once("error", reject);
     server.listen(port, host, r);
   });
   server.on("close", () => {
+    machineMonitor.close();
     legacyObserver.close();
     clearInterval(syncManager.timer);
   });
   console.log(`Agent Desk listening at http://${host}:${port}`);
-  return { server, service, runner, syncManager, legacyObserver };
+  return {
+    server,
+    service,
+    runner,
+    syncManager,
+    legacyObserver,
+    machineMonitor,
+  };
 }
 if (
   process.argv[1] &&

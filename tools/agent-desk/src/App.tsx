@@ -11,6 +11,7 @@ import {
   LockKeyhole,
   LogOut,
   Menu,
+  Monitor,
   Plus,
   RefreshCw,
   Settings2,
@@ -22,6 +23,7 @@ import { useDesk } from "./useDesk";
 import type { Page, Ticket } from "./types";
 import { ActivityFeed } from "./components/ActivityFeed";
 import { AgentsView } from "./components/AgentsView";
+import { MachineView } from "./components/MachineView";
 import { CreateProject, CreateTicket } from "./components/CreateDialogs";
 import { SettingsView } from "./components/SettingsView";
 import { TicketDetails } from "./components/TicketDetails";
@@ -32,6 +34,7 @@ const navigation = [
   { id: "work", title: "All work", icon: ListTodo },
   { id: "activity", title: "Activity", icon: Activity },
   { id: "agents", title: "Agents", icon: Bot },
+  { id: "machine", title: "Machine", icon: Monitor },
   { id: "settings", title: "Settings", icon: Settings2 },
 ] as const;
 
@@ -390,6 +393,8 @@ export default function App() {
             refreshIntegrations={desk.refreshIntegrations}
             onOpen={setSelectedId}
           />
+        ) : page === "machine" ? (
+          <MachineView state={state} onOpen={setSelectedId} />
         ) : (
           <SettingsView
             key={projectId}

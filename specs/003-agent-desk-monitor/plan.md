@@ -1,0 +1,17 @@
+# Implementation plan
+
+Locked 2026-09-13. Local route: discovery depends on this Mac's filesystem, processes and installed service state. Source base 55f6b3073fb24164faf78b4305ae15a11ae17c3e; worktree /private/tmp/agent-desk-monitor.
+
+Use two read-only collectors, a cached coordinator, existing admin HTTP routing, and a separate list-first Machine page. No new dependency, DB schema, provider API or background Codex automation. Coordinator stores only custom source configuration in existing records; snapshots are memory-only. Inventory every five minutes; OS/process/endpoint sampling every 15 seconds; shared in-flight promises and bounded probes. GET returns cached state immediately; POST refresh triggers background work. Retain prior data on errors and timestamp each layer.
+
+Collector owns explicit well-known roots and bounded package enumeration. Metadata reads are asynchronous, regular-file only and size/entry limited, selected fields only. Use absolute trusted OS ps command with comm-only output, no shell or agent/version executable invocation. Identify processes conservatively by exact executable/app path; generic runtimes cannot identify CLI providers. Probe only constant localhost endpoints with timeout and redirects disabled. More environments can be added as explicit folders, never executable commands.
+
+MachineMonitor receives Service (for project paths and persisted sources) and injected discover/probe functions; public snapshot merges installation rows and matched runtime data. Source edits invalidate inventory and stale scans must not publish removed configuration. HTTP routes live after existing agent-scope authorization guard. Stop timers on server shutdown. Fresh GET must not turn an inventory failure into empty success.
+
+Frontend owns component/data lifecycle/styles, polls only while mounted/visible, aborts/ignores stale responses, search/filters/paging, source form, coverage and status. Match the existing stone/green design. Keep execution/ticket facts distinct from process observations. Parent supplies types/contract first; collector and frontend can then proceed in independent owned files. Lead owns coordinator/API, integration, docs, acceptance and deployment; independent review before merge.
+
+Testing: fixture collectors for package dedup/symlinks/malformed/limits/missing roots/privacy, ps matching/errors/timeouts, coordinator overlap/retention/config-race/validation/persistence, admin/agent API boundaries; Playwright responsive list, filtering, refresh, source edits and disconnect retention. Full app suites/build and CI plus live source-root/SHA/host/probe evidence. Upgrade only this app after merge, consistent DB backup and installer preview/rollback record. Existing independent/native sessions remain untouched.
+
+Explicit scope amendment before integration: lead also owns playwright.config.ts testMatch and tests/serve-e2e.mjs to include monitor journeys and disable native collection in the isolated browser server. startServer accepts injected machineOptions for fixture isolation. No product behavior expansion.
+
+Explicit contract amendment from actual discovery: Codex plugin-cache manifests are not npm packages or proof of installation. MachineLibrary adds ecosystem=plugin and status=cached; UI must label and filter these separately, with no enabled/use inference. Ordinary installed npm/Python metadata remains installed.
