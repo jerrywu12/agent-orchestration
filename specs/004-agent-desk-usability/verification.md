@@ -87,6 +87,8 @@ After restart `/api/health` reported the installed app root and exact merged SHA
 Assertions verified the same 2 projects, 60 ticket IDs, 11 stage IDs, 11 exact active claims
 (ticket, owner, execution, agent, native session, branch and worktree) and unchanged connector
 credential bytes. These comparisons preceded this task's own checkpoint/state update.
+AGENT-3 then checkpointed at 95%, released only its own claim and retained Codex ownership
+with the Mac-unlock blocker in In progress. The other 10 claims remain reserved unchanged.
 
 The deployed browser measured 16/15/13/13px root/title/ID/shortcut fonts, zero clipped IDs
 among all 52 visible rows, no page overflow and zero console errors. Its manifest returned
