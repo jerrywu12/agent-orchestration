@@ -1,0 +1,7 @@
+# Design decisions and research
+
+- Installable Chrome PWA using standalone manifest; preserve server dependency and expose an offline explanation. Manifest and installability: https://web.dev/learn/pwa/web-app-manifest and https://web.dev/learn/pwa/installation . Avoid caching private API responses or pretending offline writes succeeded.
+- Use a native/server folder picker because browser directory handles do not expose the canonical server absolute path: https://developer.chrome.com/docs/capabilities/web-apis/file-system-access . Keep browser uploads separate from repository registration.
+- Portable local Word parsing from Buffer via word-extractor (DOC/DOCX), PDF.js for text PDFs: https://github.com/morungos/node-word-extractor and https://mozilla.github.io/pdf.js/getting_started/ . Reject scanned-only PDFs explicitly; OCR/cloud summarization are separate capabilities.
+- Bound uploads by extension/signature, size, extraction resources and storage; use generated IDs and authenticated download: https://cheatsheetseries.owasp.org/cheatsheets/File_Upload_Cheat_Sheet.html . Parse plain text, never embed document HTML or run macros.
+- Workflow evidence and minimal improvements are detailed in research-workflow.md. The current claim and complete-to-review controls are retained; optional structured briefs and explicit recorded/missing evidence improve agent packets without retroactive execution-policy changes. No claim that the current Done state is an independently verified merge gate.

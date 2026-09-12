@@ -1,0 +1,4 @@
+# Data model
+TaskBrief has acceptanceCriteria, scope and verification text (10k chars each). Omitted fields normalize empty, no change to legacy holds.
+Attachment table: UUID primary key, nullable ticket_id, filename, media_type, byte_size, sha256, extracted_text, warnings JSON, optional page_count, original BLOB, created_at, expires_at. Draft → bound only atomically inside ticket creation; draft → deleted/expired; bound immutable. Metadata is safe state response; text and originals require admin or exact current owner. SQLite backup includes originals.
+FolderInspection and WorkflowChecklist are derived transient values, not new authoritative workflow state. Existing Project.path stores canonical Git root or selected non-Git directory; repo stores owner/name only. No secrets from remote URLs persist.
