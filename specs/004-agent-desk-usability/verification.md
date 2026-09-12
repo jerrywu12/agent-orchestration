@@ -69,7 +69,38 @@ data, never execution authority; extraction does not fetch links or invoke a mod
 ## Integration and deployment
 
 Combined browser suite: **34 passed** (18.0s), `run-vpeubktt.log`; build and 175 Node tests
-are green. Source review is clean. Native Chrome installation and merged deployment remain.
-Live delivery must record exact merged SHA, consistent SQLite backup, installer preview/
-rollback manifest, active-claim preservation and a standalone Chrome app window. This source
-record does not claim those operations have happened yet.
+are green. Source review is clean. [PR #17](https://github.com/jerrywu12/agent-orchestration/pull/17)
+merged as `de0183b27e10ef79b77402514201cb1b677804e9` after all three CI jobs passed at
+head `8aa711075c6c1d1c340bc6e9fb71f048f191114f`.
+
+On 2026-09-13 (Asia/Shanghai), canonical main fast-forwarded without changing its unrelated
+untracked root package.json. The tested app tree exactly matched the merged tree. Installer
+preview and apply replaced only `/Users/jerry/.local/share/agent-desk/app`; 14 connector,
+guidance and service configuration files stayed unchanged. Only `local.agent.agent-desk`
+was restarted. Private recovery evidence:
+
+- Consistent SQLite backup: `~/.local/state/agent-desk/backups/2026-09-13-before-usability.db`.
+- Installer rollback manifest: `~/.local/state/agent-desk/installations/2026-09-12T19-01-05-154Z-6340e9e4-da7b-47f8-a037-2841b94c533a/manifest.json`.
+- Before/after identity evidence: `~/.local/state/agent-desk/releases/2026-09-13-usability-before.json`.
+
+After restart `/api/health` reported the installed app root and exact merged SHA above.
+Assertions verified the same 2 projects, 60 ticket IDs, 11 stage IDs, 11 exact active claims
+(ticket, owner, execution, agent, native session, branch and worktree) and unchanged connector
+credential bytes. These comparisons preceded this task's own checkpoint/state update.
+AGENT-3 then checkpointed at 95%, released only its own claim and retained Codex ownership
+with the Mac-unlock blocker in In progress. The other 10 claims remain reserved unchanged.
+
+The deployed browser measured 16/15/13/13px root/title/ID/shortcut fonts, zero clipped IDs
+among all 52 visible rows, no page overflow and zero console errors. Its manifest returned
+200 and its service worker registered. Screenshot evidence remains private at
+`/Users/jerry/Smart-Stock-Picker/.playwright-mcp/agent-desk-live-usability.png`.
+Live folder inspection resolved the app subfolder to the canonical repo and its existing
+Agent Orchestrator project, without creating anything. All four synthetic document formats
+were extracted by the installed runtime, original download bytes matched, and only these
+temporary draft attachments were removed after the smoke check.
+
+**Remaining native completion:** macOS was locked, and native control explicitly reported
+that automatic unlock could not unlock it. The user was asked to unlock the Mac. Chrome's
+standalone app installation and completing the native folder-selection dialog are pending;
+the updated app is open in Chrome with its Install app control. No installed/standalone
+success is claimed. Resume these two checks after unlock, then finish T013/T014 and AGENT-3.
