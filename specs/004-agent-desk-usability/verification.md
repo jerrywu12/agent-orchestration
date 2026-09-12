@@ -35,8 +35,20 @@ desktop widths, mobile, board/detail views, navigation and shortcut text.
   extracted-text quota accounting, and caller-supplied duplicate IDs. All received failing
   tests and fixes before the full suite. Metadata listing now avoids selecting full text.
 - Frontend source review covered uploads, cleanup, previews/downloads, async folder races,
-  brief persistence, recovery after creation and font declarations. Browser verification
-  and final corrections are recorded below when complete.
+  brief persistence, recovery after creation and font declarations. All 233 existing pixel
+  font declarations increased exactly 3px. Retained-ticket recovery and stage/owner/session
+  holds were corrected and reviewed clean.
+- Intake browser suite: **10 passed** (5.3s), `run-_6lssnhy.log`; real DataTransfer drag/drop,
+  real local parsers through the file picker, original downloads, reload, async cleanup,
+  folder fallback/dedup, briefs, holds and 320/1440/1920px typography. Build passed in
+  `run-r06i9row.log`. A 43px mobile drop-text column was reproduced and corrected.
+- Independent rendered preview at port4321 identified the feature worktree. Computed root/
+  title/identifier/shortcut fonts were 16/15/13/13px; IDs had equal client/scroll widths87px,
+  no page overflow and zero console errors. Manifest and service worker were present.
+- Chrome form inspection of tools/agent-desk resolved the repository root, branch, dirty
+  state and credential-free GitHub remote correctly, without registering or changing it.
+  The native picker timed out with an honest fallback while macOS was locked; unlock was
+  requested for native picker completion and Chrome installation.
 
 Tests use temporary databases, repositories and synthetic documents. No host inventory,
 real agent launch, GitHub issue mutation or private document fixture is part of CI.
@@ -56,7 +68,8 @@ data, never execution authority; extraction does not fetch links or invoke a mod
 
 ## Integration and deployment
 
-Pending final combined browser checks, native Chrome installation and merged deployment.
+Combined browser suite: **34 passed** (18.0s), `run-vpeubktt.log`; build and 175 Node tests
+are green. Source review is clean. Native Chrome installation and merged deployment remain.
 Live delivery must record exact merged SHA, consistent SQLite backup, installer preview/
 rollback manifest, active-claim preservation and a standalone Chrome app window. This source
 record does not claim those operations have happened yet.
