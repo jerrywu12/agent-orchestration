@@ -106,7 +106,7 @@ test("draft expiry, quotas, duplicate ids and brief limits are enforced", () => 
 });
 test("storage quota includes expanded text, not only compressed original bytes", () => {
   const store = new Store(":memory:"),
-    attachments = new Attachments(store, { maxBytes: 100 });
+    attachments = new Attachments(store, { maxBytes: 1024 });
   assert.throws(
     () =>
       attachments.save({
@@ -156,6 +156,29 @@ test("duplicate create IDs cannot replace tickets or add a sixth attachment", ()
   assert.throws(
     () => service.createProject({ id: "project", name: "Replacement" }),
     /already exists/i,
+  );
+  store.close();
+});
+test("storage accounting includes expanded text from previously saved documents", () => {
+  const store = new Store(":memory:"),
+    attachments = new Attachments(store, { maxBytes: 1400 });
+  const data = {
+    name: "small.pdf",
+    bytes: Buffer.from("x"),
+    result: {
+      text: "A".repeat(500),
+      mediaType: "application/pdf",
+      warnings: [],
+    },
+  };
+  attachments.save(data);
+  assert.throws(
+    () => attachments.save({ ...data, name: "next.pdf" }),
+    /storage/i,
+  );
+  assert.equal(
+    store.db.prepare("SELECT COUNT(*) AS n FROM attachments").get().n,
+    1,
   );
   store.close();
 });
