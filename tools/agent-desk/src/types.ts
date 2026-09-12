@@ -133,4 +133,4 @@ export type TicketDraft = Pick<
   | "dependsOn"
   | "blockedReason"
 >;
-export type Page = "work" | "activity" | "agents" | "settings";
+export type Page = "work" | "activity" | "agents" | "machine" | "settings";
