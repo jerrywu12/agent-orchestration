@@ -1,7 +1,6 @@
 import type { Attachment, TaskBrief } from "./intake-types";
 export type Priority = "urgent" | "high" | "medium" | "low" | "none";
-export type StageRole =
-  "backlog" | "planning" | "active" | "review" | "done" | "parked";
+export type StageRole = "backlog" | "ready" | "active" | "review" | "done";
 export interface Project {
   id: string;
   name: string;
@@ -11,7 +10,6 @@ export interface Project {
   githubProjectNumber?: number | null;
   githubProjectId?: string | null;
   statusFieldId?: string | null;
-  stageMapping?: Record<string, string> | null;
   statusOptions?: { id: string; name: string }[];
 }
 export interface Stage {
@@ -32,6 +30,7 @@ export interface Agent {
   enabled: boolean;
 }
 export interface Execution {
+  purpose?: "implementation" | "resolve_blockers";
   id: string;
   ticketId: string;
   agentId: string;
@@ -139,3 +138,23 @@ export type TicketDraft = Pick<
   | "brief"
 >;
 export type Page = "work" | "activity" | "agents" | "machine" | "settings";
+
+export interface AgentCapacity {
+  agentId: string;
+  status: "available" | "limited" | "auth_required" | "unavailable" | "unknown";
+  windows: {
+    id: string;
+    label: string;
+    usedPercent: number | null;
+    remainingPercent: number | null;
+    resetsAt: string | null;
+    windowMinutes: number | null;
+    rateLimitReachedType?: string | null;
+    spendControlReached?: boolean | null;
+  }[];
+  source: string;
+  observedAt: string | null;
+  stale: boolean;
+  message: string;
+  ordinaryUsageAllowed?: boolean | null;
+}

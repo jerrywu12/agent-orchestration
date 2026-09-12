@@ -97,7 +97,7 @@ test("admin auth required with remote mode, agent credentials cannot mutate arbi
   const p = service.createProject({ name: "Owned" });
   const stage = service
     .state()
-    .stages.find((s) => s.projectId === p.id && s.role === "planning");
+    .stages.find((s) => s.projectId === p.id && s.role === "ready");
   const a = service.createTicket({
     projectId: p.id,
     title: "Owned ticket",
@@ -135,7 +135,7 @@ test("independent API claims remain recoverable after their client disappears", 
   const project = service.createProject({ name: "Recovery" });
   const stage = service
     .state()
-    .stages.find((s) => s.projectId === project.id && s.role === "planning");
+    .stages.find((s) => s.projectId === project.id && s.role === "ready");
   const ticket = service.createTicket({
     projectId: project.id,
     title: "External runner",
@@ -164,4 +164,51 @@ test("independent API claims remain recoverable after their client disappears", 
   });
   assert.equal(recovered.status, 200);
   assert.equal(service.store.active(ticket.id), null);
+});
+
+test("provider status is cached, refresh intent is explicit and stage mappings are read-only", async (t) => {
+  const attempts = [];
+  let stale = true;
+  const monitor = {
+    snapshot: () => ({
+      agents: [{ agentId: "codex", observedAt: "2026-09-13T00:00:00Z", stale }],
+      refreshing: false,
+    }),
+    refresh: async (options = {}) => {
+      attempts.push(options);
+      stale = false;
+    },
+    close: () => {},
+  };
+  const { url, service } = await app(t, { agentStatusMonitor: monitor });
+  assert.equal((await fetch(url + "/api/agents/status")).status, 200);
+  assert.deepEqual(attempts, [{}]);
+  await fetch(url + "/api/agents/status");
+  assert.equal(attempts.length, 1);
+  assert.equal(
+    (
+      await fetch(url + "/api/agents/status/refresh", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ command: "untrusted" }),
+      })
+    ).status,
+    202,
+  );
+  assert.deepEqual(attempts[1], { force: true });
+  const project = service.createProject({ name: "Fixed workflow" });
+  for (const payload of [
+    { stageMapping: { any: "id" } },
+    { statusFieldId: "manual" },
+    { githubProjectId: "manual" },
+    { statusOptions: [] },
+  ]) {
+    const r = await fetch(url + `/api/projects/${project.id}`, {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    assert.equal(r.status, 422);
+    assert.equal((await r.json()).error.code, "READ_ONLY_WORKFLOW");
+  }
 });

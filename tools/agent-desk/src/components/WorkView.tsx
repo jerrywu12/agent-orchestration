@@ -114,7 +114,7 @@ export function WorkView({
   const displayGroups = hasUnknown
     ? [
         ...groups,
-        { id: "unknown", name: "Unmapped stage", stage: undefined, stages: [] },
+        { id: "unknown", name: "Unknown stage", stage: undefined, stages: [] },
       ]
     : groups;
   async function update(ticket: Ticket, fields: Partial<Ticket>) {

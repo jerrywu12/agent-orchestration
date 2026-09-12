@@ -164,7 +164,7 @@ test("create, assign, edit and comment through the UI; reload retains the result
 
   await dialog
     .getByRole("combobox", { name: "Stage", exact: true })
-    .selectOption({ label: "Planning" });
+    .selectOption({ label: "Ready" });
   await dialog
     .getByRole("combobox", { name: "Priority", exact: true })
     .selectOption("high");
@@ -226,47 +226,44 @@ test("create, assign, edit and comment through the UI; reload retains the result
   expect(pageErrors).toEqual([]);
 });
 
-test("custom stage can be added, renamed and reordered without touching another project", async ({
+test("fixed workflow survives reload and custom-stage writes are rejected", async ({
   page,
   request,
 }) => {
   const { project } = await projectFixture(request, "Stage workflow");
-  const stageName = unique("Waiting for review");
-  const renamed = unique("Acceptance review");
+  const { project: other } = await projectFixture(request, "Other workflow");
+  const names = ["Backlog", "Ready", "In progress", "In review", "Done"];
   await page.goto("/");
   await openProject(page, project);
   await openSettings(page);
-  await page.getByLabel("New stage name", { exact: true }).fill(stageName);
-  await page.getByRole("button", { name: "Add stage", exact: true }).click();
+  await expect(page.getByLabel("New stage name", { exact: true })).toHaveCount(
+    0,
+  );
   await expect(
-    page.getByLabel(`Stage name: ${stageName}`, { exact: true }),
-  ).toBeVisible();
-  await page
-    .getByLabel(`Stage name: ${stageName}`, { exact: true })
-    .fill(renamed);
-  await page
-    .getByRole("button", { name: `Save ${stageName}`, exact: true })
-    .click();
-  await expect(
-    page.getByLabel(`Stage name: ${renamed}`, { exact: true }),
-  ).toBeVisible();
-  await page
-    .getByRole("button", { name: `Move ${renamed} up`, exact: true })
-    .click();
-  await expect
-    .poll(async () => {
-      const ordered = (await state(request)).stages
-        .filter((stage) => stage.projectId === project.id)
-        .sort((a, b) => a.position - b.position);
-      return ordered.at(-2)?.name;
-    })
-    .toBe(renamed);
+    page.getByRole("button", { name: "Add stage", exact: true }),
+  ).toHaveCount(0);
+  expect(
+    (
+      await request.post("/api/stages", {
+        data: { projectId: project.id, name: "Parked" },
+      })
+    ).status(),
+  ).toBe(409);
+  for (const id of [project.id, other.id])
+    expect(
+      (await state(request)).stages
+        .filter((s) => s.projectId === id)
+        .sort((a, b) => a.position - b.position)
+        .map((s) => s.name),
+    ).toEqual(names);
   await page.reload();
   await openProject(page, project);
   await openSettings(page);
-  const stageInputs = page.getByRole("textbox", { name: /^Stage name:/ });
-  await expect(stageInputs.nth((await stageInputs.count()) - 2)).toHaveValue(
-    renamed,
+  await expect(
+    page.getByRole("heading", { name: "Workflow stages", exact: true }),
+  ).toBeVisible();
+  await expect(page.getByLabel("New stage name", { exact: true })).toHaveCount(
+    0,
   );
 });
 
@@ -369,7 +366,7 @@ for (const width of [320, 768]) {
       .click();
     await openSettings(page);
     await expect(
-      page.getByLabel("New stage name", { exact: true }),
+      page.getByRole("heading", { name: "Workflow stages", exact: true }),
     ).toBeVisible();
     await expectNoDocumentOverflow(page, width);
   });
@@ -535,7 +532,7 @@ test("external reconciliation requires evidence and confirmation for the exact s
     request,
     "Source reconciliation",
   );
-  const stage = stages.find((item) => item.role === "planning")!;
+  const stage = stages.find((item) => item.role === "ready")!;
   const ticket = await ticketFixture(request, project, stage.id, {
     ownerId: "codex",
   });
@@ -610,7 +607,7 @@ test("bodyless Start sends JSON and reports the unavailable project boundary wit
   const ticket = await ticketFixture(
     request,
     project,
-    stages.find((item) => item.role === "planning")!.id,
+    stages.find((item) => item.role === "ready")!.id,
     { ownerId: "codex" },
   );
   // No working directory is configured. Even an installed CLI must be rejected before execution.

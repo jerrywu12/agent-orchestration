@@ -1,4 +1,11 @@
-import { GitHubClient, reconcileIssue, issueSnapshot } from "./github.mjs";
+import {
+  GitHubClient,
+  GitHubError,
+  reconcileIssue,
+  issueSnapshot,
+  discoverWorkflowStatus,
+  projectStatusRole,
+} from "./github.mjs";
 import { fail, now } from "./store.mjs";
 
 const PROJECT_SYNC_INTENT = "project-sync-intent";
@@ -322,8 +329,11 @@ export class SyncManager {
     });
   }
   async syncStage(project, ticket, remote, item, direction) {
-    const mapping = project.stageMapping ?? {};
-    const localOption = mapping[ticket.stageId];
+    const mapping = discoverWorkflowStatus(project);
+    const localOption =
+      mapping[this.service.require("stage", ticket.stageId).role];
+    if (!localOption) throw new GitHubError("UNKNOWN_PROJECT_STATUS");
+    const remoteRole = item ? projectStatusRole(project, item.status) : null;
     const remoteOption = item?.status?.optionId ?? null;
     const priorOption = ticket.github.projectStatusOptionId;
     const localChanged =
@@ -338,12 +348,13 @@ export class SyncManager {
       });
       return false;
     }
-    if (localChanged && direction === "pull") return false;
+    if (localChanged && localOption !== remoteOption && direction === "pull")
+      return false;
     if (
       localOption &&
       project.statusFieldId &&
       direction !== "pull" &&
-      (localChanged || !item)
+      ((localChanged && localOption !== remoteOption) || !item)
     ) {
       const response = await this.client.setProjectStatus(
         project.githubProjectId,
@@ -372,10 +383,10 @@ export class SyncManager {
       return true;
     }
     if (item) {
-      const targetId = Object.entries(mapping).find(
-        ([, option]) => option === remoteOption,
-      )?.[0];
-      const target = targetId ? this.store.get("stage", targetId) : null;
+      const target = this.store
+        .list("stage", project.id)
+        .find((stage) => stage.role === remoteRole);
+      const targetId = target?.id;
       const next = {
         ...ticket,
         github: {
@@ -395,10 +406,11 @@ export class SyncManager {
       )
         next.stageId = targetId;
       // A remote Done flag is reported as GitHub status, never fabricated merge evidence.
-      if (!localChanged) next.github.stageIdAtSync = next.stageId;
+      if (!localChanged || localOption === remoteOption)
+        next.github.stageIdAtSync = next.stageId;
       this.store.put("ticket", next);
     }
-    // Unmapped local stages stay pending until the user maps them; never discard intent.
+    // A local workflow change remains pending until its matching remote option is applied.
     return (
       !localChanged ||
       !project.githubProjectNumber ||
@@ -508,6 +520,7 @@ export class SyncManager {
           statusOptions: board.statusOptions,
           githubProjectUrl: board.url,
         });
+        discoverWorkflowStatus(project);
         items = await this.client.listProjectItems(board.id);
       }
       for (const remote of remotes) {
@@ -518,6 +531,10 @@ export class SyncManager {
           .get(ticket.id);
         if (job && (job.state === "error" || job.retry_at > now())) continue;
         try {
+          const item = items.find((i) => i.issue?.nodeId === remote.nodeId);
+          // Validate before publishing or accepting issue fields. Invalid Status must
+          // not consume local intent or silently report the ticket as synchronized.
+          if (item) projectStatusRole(project, item.status);
           const result = reconcileIssue({
             local: this.localSnapshot(ticket),
             remote,
@@ -558,13 +575,7 @@ export class SyncManager {
           ticket = this.service.require("ticket", ticket.id);
           const stageDone =
             !project.githubProjectNumber ||
-            (await this.syncStage(
-              project,
-              ticket,
-              latest,
-              items.find((i) => i.issue?.nodeId === remote.nodeId),
-              direction,
-            ));
+            (await this.syncStage(project, ticket, latest, item, direction));
           if (stageDone) this.finish(ticket.id);
         } catch (error) {
           if (error.code === "CONFLICT") {
@@ -579,9 +590,15 @@ export class SyncManager {
           this.recordError(ticket, error);
         }
       }
-      const conflicts = this.store
-        .list("ticket", projectId)
-        .filter((t) => t.github?.syncState === "conflict").length;
+      const tickets = this.store.list("ticket", projectId);
+      const conflicts = tickets.filter(
+        (t) => t.github?.syncState === "conflict",
+      ).length;
+      const retainedError = tickets.find((t) => t.github?.syncState === "error")
+        ?.github.error;
+      // Permission/configuration failures may be skipped until manual retry. Their
+      // durable ticket jobs must remain visible at project level after polling/restart.
+      if (retainedError && !errors.length) errors.push(retainedError);
       // Repository/Project reads finished; individual issue failures retain their own jobs.
       this.store.delete(PROJECT_SYNC_INTENT, projectId);
       return this.status(projectId, {
@@ -683,11 +700,16 @@ export class SyncManager {
     if (!conflict) fail(409, "NO_CONFLICT", "No saved conflict exists.");
     let next = ticket;
     if (choice === "remote") {
+      let targetId;
       if (conflict.remoteProjectOptionId !== undefined) {
         const project = this.service.require("project", ticket.projectId);
-        const targetId = Object.entries(project.stageMapping ?? {}).find(
-          ([, v]) => v === conflict.remoteProjectOptionId,
-        )?.[0];
+        const role = projectStatusRole(project, {
+          fieldId: project.statusFieldId,
+          optionId: conflict.remoteProjectOptionId,
+        });
+        targetId = this.store
+          .list("stage", project.id)
+          .find((stage) => stage.role === role)?.id;
         if (
           !targetId ||
           this.service.require("stage", targetId).role === "done" ||
@@ -696,7 +718,7 @@ export class SyncManager {
           fail(
             409,
             "STAGE_RESOLUTION",
-            "Resolve the active session or unmapped/Done stage manually before accepting remote status.",
+            "Resolve the active session or verify delivery before accepting remote Done status.",
           );
         next = { ...ticket, stageId: targetId };
       }
@@ -708,10 +730,6 @@ export class SyncManager {
         );
       next = this.service.require("ticket", ticketId);
       if (conflict.remoteProjectOptionId !== undefined) {
-        const project = this.service.require("project", ticket.projectId);
-        const targetId = Object.entries(project.stageMapping).find(
-          ([, v]) => v === conflict.remoteProjectOptionId,
-        )[0];
         next = {
           ...next,
           stageId: targetId,

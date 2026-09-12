@@ -86,7 +86,7 @@ function fixture(t) {
       ownerId: "codex",
       stageId: service
         .state()
-        .stages.find((s) => s.projectId === project.id && s.role === "planning")
+        .stages.find((s) => s.projectId === project.id && s.role === "ready")
         .id,
       ...extra,
     });
@@ -124,7 +124,7 @@ function completed(service, ticketId) {
   });
 }
 
-test("blocked, backlog, dependency-held and already-claimed tickets never spawn a process or worktree", (t) => {
+test("automatic blocked, backlog, dependency-held and already-claimed tickets never spawn a process or worktree", (t) => {
   const f = fixture(t);
   const blocked = f.ticket({ blockedReason: "Needs decision" });
   const backlog = f.ticket({
@@ -147,7 +147,7 @@ test("blocked, backlog, dependency-held and already-claimed tickets never spawn 
     [claimed, "ALREADY_CLAIMED"],
   ])
     assert.throws(
-      () => f.runner.start(ticket.id),
+      () => f.runner.start(ticket.id, { automatic: true }),
       (error) => error.code === code,
     );
   assert.equal(existsSync(f.record), false);
@@ -214,7 +214,7 @@ test("fixed executable argv runs only in an isolated base worktree and streams p
   );
   assert.equal(
     f.store.get("stage", f.service.getTicket(ticket.id).stageId).role,
-    "planning",
+    "active",
     "process completion is not delivery",
   );
 });
@@ -268,4 +268,35 @@ test("server administrator authority is absent from agent child environment", as
   const { env } = JSON.parse(readFileSync(f.record, "utf8"));
   assert.equal(env.AGENT_DESK_ADMIN_TOKEN, undefined);
   assert.equal(env.AGENT_DESK_TOKEN, "scoped-fixture-token");
+});
+
+test("explicit Start launches a blocked Backlog ticket as a resolution pass", async (t) => {
+  const f = fixture(t);
+  const dependency = f.ticket({ ownerId: "claude" });
+  const foreign = f.service.claim(dependency.id, {
+    agentId: "claude",
+    sessionId: "foreign-worker",
+  });
+  const ticket = f.ticket({
+    blockedReason: "dependency",
+    dependsOn: [dependency.id],
+    stageId: f.service
+      .state()
+      .stages.find((s) => s.projectId === f.project.id && s.role === "backlog")
+      .id,
+  });
+  const run = f.runner.start(ticket.id);
+  assert.equal(run.purpose, "resolve_blockers");
+  await completed(f.service, ticket.id);
+  const call = JSON.parse(readFileSync(f.record, "utf8"));
+  assert.match(call.args[2], /resolve_blockers/);
+  assert.match(call.args[2], /desk_update_task/);
+  assert.match(call.args[2], /foreign-worker|reserved/);
+  assert.equal(f.service.getTicket(ticket.id).blockedReason, "dependency");
+  assert.deepEqual(f.service.getTicket(ticket.id).dependsOn, [dependency.id]);
+  assert.equal(f.store.active(dependency.id).id, foreign.id);
+  assert.equal(
+    f.store.get("stage", f.service.getTicket(ticket.id).stageId).role,
+    "active",
+  );
 });

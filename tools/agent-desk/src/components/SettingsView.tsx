@@ -1,31 +1,8 @@
 import { useState, type FormEvent } from "react";
-import {
-  ArrowDown,
-  ArrowUp,
-  Check,
-  Github,
-  Plus,
-  RefreshCw,
-  Save,
-  Server,
-  Trash2,
-} from "lucide-react";
+import { Check, Github, Plus, RefreshCw, Save, Server } from "lucide-react";
 import { api, errorMessage, pathId } from "../api";
-import type {
-  DeskState,
-  Health,
-  Integrations,
-  Project,
-  Stage,
-  StageRole,
-} from "../types";
-import {
-  capitalize,
-  EmptyState,
-  ErrorNotice,
-  StageIcon,
-  timeAgo,
-} from "./shared";
+import type { DeskState, Health, Integrations, Project } from "../types";
+import { EmptyState, ErrorNotice, StageIcon, timeAgo } from "./shared";
 
 export function SettingsView({
   state,
@@ -52,7 +29,7 @@ export function SettingsView({
       <div className="standard-heading">
         <div className="page-kicker">WORKSPACE / CONFIGURATION</div>
         <h1>Settings</h1>
-        <p>Shape your workflow and connect the places where your work lives.</p>
+        <p>Connect your repositories and inspect the shared workflow.</p>
       </div>
       <div className="settings-project-picker">
         <label>
@@ -83,8 +60,7 @@ export function SettingsView({
         />
       ) : (
         <EmptyState title="Set up your first project">
-          Create a project to configure stages, a working directory, and GitHub
-          sync.
+          Create a project to configure its working directory and GitHub sync.
         </EmptyState>
       )}
       <section className="settings-section service-section">
@@ -136,9 +112,6 @@ function ProjectSettings({
   const [projectNumber, setProjectNumber] = useState(
     project.githubProjectNumber?.toString() || "",
   );
-  const [mapping, setMapping] = useState<Record<string, string>>(
-    project.stageMapping || {},
-  );
   const [busy, setBusy] = useState("");
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
@@ -176,9 +149,6 @@ function ProjectSettings({
           path: path.trim() || null,
           repo: repo.trim() || null,
           githubProjectNumber: projectNumber ? Number(projectNumber) : null,
-          stageMapping: Object.fromEntries(
-            Object.entries(mapping).filter(([, value]) => value),
-          ),
         }),
       "Project settings saved.",
     );
@@ -322,51 +292,28 @@ function ProjectSettings({
             both ways; publish new issues explicitly from a ticket.
           </p>
           {projectNumber && (
-            <div className="stage-mapping">
-              <h3>Stage mapping</h3>
+            <section
+              className="github-discovered-statuses"
+              aria-label="Discovered GitHub statuses"
+            >
+              <h3>Discovered GitHub statuses</h3>
               <p className="field-hint">
-                Map each local stage to a GitHub Project status. Sync once to
-                discover available statuses.
+                Statuses match the fixed workflow by name. Sync validates every
+                name; missing or ambiguous statuses require attention in GitHub.
               </p>
-              {stages.map((stage) => (
-                <label key={stage.id}>
-                  <span>
-                    <StageIcon stage={stage} />
-                    {stage.name}
-                  </span>
-                  {project.statusOptions?.length ? (
-                    <select
-                      value={mapping[stage.id] || ""}
-                      onChange={(event) =>
-                        setMapping((current) => ({
-                          ...current,
-                          [stage.id]: event.target.value,
-                        }))
-                      }
-                    >
-                      <option value="">Not mapped</option>
-                      {project.statusOptions.map((option) => (
-                        <option value={option.id} key={option.id}>
-                          {option.name}
-                        </option>
-                      ))}
-                    </select>
-                  ) : (
-                    <input
-                      aria-label={`GitHub status option ID for ${stage.name}`}
-                      value={mapping[stage.id] || ""}
-                      onChange={(event) =>
-                        setMapping((current) => ({
-                          ...current,
-                          [stage.id]: event.target.value,
-                        }))
-                      }
-                      placeholder="Status option ID"
-                    />
-                  )}
-                </label>
-              ))}
-            </div>
+              {project.statusOptions?.length ? (
+                <ul>
+                  {project.statusOptions.map((option) => (
+                    <li key={option.id}>{option.name}</li>
+                  ))}
+                </ul>
+              ) : (
+                <p className="field-hint">
+                  No status metadata discovered yet. Sync the connected project
+                  to check its statuses.
+                </p>
+              )}
+            </section>
           )}
         </section>
         <div className="settings-save">
@@ -382,230 +329,27 @@ function ProjectSettings({
           <span className="muted small">{stages.length} stages</span>
         </div>
         <p className="field-hint">
-          Use stages that reflect how your team works. Moving a ticket keeps its
-          owner.
+          Every project follows the same five stages. Moving a ticket keeps its
+          owner. Blockers remain separate from stage, and assignment does not
+          start work.
         </p>
-        <div className="stage-editor-list">
-          {stages.map((stage, index) => (
-            <StageEditor
-              key={stage.id}
-              stage={stage}
-              count={
-                state.tickets.filter((ticket) => ticket.stageId === stage.id)
-                  .length
-              }
-              index={index}
-              total={stages.length}
-              busy={!!busy}
-              onSave={(fields) =>
-                perform(
-                  "stage",
-                  () => api(`/stages/${pathId(stage.id)}`, "PATCH", fields),
-                  "Stage updated.",
-                )
-              }
-              onDelete={() =>
-                perform(
-                  "stage",
-                  () => api(`/stages/${pathId(stage.id)}`, "DELETE"),
-                  "Stage removed.",
-                )
-              }
-              onMove={(direction) =>
-                perform(
-                  "stage",
-                  async () => {
-                    const reordered = [...stages];
-                    [reordered[index], reordered[index + direction]] = [
-                      reordered[index + direction],
-                      reordered[index],
-                    ];
-                    for (
-                      let position = 0;
-                      position < reordered.length;
-                      position++
-                    ) {
-                      if (reordered[position].position !== position)
-                        await api(
-                          `/stages/${pathId(reordered[position].id)}`,
-                          "PATCH",
-                          { position },
-                        );
-                    }
-                  },
-                  "Stage order updated.",
-                )
-              }
-            />
+        <ol className="fixed-workflow-list" aria-label="Fixed workflow stages">
+          {stages.map((stage) => (
+            <li key={stage.id}>
+              <StageIcon stage={stage} />
+              <strong>{stage.name}</strong>
+              <span>
+                {
+                  state.tickets.filter(
+                    (ticket) => ticket.stageId === stage.id && !ticket.archived,
+                  ).length
+                }{" "}
+                tickets
+              </span>
+            </li>
           ))}
-        </div>
-        <NewStage
-          projectId={project.id}
-          position={
-            stages.length
-              ? Math.max(...stages.map((stage) => stage.position)) + 1
-              : 0
-          }
-          busy={!!busy}
-          onCreate={(fields) =>
-            perform(
-              "stage",
-              () => api("/stages", "POST", fields),
-              "Stage added.",
-            )
-          }
-        />
+        </ol>
       </section>
     </>
-  );
-}
-function StageEditor({
-  stage,
-  count,
-  index,
-  total,
-  busy,
-  onSave,
-  onDelete,
-  onMove,
-}: {
-  stage: Stage;
-  count: number;
-  index: number;
-  total: number;
-  busy: boolean;
-  onSave: (fields: Partial<Stage>) => Promise<boolean>;
-  onDelete: () => Promise<boolean>;
-  onMove: (direction: number) => Promise<boolean>;
-}) {
-  const [name, setName] = useState(stage.name);
-  const [role, setRole] = useState(stage.role);
-  const [autoStart, setAutoStart] = useState(!!stage.autoStart);
-  const changed =
-    name !== stage.name ||
-    role !== stage.role ||
-    autoStart !== !!stage.autoStart;
-  return (
-    <div className="stage-editor">
-      <StageIcon stage={stage} />
-      <input
-        aria-label={`Stage name: ${stage.name}`}
-        value={name}
-        onChange={(event) => setName(event.target.value)}
-      />
-      <span className="count">{count}</span>
-      <select
-        aria-label={`Role for ${stage.name}`}
-        value={role}
-        onChange={(event) => setRole(event.target.value as StageRole)}
-      >
-        {(
-          [
-            "backlog",
-            "planning",
-            "active",
-            "review",
-            "done",
-            "parked",
-          ] as StageRole[]
-        ).map((value) => (
-          <option key={value} value={value}>
-            {capitalize(value)}
-          </option>
-        ))}
-      </select>
-      <label
-        className="checkbox-label auto-start"
-        title="Start an assigned agent when a ticket enters this stage"
-      >
-        <input
-          type="checkbox"
-          checked={autoStart}
-          onChange={(event) => setAutoStart(event.target.checked)}
-        />
-        Auto-start
-      </label>
-      <div className="stage-actions">
-        {changed && (
-          <button
-            className="icon-button save-stage"
-            aria-label={`Save ${stage.name}`}
-            disabled={busy || !name.trim()}
-            onClick={() => void onSave({ name: name.trim(), role, autoStart })}
-          >
-            <Check size={14} />
-          </button>
-        )}
-        <button
-          className="icon-button"
-          aria-label={`Move ${stage.name} up`}
-          disabled={busy || index === 0}
-          onClick={() => void onMove(-1)}
-        >
-          <ArrowUp size={14} />
-        </button>
-        <button
-          className="icon-button"
-          aria-label={`Move ${stage.name} down`}
-          disabled={busy || index === total - 1}
-          onClick={() => void onMove(1)}
-        >
-          <ArrowDown size={14} />
-        </button>
-        <button
-          className="icon-button"
-          aria-label={`Delete ${stage.name}`}
-          title={
-            count
-              ? "Move all tickets out of this stage before deleting it."
-              : "Delete empty stage"
-          }
-          disabled={busy || count > 0}
-          onClick={() => void onDelete()}
-        >
-          <Trash2 size={14} />
-        </button>
-      </div>
-    </div>
-  );
-}
-function NewStage({
-  projectId,
-  position,
-  busy,
-  onCreate,
-}: {
-  projectId: string;
-  position: number;
-  busy: boolean;
-  onCreate: (fields: Partial<Stage>) => Promise<boolean>;
-}) {
-  const [name, setName] = useState("");
-  return (
-    <form
-      className="new-stage-form"
-      onSubmit={(event) => {
-        event.preventDefault();
-        void onCreate({
-          projectId,
-          name: name.trim(),
-          position,
-          role: "backlog",
-        }).then((created) => {
-          if (created) setName("");
-        });
-      }}
-    >
-      <Plus size={15} />
-      <input
-        aria-label="New stage name"
-        value={name}
-        onChange={(event) => setName(event.target.value)}
-        placeholder="Add a stage…"
-      />
-      <button className="button small-button" disabled={busy || !name.trim()}>
-        Add stage
-      </button>
-    </form>
   );
 }

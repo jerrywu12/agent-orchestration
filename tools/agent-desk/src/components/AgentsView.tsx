@@ -2,6 +2,8 @@ import { useState } from "react";
 import { Bot, Check, CircleDot, ExternalLink, RefreshCw } from "lucide-react";
 import { api, errorMessage, pathId } from "../api";
 import type { Agent, DeskState, Integrations } from "../types";
+import { useAgentCapacity } from "../useAgentCapacity";
+import { AgentCapacity } from "./AgentCapacity";
 import {
   AgentAvatar,
   ErrorNotice,
@@ -26,8 +28,9 @@ export function AgentsView({
   refreshIntegrations: () => Promise<void>;
   onOpen: (id: string) => void;
 }) {
+  const capacity = useAgentCapacity();
   return (
-    <div className="standard-page">
+    <div className="standard-page agents-page">
       <div className="standard-heading">
         <div className="page-kicker">WORKSPACE / PEOPLE & MACHINES</div>
         <h1>Agents</h1>
@@ -40,15 +43,33 @@ export function AgentsView({
         <h2>
           Connected agents <span className="count">{state.agents.length}</span>
         </h2>
-        <button
-          className="button small-button"
-          onClick={() => void refreshIntegrations()}
-        >
-          <RefreshCw size={13} />
-          Check availability
-        </button>
+        <div className="agent-status-actions">
+          <button
+            className="button small-button"
+            onClick={() => void refreshIntegrations()}
+          >
+            <RefreshCw size={13} /> Check launchers
+          </button>
+          <button
+            className="button small-button"
+            disabled={
+              capacity.loading || (capacity.refreshing && !capacity.error)
+            }
+            onClick={() => void capacity.refresh()}
+          >
+            <RefreshCw size={13} />{" "}
+            {capacity.loading || (capacity.refreshing && !capacity.error)
+              ? "Refreshing limits…"
+              : "Refresh limits"}
+          </button>
+        </div>
       </div>
       {integrationError && <ErrorNotice>{integrationError}</ErrorNotice>}
+      {capacity.error && (
+        <ErrorNotice>
+          {capacity.error} Retained observations may be stale.
+        </ErrorNotice>
+      )}
       <div className="agent-list">
         {state.agents.map((agent) => (
           <AgentRow
@@ -60,15 +81,19 @@ export function AgentsView({
             )}
             refresh={refresh}
             onOpen={onOpen}
+            capacity={capacity}
           />
         ))}
       </div>
       <div className="quiet-note">
         <Bot size={16} />
         <p>
-          Local availability comes from the server’s configured adapters.
-          External agents can report progress through the API or MCP connector.
-          Enabling an agent does not launch it.
+          Launcher readiness only checks the server’s configured adapters.
+          Provider limits are separate passive observations, refreshed every
+          five minutes or on request; this page checks cached status every 30
+          seconds. A passed reset time does not confirm recovery. External
+          agents can report progress through the API or MCP connector. Enabling
+          an agent does not launch it.
         </p>
       </div>
     </div>
@@ -80,12 +105,14 @@ function AgentRow({
   integration,
   refresh,
   onOpen,
+  capacity,
 }: {
   agent: Agent;
   state: DeskState;
   integration?: Integrations["agents"][number];
   refresh: () => Promise<void>;
   onOpen: (id: string) => void;
+  capacity: ReturnType<typeof useAgentCapacity>;
 }) {
   const [name, setName] = useState(agent.name);
   const [editing, setEditing] = useState(false);
@@ -171,10 +198,12 @@ function AgentRow({
             ? "Disabled"
             : integration
               ? integration.available
-                ? "Available"
+                ? external
+                  ? "External reporting"
+                  : "Launcher ready"
                 : external
                   ? "External"
-                  : "Unavailable"
+                  : "Launcher unavailable"
               : "Checking…"}
         </span>
         <label className="switch-label">
@@ -200,6 +229,13 @@ function AgentRow({
           <span className="agent-reason">{integration.reason}</span>
         )}
       </div>
+      <AgentCapacity
+        capacity={capacity.agents.find((item) => item.agentId === agent.id)}
+        name={agent.name}
+        loading={capacity.loading}
+        failed={!!capacity.error}
+        now={capacity.checkedAt}
+      />
       {reserved.length > 0 && (
         <div className="agent-sessions">
           {reserved.map((ticket) => (

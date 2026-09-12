@@ -1,7 +1,7 @@
 # Agent Desk
 
 A self-hosted workspace for tickets owned by independent AI agents. Compact list and board
-views, custom stages, dependencies, priorities, labels, exact executor ownership, reported
+views, GitHub workflow stages, dependencies, priorities, labels, exact executor ownership, reported
 progress, audit history, GitHub Issues/Projects v2 sync, Mac agent/library monitoring, and
 non-destructive Kangentic import.
 
@@ -20,12 +20,15 @@ loopback binding only, Host/Origin checks, no cross-origin access. Other local p
 operator authority unless they explicitly use an agent credential. The data directory is
 `~/.local/share/agent-desk`; override with `AGENT_DESK_DATA_DIR`. This is separate from source.
 
-Create a project, set its repository/path, add a ticket and assign an agent. Move it to Planning
-before Start. Start checks holds and creates a separate Git worktree from fetched `origin/main`.
+Create a project, set its repository/path, add a ticket and assign an agent. Use Backlog, Ready,
+In progress, In review and Done. Explicit Start on Backlog or blocked/dependency-held work
+launches a resolution pass; otherwise it starts implementation. Start preserves assignments and
+existing claims, and creates a separate Git worktree from fetched `origin/main`.
 It keeps the installed CLI's model and permission defaults. Codex, Claude, Gemini and Cursor
 have fixed command adapters; a missing CLI is shown as unavailable. Antigravity, Hermes,
 Ollama and ArkCLI report through their own clients using the connector; Ollama/ArkCLI remain
-advisory providers. Assignment never launches anything; stage automation is an explicit opt-in.
+advisory providers. Assignment and stage changes never launch work automatically. Ordinary client claims still
+require readiness; the explicit Start action alone grants a bounded blocker-resolution pass.
 
 ## Chrome app and readable lists
 
@@ -98,6 +101,22 @@ arguments, package scripts and credential/config values. The host shown is the m
 the server: use the native macOS installation to monitor this Mac. A Docker deployment reports
 its own container and explicitly configured mounted library roots, not the host's process table.
 
+## Agent capacity
+
+The Agents page separates launcher availability from provider capacity. Check status reads
+Codex's passive app-server account limits using the installed signed-in CLI, without starting
+a model turn. Reported windows keep their provider identity, utilization, reset time and
+freshness; backend permission decides included-usage availability. Expired resets trigger
+refresh eligibility, never an invented recovery. Reads coalesce and cached observations expire
+after five minutes. Failures retain previous observations with an explicit stale/error message.
+
+Other agents show why limits are unavailable when no verified passive adapter exists. A CLI
+being installed, a daemon responding or an agent process running does not prove available quota.
+This version does not scrape private session logs or browser credentials, launch model probes,
+upgrade agents, migrate authentication, redeem credits, or switch models. Use Machine for
+local process/service health. Capacity endpoints are administrator-only and snapshots stay
+in memory. Provider-specific coverage and source research are in spec 005.
+
 ## Independent clients
 
 ```sh
@@ -110,8 +129,12 @@ agent-desk wrap --ticket TICKET_ID --agent codex -- COMMAND ARGUMENTS
 agent-desk-mcp --agent codex
 ```
 
-The stdio MCP server exposes `desk_list_tasks`, `desk_get_task`, `desk_claim_task` and
-`desk_report_progress`. Installed per-agent connectors load their scoped token from the
+The stdio MCP server exposes `desk_list_tasks`, `desk_get_task`, `desk_claim_task`,
+`desk_report_progress`, `desk_get_resolution_context`, `desk_update_task` and
+`desk_create_subtask`. Organization tools require the exact active assigned execution/session.
+Updates require a current version and evidence/reorganization reason; new subtasks inherit
+project and owner and start Ready. Claim children separately. These tools cannot steal a
+reservation, reassign, archive or mark Done. Installed per-agent connectors load their scoped token from the
 private data directory; never paste tokens in prompts or commit them. Remote clients use
 `AGENT_DESK_URL=https://...` and `AGENT_DESK_TOKEN` from secure environment configuration.
 Report start, state change, checkpoint and completion with the exact execution/session IDs.
@@ -125,8 +148,10 @@ checkpointed handoff to load changed client configuration.
 ## GitHub
 
 Project settings accept `owner/repository` and an optional Projects v2 number owned by the
-repository owner. First use Pull only to discover the board's Status options, then map each
-local stage to an existing option. The app never creates/deletes Project fields or options.
+repository owner. Pull discovers the board's Status options and automatically associates
+Backlog, Ready, In progress, In review and Done using unique exact names (case and whitespace
+are normalized). No manual mapping is required. Missing, duplicate or unknown statuses show
+a sync error and preserve pending changes. The app never creates/deletes Project fields or options.
 Issues import with stable identity; PRs and draft Project items are not imported as issues.
 Publish an individual ticket explicitly to create an issue. Imports never publish issues.
 
@@ -143,7 +168,8 @@ permissions must allow repository issues and Projects v2; do not change identity
 `node bin/desk.mjs migration-preview SOURCE_DIRECTORY` reads consistent snapshots. Apply the
 `importKangentic` API from `server/migrate.mjs` with an explicit private backup directory after
 preview. It imports tasks **and backlog**, preserves source IDs, attachment metadata/source
-references, labels, original stages (including Parked), and source session handles. Original
+references, labels, original source-stage metadata, and source session handles. Retired stages
+are normalized into the five-stage workflow, with Parked tickets in Backlog. Original
 source databases remain unchanged. Historical transcripts/commands/credentials are excluded.
 Attachment bytes stay in the source; retain the old data folder. Unsupported schema fields and
 unverified ownership are reported. Repeat import never overwrites locally edited tickets.

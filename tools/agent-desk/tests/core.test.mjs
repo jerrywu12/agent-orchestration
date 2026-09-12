@@ -23,18 +23,15 @@ const ticket = (app, project, extra = {}) =>
     ownerId: "codex",
     stageId: app
       .state()
-      .stages.find((s) => s.projectId === project.id && s.role === "planning")
-      .id,
+      .stages.find((s) => s.projectId === project.id && s.role === "ready").id,
     ...extra,
   });
-test("ticket updates persist with custom stages and reject lost updates", (t) => {
+test("ticket updates persist with canonical stages and reject lost updates", (t) => {
   const { store, app, project } = fixture(t);
   const x = ticket(app, project);
-  const stage = app.createStage({
-    projectId: project.id,
-    name: "Verification",
-    role: "review",
-  });
+  const stage = app
+    .state()
+    .stages.find((s) => s.projectId === project.id && s.role === "review");
   const y = app.updateTicket(x.id, {
     version: x.version,
     stageId: stage.id,
@@ -158,7 +155,7 @@ test("blocked and unfinished dependencies prevent claims and stale heartbeat nev
     (e) => e.status === 409,
   );
 });
-test("completed parents require all children done and new stage positions persist", (t) => {
+test("completed parents require all children done and workflow stages stay fixed", (t) => {
   const { app, project } = fixture(t);
   const parent = ticket(app, project);
   ticket(app, project, { parentId: parent.id });
@@ -173,18 +170,17 @@ test("completed parents require all children done and new stage positions persis
       }),
     /child/i,
   );
-  const stage = app.createStage({
-    projectId: project.id,
-    name: "Release",
-    position: 2,
-  });
-  assert.equal(
-    app.updateStage(stage.id, { name: "Release check", position: 1 }).name,
-    "Release check",
+  assert.throws(
+    () => app.createStage({ projectId: project.id, name: "Release" }),
+    (e) => e.code === "FIXED_WORKFLOW",
   );
   assert.throws(
-    () => app.deleteStage(app.getTicket(parent.id).stageId),
-    /ticket/i,
+    () => app.updateStage(done.id, { name: "Release" }),
+    (e) => e.code === "FIXED_WORKFLOW",
+  );
+  assert.throws(
+    () => app.deleteStage(done.id),
+    (e) => e.code === "FIXED_WORKFLOW",
   );
 });
 test("checkpoint releases execution with evidence before owner handoff", (t) => {
@@ -262,9 +258,9 @@ test("stage role edits cannot silently turn occupied work into delivered work", 
   app.claim(x.id, { agentId: "codex", sessionId: "active" });
   assert.throws(
     () => app.updateStage(x.stageId, { role: "done" }),
-    (e) => e.code === "STAGE_IN_USE",
+    (e) => e.code === "FIXED_WORKFLOW",
   );
-  assert.equal(app.require("stage", x.stageId).role, "planning");
+  assert.equal(app.require("stage", x.stageId).role, "ready");
 });
 test("linked GitHub repository identity cannot be retargeted to another repository", (t) => {
   const { app, store, project } = fixture(t);
