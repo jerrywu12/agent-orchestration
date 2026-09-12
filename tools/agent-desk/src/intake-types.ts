@@ -20,7 +20,13 @@ export interface FolderInspection {
   name: string;
   key: string;
   repo: string;
-  git: { isRepository: boolean; root: string | null; branch: string | null; hasHead: boolean; dirty: boolean };
+  git: {
+    isRepository: boolean;
+    root: string | null;
+    branch: string | null;
+    hasHead: boolean;
+    dirty: boolean;
+  };
   existingProjectId: string | null;
   warnings: string[];
 }

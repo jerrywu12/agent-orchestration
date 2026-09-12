@@ -231,7 +231,10 @@ test("shell metacharacters in ticket context are passed literally and never exec
   const call = JSON.parse(readFileSync(f.record, "utf8"));
   assert.equal(call.args.length, 3);
   assert.ok(call.args[2].includes(title));
-  assert.ok(call.args[2].includes(description));
+  const payload = JSON.parse(
+    call.args[2].slice(call.args[2].indexOf('{\n  "title"')),
+  );
+  assert.equal(payload.description, description);
 });
 
 test("stopping an external execution refuses without changing or releasing the claim", (t) => {

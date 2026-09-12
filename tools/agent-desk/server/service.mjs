@@ -1,3 +1,4 @@
+import { Attachments } from "./attachments.mjs";
 import { EventEmitter } from "node:events";
 import { fail, id, now } from "./store.mjs";
 const roles = ["backlog", "planning", "active", "review", "done", "parked"];
@@ -41,6 +42,7 @@ export class Service extends EventEmitter {
   constructor(store) {
     super();
     this.store = store;
+    this.attachments = new Attachments(store);
     for (const [agentId, name, color, adapter] of agentDefaults)
       if (!store.get("agent", agentId))
         store.put("agent", {
@@ -73,13 +75,25 @@ export class Service extends EventEmitter {
     };
   }
   decorate(ticket) {
-    return { ...ticket, execution: this.store.latest(ticket.id) };
+    return {
+      ...ticket,
+      attachments: this.attachments.list(ticket.id),
+      execution: this.store.latest(ticket.id),
+    };
   }
   getTicket(key) {
-    return this.decorate(this.require("ticket", key));
+    return {
+      ...this.decorate(this.require("ticket", key)),
+      attachmentContext: this.attachments.list(key, true),
+    };
   }
   createProject(input) {
     return this.store.transaction(() => {
+      if (input.id !== undefined) {
+        text(input.id, "Project ID", 200);
+        if (this.store.get("project", input.id))
+          fail(409, "ALREADY_EXISTS", "Project already exists.");
+      }
       const name = text(input.name, "Project name", 100);
       const key = text(
         input.key ??
@@ -231,7 +245,24 @@ export class Service extends EventEmitter {
     this.changed();
     return { ok: true };
   }
+  normalizeBrief(value = {}) {
+    if (!value || typeof value !== "object" || Array.isArray(value))
+      fail(422, "BRIEF", "Task brief must be an object.");
+    const brief = {};
+    for (const key of ["acceptanceCriteria", "scope", "verification"]) {
+      const part = value[key] ?? "";
+      if (typeof part !== "string" || part.length > 10000)
+        fail(
+          422,
+          "BRIEF",
+          `Task brief ${key} must be text under 10000 characters.`,
+        );
+      brief[key] = part;
+    }
+    return brief;
+  }
   validateTicket(ticket) {
+    if (ticket.brief !== undefined) this.normalizeBrief(ticket.brief);
     text(ticket.title, "Title", 500);
     if (
       typeof ticket.description !== "string" ||
@@ -298,6 +329,11 @@ export class Service extends EventEmitter {
   }
   createTicket(input) {
     return this.store.transaction(() => {
+      if (input.id !== undefined) {
+        text(input.id, "Ticket ID", 200);
+        if (this.store.get("ticket", input.id))
+          fail(409, "ALREADY_EXISTS", "Ticket already exists.");
+      }
       this.require("project", input.projectId);
       const stages = this.store
         .list("stage", input.projectId)
@@ -314,6 +350,7 @@ export class Service extends EventEmitter {
           ) + 1,
         title: text(input.title, "Title"),
         description: input.description ?? "",
+        brief: this.normalizeBrief(input.brief),
         stageId: input.stageId ?? stages[0]?.id,
         ownerId: input.ownerId ?? null,
         priority: input.priority ?? "none",
@@ -328,6 +365,7 @@ export class Service extends EventEmitter {
       };
       this.validateTicket(value);
       const result = this.store.put("ticket", value);
+      this.attachments.bind(input.attachmentIds ?? [], result.id);
       this.store.activity(value.id, "created", "Ticket created", value.ownerId);
       this.changed();
       return this.decorate(result);
@@ -348,6 +386,7 @@ export class Service extends EventEmitter {
       for (const k of [
         "title",
         "description",
+        "brief",
         "stageId",
         "ownerId",
         "priority",
@@ -370,6 +409,8 @@ export class Service extends EventEmitter {
           "ACTIVE_EXECUTION",
           "Checkpoint active execution before archiving.",
         );
+      if (input.brief !== undefined)
+        next.brief = this.normalizeBrief(input.brief);
       this.validateTicket(next);
       next.title = next.title.trim();
       next.updatedAt = now();
