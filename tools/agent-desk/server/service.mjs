@@ -1,7 +1,7 @@
 import { Attachments } from "./attachments.mjs";
 import { EventEmitter } from "node:events";
 import { fail, id, now } from "./store.mjs";
-const roles = ["backlog", "planning", "active", "review", "done", "parked"];
+import { ensureProjectWorkflow, migrateWorkflow } from "./workflow.mjs";
 const priorities = ["urgent", "high", "medium", "low", "none"];
 const text = (v, name, max = 500) => {
   if (typeof v !== "string" || !v.trim() || v.length > max)
@@ -21,13 +21,6 @@ const strings = (v, name) => {
     fail(422, "VALIDATION", `${name} must be a list of short strings.`);
   return [...new Set(v)];
 };
-const defaults = [
-  ["Backlog", "backlog", "#87909b"],
-  ["Planning", "planning", "#9471c5"],
-  ["In progress", "active", "#e0a339"],
-  ["In review", "review", "#4d8ecb"],
-  ["Done", "done", "#3b956e"],
-];
 const agentDefaults = [
   ["codex", "Codex", "#2c8069", "codex"],
   ["claude", "Claude", "#bc7457", "claude"],
@@ -43,6 +36,7 @@ export class Service extends EventEmitter {
     super();
     this.store = store;
     this.attachments = new Attachments(store);
+    migrateWorkflow(store);
     for (const [agentId, name, color, adapter] of agentDefaults)
       if (!store.get("agent", agentId))
         store.put("agent", {
@@ -113,25 +107,30 @@ export class Service extends EventEmitter {
         key,
         path: "",
         repo: "",
-        stageMapping: {},
         createdAt: now(),
         ...this.projectFields(input),
       });
-      for (const [name, role, color] of defaults)
-        this.createStage({ projectId: p.id, name, role, color });
+      ensureProjectWorkflow(this.store, p.id);
       this.changed();
       return p;
     });
   }
   projectFields(input) {
     const fields = {};
-    for (const k of [
-      "name",
-      "path",
-      "repo",
-      "githubProjectId",
-      "statusFieldId",
-    ])
+    if (
+      [
+        "stageMapping",
+        "statusFieldId",
+        "statusOptions",
+        "githubProjectId",
+      ].some((k) => input[k] !== undefined)
+    )
+      fail(
+        422,
+        "READ_ONLY_WORKFLOW",
+        "GitHub status fields are discovered automatically from the project.",
+      );
+    for (const k of ["name", "path", "repo"])
       if (input[k] !== undefined) {
         if (typeof input[k] !== "string" || input[k].length > 1000)
           fail(422, "VALIDATION", `Invalid ${k}.`);
@@ -147,16 +146,6 @@ export class Service extends EventEmitter {
       )
         fail(422, "VALIDATION", "Project number must be positive.");
       fields.githubProjectNumber = input.githubProjectNumber;
-    }
-    if (input.stageMapping !== undefined) {
-      if (
-        !input.stageMapping ||
-        typeof input.stageMapping !== "object" ||
-        Array.isArray(input.stageMapping) ||
-        Object.values(input.stageMapping).some((v) => typeof v !== "string")
-      )
-        fail(422, "VALIDATION", "Invalid stage mapping.");
-      fields.stageMapping = input.stageMapping;
     }
     return fields;
   }
@@ -186,64 +175,18 @@ export class Service extends EventEmitter {
     this.changed();
     return next;
   }
-  createStage(input) {
-    this.require("project", input.projectId);
-    const stage = {
-      id: input.id ?? id(),
-      projectId: input.projectId,
-      name: text(input.name, "Stage name", 80),
-      role: input.role ?? "active",
-      color: input.color ?? "#87909b",
-      position:
-        input.position ?? this.store.list("stage", input.projectId).length,
-      autoStart: false,
-    };
-    this.validateStage(stage);
-    const result = this.store.put("stage", stage);
-    this.changed();
-    return result;
+  createStage() {
+    fail(
+      409,
+      "FIXED_WORKFLOW",
+      "Projects use Backlog, Ready, In progress, In review and Done.",
+    );
   }
-  validateStage(s) {
-    if (
-      !roles.includes(s.role) ||
-      !/^#[0-9a-fA-F]{6}$/.test(s.color) ||
-      !Number.isFinite(s.position) ||
-      s.position < 0 ||
-      typeof s.autoStart !== "boolean"
-    )
-      fail(
-        422,
-        "VALIDATION",
-        "Invalid stage role, color, order or automation.",
-      );
+  updateStage() {
+    fail(409, "FIXED_WORKFLOW", "The GitHub workflow stages are fixed.");
   }
-  updateStage(key, input) {
-    const s = this.require("stage", key);
-    const next = { ...s };
-    for (const k of ["name", "role", "color", "position", "autoStart"])
-      if (input[k] !== undefined) next[k] = input[k];
-    next.name = text(next.name, "Stage name", 80);
-    this.validateStage(next);
-    if (
-      next.role !== s.role &&
-      this.store.list("ticket", s.projectId).some((t) => t.stageId === key)
-    )
-      fail(
-        409,
-        "STAGE_IN_USE",
-        "Move tickets out of this stage before changing its semantic role.",
-      );
-    const result = this.store.put("stage", next);
-    this.changed();
-    return result;
-  }
-  deleteStage(key) {
-    this.require("stage", key);
-    if (this.store.list("ticket").some((t) => t.stageId === key))
-      fail(409, "STAGE_IN_USE", "Move tickets to another stage first.");
-    this.store.delete("stage", key);
-    this.changed();
-    return { ok: true };
+  deleteStage() {
+    fail(409, "FIXED_WORKFLOW", "The GitHub workflow stages are fixed.");
   }
   normalizeBrief(value = {}) {
     if (!value || typeof value !== "object" || Array.isArray(value))
@@ -443,7 +386,7 @@ export class Service extends EventEmitter {
       return this.decorate(result);
     });
   }
-  ready(key, agentId) {
+  ready(key, agentId, { resolveBlockers = false } = {}) {
     const ticket = this.require("ticket", key);
     if (!ticket.ownerId || ticket.ownerId !== agentId)
       fail(
@@ -454,12 +397,18 @@ export class Service extends EventEmitter {
     const agent = this.require("agent", agentId);
     if (!agent.enabled) fail(422, "AGENT_DISABLED", "This agent is disabled.");
     if (ticket.archived) fail(409, "ARCHIVED", "Archived work cannot start.");
+    const stage = this.require("stage", ticket.stageId);
+    if (stage.role === "done")
+      fail(
+        409,
+        "STAGE_HOLD",
+        "Completed work cannot start. Reopen the ticket first.",
+      );
+    if (resolveBlockers) return ticket;
     if (ticket.blockedReason)
       fail(409, "BLOCKED", `Ticket is blocked: ${ticket.blockedReason}`);
     if (
-      ["backlog", "done", "parked"].includes(
-        this.require("stage", ticket.stageId).role,
-      )
+      ["backlog", "done"].includes(this.require("stage", ticket.stageId).role)
     )
       fail(
         409,
@@ -474,9 +423,9 @@ export class Service extends EventEmitter {
         fail(409, "DEPENDENCY_HOLD", "A dependency is unfinished.");
     return ticket;
   }
-  claim(key, input) {
+  claim(key, input, { resolveBlockers = false } = {}) {
     return this.store.transaction(() => {
-      const ticket = this.ready(key, input.agentId);
+      const ticket = this.ready(key, input.agentId, { resolveBlockers });
       const sessionId = text(input.sessionId, "Session ID", 300);
       const existing = this.store.active(key);
       if (existing) {
@@ -494,6 +443,7 @@ export class Service extends EventEmitter {
       const execution = this.store.saveExecution({
         id: id(),
         ticketId: key,
+        purpose: resolveBlockers ? "resolve_blockers" : "implementation",
         agentId: input.agentId,
         sessionId,
         state: input.external ? "external" : "running",
@@ -517,6 +467,189 @@ export class Service extends EventEmitter {
       );
       this.changed();
       return execution;
+    });
+  }
+  resolutionNeeded(ticket) {
+    return (
+      !!ticket.blockedReason ||
+      this.require("stage", ticket.stageId).role === "backlog" ||
+      (ticket.dependsOn ?? []).some(
+        (key) =>
+          this.require("stage", this.require("ticket", key).stageId).role !==
+          "done",
+      )
+    );
+  }
+  requireOwnedExecution(key, input) {
+    const ticket = this.require("ticket", key);
+    const execution = this.store.active(key);
+    if (!ticket.ownerId || ticket.ownerId !== input.agentId)
+      fail(403, "OWNER_MISMATCH", "This ticket is not assigned to your agent.");
+    if (
+      !execution ||
+      execution.id !== input.executionId ||
+      execution.agentId !== input.agentId ||
+      execution.sessionId !== input.sessionId
+    )
+      fail(
+        403,
+        "SESSION_MISMATCH",
+        "An active matching execution and session are required.",
+      );
+    if (ticket.archived || !this.require("agent", input.agentId).enabled)
+      fail(
+        409,
+        "EXECUTION_HOLD",
+        "Archived work or disabled agents cannot organize tickets.",
+      );
+    if ((execution.heldSessions ?? []).some((session) => !session.releasedAt))
+      fail(
+        409,
+        "HELD_SESSIONS",
+        "Reconcile held source sessions before reorganizing this ticket.",
+      );
+    return { ticket, execution };
+  }
+  resolutionContext(key, input) {
+    const { ticket } = this.requireOwnedExecution(key, input);
+    const describe = (candidate) => {
+      const active = this.store.active(candidate.id);
+      return {
+        id: candidate.id,
+        number: candidate.number,
+        title: candidate.title,
+        stage: this.require("stage", candidate.stageId).name,
+        ownerId: candidate.ownerId,
+        blockedReason: candidate.blockedReason,
+        dependsOn: candidate.dependsOn,
+        parentId: candidate.parentId,
+        archived: candidate.archived,
+        execution: active
+          ? { agentId: active.agentId, state: active.state, reserved: true }
+          : null,
+      };
+    };
+    const peers = this.store.list("ticket", ticket.projectId);
+    return {
+      ticket: describe(ticket),
+      dependencies: (ticket.dependsOn ?? []).map((id) => {
+        const dep = this.require("ticket", id);
+        return dep.projectId === ticket.projectId
+          ? describe(dep)
+          : {
+              id,
+              unavailable: true,
+              message:
+                "Dependency belongs to another project; request a handoff.",
+            };
+      }),
+      children: peers
+        .filter((t) => t.parentId === key)
+        .slice(0, 100)
+        .map(describe),
+      candidates: peers
+        .filter((t) => t.id !== key && !t.archived)
+        .slice(0, 100)
+        .map(describe),
+      candidatesTruncated:
+        peers.filter((t) => t.id !== key && !t.archived).length > 100,
+    };
+  }
+  agentUpdate(key, input) {
+    return this.store.transaction(() => {
+      const { ticket } = this.requireOwnedExecution(key, input);
+      const reason = text(
+        input.reason,
+        "Evidence or reorganization reason",
+        2000,
+      );
+      const changes = input.changes;
+      const allowed = [
+        "title",
+        "description",
+        "brief",
+        "stageId",
+        "blockedReason",
+        "parentId",
+        "dependsOn",
+      ];
+      if (
+        !changes ||
+        typeof changes !== "object" ||
+        Array.isArray(changes) ||
+        !Object.keys(changes).length ||
+        Object.keys(changes).some((k) => !allowed.includes(k))
+      )
+        fail(
+          422,
+          "AGENT_FIELDS",
+          "Only task content, blockers, dependencies, parent and unfinished stages can be updated.",
+        );
+      if (
+        changes.stageId &&
+        this.require("stage", changes.stageId).role === "done"
+      )
+        fail(
+          403,
+          "REVIEW_REQUIRED",
+          "Report completion for review; agents cannot mark work Done.",
+        );
+      if (changes.dependsOn !== undefined) {
+        strings(changes.dependsOn, "Dependencies");
+        for (const id of changes.dependsOn)
+          if (this.require("ticket", id).projectId !== ticket.projectId)
+            fail(
+              422,
+              "PROJECT_MISMATCH",
+              "Agent dependency changes must remain in this project.",
+            );
+      }
+      const result = this.updateTicket(key, {
+        ...changes,
+        version: input.version,
+      });
+      this.store.activity(key, "agent_reorganized", reason, input.agentId);
+      return result;
+    });
+  }
+  createSubtask(key, input) {
+    return this.store.transaction(() => {
+      const { ticket } = this.requireOwnedExecution(key, input);
+      const reason = text(input.reason, "Subtask reason", 2000);
+      const allowed = [
+        "agentId",
+        "executionId",
+        "sessionId",
+        "reason",
+        "title",
+        "description",
+        "brief",
+      ];
+      if (Object.keys(input).some((k) => !allowed.includes(k)))
+        fail(
+          422,
+          "AGENT_FIELDS",
+          "Subtasks inherit the claimed ticket's project and owner.",
+        );
+      const ready = this.store
+        .list("stage", ticket.projectId)
+        .find((s) => s.role === "ready");
+      const child = this.createTicket({
+        projectId: ticket.projectId,
+        ownerId: ticket.ownerId,
+        parentId: key,
+        stageId: ready.id,
+        title: input.title,
+        description: input.description ?? "",
+        brief: input.brief,
+      });
+      this.store.activity(
+        key,
+        "agent_subtask",
+        `Created subtask ${child.number}: ${reason}`,
+        input.agentId,
+      );
+      return child;
     });
   }
   event(key, input) {

@@ -33,8 +33,8 @@ Follow [Agent Desk Coordination Policy](docs/AGENT_DESK_POLICY.md), the canonica
 policy for stable CLI/API/MCP reporting across all agents. Preserve exact ticket
 ownership, executor session, branch/worktree scope, dependency holds and checkpointed
 handoffs. Assignment does not launch work; explicit claims and verified readiness
-precede execution. Custom stage names retain their configured semantic roles, and
-blocked remains a flag. Update start, state changes, delivery and stop without
+precede execution. Projects use Backlog, Ready, In progress, In review and Done; blocked remains a flag.
+Explicit Start can launch scoped blocker resolution while preserving other claims. Update start, state changes, delivery and stop without
 delivery with evidence. Process completion is not merge or delivery; independent
 review remains required. Imported active/suspended sessions stay externally owned
 until reconciled. A source update is separate from verified global cutover.

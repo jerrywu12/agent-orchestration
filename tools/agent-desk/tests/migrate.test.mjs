@@ -15,6 +15,7 @@ import { join } from "node:path";
 import { Store } from "../server/store.mjs";
 import { Service } from "../server/service.mjs";
 import { previewKangentic, importKangentic } from "../server/migrate.mjs";
+import { migrateWorkflow } from "../server/workflow.mjs";
 
 function fixture(t, { projectId = "source-project" } = {}) {
   const dir = mkdtempSync(join(tmpdir(), "desk-migration-"));
@@ -188,7 +189,7 @@ test("re-import keeps stable source mappings and never overwrites local edits or
     backupDir: f.backupDir,
   });
   assert.equal(f.store.list("project").length, 1);
-  assert.equal(f.store.list("stage").length, 3);
+  assert.equal(f.store.list("stage").length, 5);
   assert.equal(f.store.list("ticket").length, 5);
   assert.deepEqual(second.mappings, first.mappings);
   assert.equal(f.store.get("ticket", running.id).title, "Local edit");
@@ -212,7 +213,7 @@ test("owners, held stages, blockers and external sessions survive without automa
   assert.equal(running.execution.external, true);
   assert.equal(running.execution.releasedAt, null);
   assert.equal(paused.ownerId, "claude");
-  assert.equal(f.store.get("stage", paused.stageId).role, "parked");
+  assert.equal(f.store.get("stage", paused.stageId).role, "backlog");
   assert.equal(paused.execution.sessionId, "native-paused");
   assert.equal(paused.execution.releasedAt, null);
   assert.equal(
@@ -236,6 +237,75 @@ test("owners, held stages, blockers and external sessions survive without automa
   assert.equal(
     f.store.db.prepare("SELECT count(*) n FROM sync_jobs").get().n,
     0,
+  );
+});
+
+test("repeat import routes new Parked and unknown-stage tasks without reviving retired stages", async (t) => {
+  const f = fixture(t);
+  await importKangentic(f.service, f.source, { backupDir: f.backupDir });
+  // Recreate the deployed pre-upgrade stage mapping before the startup migration.
+  const paused = f.store
+    .list("ticket")
+    .find((ticket) => ticket.title === "Paused task");
+  f.store.put("stage", {
+    id: "retired-parked",
+    projectId: paused.projectId,
+    name: "Parked",
+    role: "parked",
+    position: 5,
+    autoStart: false,
+  });
+  f.store.put("ticket", { ...paused, stageId: "retired-parked" });
+  const record = f.store
+    .list("migration-record")
+    .find(
+      (record) =>
+        record.mapping?.sourceKind === "stage" &&
+        record.mapping.originalId === "parked",
+    );
+  f.store.put("migration-record", {
+    ...record,
+    mapping: { ...record.mapping, targetId: "retired-parked" },
+  });
+  migrateWorkflow(f.store);
+  const claims = f.store.db
+    .prepare("SELECT * FROM executions ORDER BY id")
+    .all();
+  const stageIds = f.store
+    .list("stage")
+    .map((s) => s.id)
+    .sort();
+  f.db
+    .exec(`INSERT INTO swimlanes VALUES('unknown-stage','Waiting approval',9,'mystery','#87909b',1,NULL,NULL);
+    INSERT INTO tasks(id,title,description,swimlane_id,labels,agent) VALUES('new-parked','New parked','kept','parked','["owner:codex"]','codex');
+    INSERT INTO tasks(id,title,description,swimlane_id,labels,agent) VALUES('new-unknown','New unknown','kept','unknown-stage','["owner:codex"]','codex');`);
+  const result = await importKangentic(f.service, f.source, {
+    backupDir: f.backupDir,
+  });
+  assert.equal(f.store.list("stage").length, 5);
+  assert.deepEqual(
+    f.store
+      .list("stage")
+      .map((s) => s.id)
+      .sort(),
+    stageIds,
+  );
+  assert.equal(f.store.list("ticket").length, 7);
+  for (const title of ["New parked", "New unknown"]) {
+    const ticket = f.store.list("ticket").find((t) => t.title === title);
+    assert.equal(f.store.get("stage", ticket.stageId).role, "backlog");
+  }
+  assert.match(
+    f.store.list("ticket").find((t) => t.title === "New unknown").blockedReason,
+    /stage needs reconciliation/i,
+  );
+  assert.ok(result.warnings.some((w) => w.code === "UNMAPPED_STAGE_ROLE"));
+  for (const record of f.store.list("migration-record"))
+    if (record.mapping?.targetKind === "stage")
+      assert.ok(f.store.get("stage", record.mapping.targetId));
+  assert.deepEqual(
+    f.store.db.prepare("SELECT * FROM executions ORDER BY id").all(),
+    claims,
   );
 });
 

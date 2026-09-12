@@ -5,6 +5,7 @@ export default defineConfig({
     "browser.spec.ts",
     "machine-browser.spec.ts",
     "intake-browser.spec.ts",
+    "workflow-browser.spec.ts",
   ],
   workers: 1,
   timeout: 30000,

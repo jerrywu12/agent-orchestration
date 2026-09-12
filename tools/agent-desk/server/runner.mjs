@@ -55,7 +55,7 @@ export class Runner {
     service.on("autostart", (ticketId) =>
       setImmediate(() => {
         try {
-          this.start(ticketId);
+          this.start(ticketId, { automatic: true });
         } catch (e) {
           service.store.activity(ticketId, "start_refused", e.message);
           service.changed();
@@ -75,7 +75,7 @@ export class Runner {
         : "Reports through CLI/MCP; no direct launch adapter",
     }));
   }
-  start(ticketId) {
+  start(ticketId, { automatic = false } = {}) {
     const ticket = this.service.require("ticket", ticketId);
     const agent = this.service.require("agent", ticket.ownerId);
     const adapter = adapters[agent.adapter];
@@ -114,10 +114,15 @@ export class Runner {
         "Project needs a fetched origin/main before isolated execution.",
       );
     }
-    const run = this.service.claim(ticketId, {
-      agentId: agent.id,
-      sessionId: `desk-${id()}`,
-    });
+    const resolveBlockers = !automatic && this.service.resolutionNeeded(ticket);
+    const run = this.service.claim(
+      ticketId,
+      {
+        agentId: agent.id,
+        sessionId: `desk-${id()}`,
+      },
+      { resolveBlockers },
+    );
     let child, heartbeat;
     const send = (type, summary, extra = {}) => {
       const current = this.service.store.execution(run.id);
@@ -150,11 +155,27 @@ export class Runner {
         worktreePath: worktree,
         baseSha: base,
       });
+      const currentTicket = this.service.require("ticket", ticketId);
+      const activeStage = this.service.store
+        .list("stage", ticket.projectId)
+        .find((s) => s.role === "active");
+      if (currentTicket.stageId !== activeStage.id)
+        this.service.updateTicket(ticketId, {
+          version: currentTicket.version,
+          stageId: activeStage.id,
+        });
       const prompt = buildTaskPacket({
         ticket: this.service.getTicket(ticket.id),
         project,
         execution: run,
         worktree,
+        resolutionContext: resolveBlockers
+          ? this.service.resolutionContext(ticketId, {
+              agentId: agent.id,
+              executionId: run.id,
+              sessionId: run.sessionId,
+            })
+          : null,
       });
       child = spawn(command, [...adapter.args, prompt], {
         cwd: worktree,

@@ -18,15 +18,15 @@ const fixtureState: DeskState = {
     {
       id: "planning",
       projectId: "project",
-      name: "Planning",
-      role: "planning",
+      name: "Ready",
+      role: "ready",
       position: 0,
     },
     {
       id: "long-planning",
       projectId: "long-project",
-      name: "Planning",
-      role: "planning",
+      name: "Ready",
+      role: "ready",
       position: 0,
     },
   ],
@@ -258,8 +258,8 @@ async function mockIntake(page: Page) {
     current.stages.push({
       id: "new-stage",
       projectId: project.id,
-      name: "Planning",
-      role: "planning",
+      name: "Ready",
+      role: "ready",
       position: 0,
     });
     return route.fulfill({ status: 201, json: project });
@@ -673,7 +673,7 @@ test("workflow checklist exposes stage and owner holds instead of claiming readi
   page,
 }) => {
   const mocked = await mockIntake(page);
-  mocked.current.stages[0].role = "parked";
+  mocked.current.stages[0].role = "backlog";
   mocked.current.tickets[0].ownerId = "codex";
   mocked.current.agents[0].enabled = false;
   await page.goto("/");

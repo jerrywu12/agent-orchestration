@@ -145,15 +145,28 @@ export function TicketDetails({
   const availability = integrations?.agents.find(
     (item) => item.id === ticket.ownerId,
   );
+  const stage = stages.find((item) => item.id === ticket.stageId);
+  const unresolvedDependencies = (ticket.dependsOn || []).some((id) => {
+    const dependency = state.tickets.find((item) => item.id === id);
+    return (
+      !dependency ||
+      state.stages.find((item) => item.id === dependency.stageId)?.role !==
+        "done"
+    );
+  });
+  const resolvesBlockers =
+    !!ticket.blockedReason ||
+    unresolvedDependencies ||
+    stage?.role === "backlog";
   const startReason = dirty
     ? "Save your changes before starting an agent."
-    : !ticket.ownerId
+    : !owner
       ? "Assign an owner to start this ticket."
-      : ticket.blockedReason
-        ? `Blocked: ${ticket.blockedReason}`
-        : ticket.archived
-          ? "Restore this ticket before starting."
-          : owner && !owner.enabled
+      : ticket.archived
+        ? "Restore this ticket before starting."
+        : stage?.role === "done"
+          ? "Move this ticket out of Done before starting."
+          : !owner.enabled
             ? "This agent is disabled. Enable it in Agents."
             : availability?.available === false
               ? availability.reason || "This agent cannot start locally."
@@ -404,8 +417,14 @@ export function TicketDetails({
                 {active
                   ? execution?.external
                     ? "Externally managed session"
-                    : "Active local session"
-                  : "Explicit start · independent execution"}
+                    : execution?.purpose === "resolve_blockers"
+                      ? "Active local session · blocker resolution"
+                      : execution?.purpose === "implementation"
+                        ? "Active local session · implementation"
+                        : "Active local session"
+                  : resolvesBlockers
+                    ? "Explicit start · blocker resolution"
+                    : "Explicit start · implementation"}
               </span>
             </div>
             {active ? (
@@ -432,7 +451,9 @@ export function TicketDetails({
                   void perform(
                     "start",
                     () => api(`/tickets/${pathId(ticket.id)}/start`, "POST"),
-                    "Agent started.",
+                    resolvesBlockers
+                      ? "Blocker-resolution agent started."
+                      : "Agent started.",
                   )
                 }
               >
@@ -443,6 +464,14 @@ export function TicketDetails({
           </div>
           {startReason && !active && (
             <p className="field-hint">{startReason}</p>
+          )}
+          {resolvesBlockers && !active && (
+            <p className="resolver-start-note">
+              Start runs blocker resolution for this ticket. The assigned agent
+              can inspect dependency context, update its own ticket and create
+              subtasks. Starting does not clear blockers or dependencies
+              automatically.
+            </p>
           )}
           {execution?.external && active && (
             <p className="field-hint">

@@ -96,6 +96,7 @@ export function createAppServer({
   allowedHost = "",
   syncManager = null,
   machineMonitor = null,
+  agentStatusMonitor = null,
   documentProcessor = async (input, options) =>
     (await import("./document-processor.mjs")).processDocument(input, options),
   folderOptions = {},
@@ -253,6 +254,12 @@ export function createAppServer({
           actor.role === "agent" &&
           !(
             (resource === "tickets" && action === "claim") ||
+            (resource === "tickets" &&
+              key &&
+              parts.length === 4 &&
+              ((action === "resolution-context" && method === "GET") ||
+                (action === "agent-update" && method === "PATCH") ||
+                (action === "subtasks" && method === "POST"))) ||
             (resource === "executions" && action === "events") ||
             (method === "GET" && resource === "tickets" && key && !action) ||
             (method === "GET" &&
@@ -264,7 +271,7 @@ export function createAppServer({
           fail(
             403,
             "AGENT_SCOPE",
-            "Agent credentials can only claim assigned work and report their own execution.",
+            "Agent credentials can only access and organize assigned execution work.",
           );
         const input = ["POST", "PATCH", "PUT"].includes(method)
           ? await body(
@@ -452,6 +459,62 @@ export function createAppServer({
             );
           fail(404, "NOT_FOUND", "Machine endpoint not found.");
         }
+        if (resource === "agents" && key === "status") {
+          if (!agentStatusMonitor)
+            fail(
+              503,
+              "STATUS_UNAVAILABLE",
+              "Agent capacity monitoring is unavailable.",
+            );
+          if (path === "/api/agents/status" && method === "GET") {
+            const state = agentStatusMonitor.snapshot();
+            if (state.agents.some((a) => a.stale || !a.observedAt))
+              agentStatusMonitor.refresh().catch(() => {});
+            return json(agentStatusMonitor.snapshot());
+          }
+          if (path === "/api/agents/status/refresh" && method === "POST") {
+            agentStatusMonitor.refresh({ force: true }).catch(() => {});
+            return json(agentStatusMonitor.snapshot(), 202);
+          }
+          fail(404, "NOT_FOUND", "Agent status endpoint not found.");
+        }
+        if (
+          resource === "tickets" &&
+          key &&
+          parts.length === 4 &&
+          ["resolution-context", "agent-update", "subtasks"].includes(action)
+        ) {
+          if (
+            actor.role === "agent" &&
+            input.agentId !== undefined &&
+            input.agentId !== actor.agentId
+          )
+            fail(
+              403,
+              "AGENT_SCOPE",
+              "Agent identity does not match credential.",
+            );
+          const context = {
+            ...input,
+            agentId:
+              actor.role === "agent"
+                ? actor.agentId
+                : (input.agentId ?? url.searchParams.get("agentId")),
+          };
+          if (action === "resolution-context" && method === "GET")
+            return json(
+              service.resolutionContext(key, {
+                ...context,
+                executionId: url.searchParams.get("executionId"),
+                sessionId: url.searchParams.get("sessionId"),
+              }),
+            );
+          if (action === "agent-update" && method === "PATCH")
+            return json(service.agentUpdate(key, context));
+          if (action === "subtasks" && method === "POST")
+            return json(service.createSubtask(key, context), 201);
+          fail(405, "METHOD", "Unsupported organization method.");
+        }
         if (resource === "tickets" && action === "claim" && method === "POST") {
           if (actor.role === "agent" && input.agentId !== actor.agentId)
             fail(
@@ -608,6 +671,7 @@ export function createAppServer({
   server.on("close", () => {
     for (const controller of documentJobs) controller.abort();
     machineMonitor?.close();
+    agentStatusMonitor?.close();
     for (const res of clients) res.end();
   });
   return server;
@@ -615,6 +679,7 @@ export function createAppServer({
 export async function startServer({
   machineOptions = {},
   folderOptions = {},
+  agentStatusOptions = {},
 } = {}) {
   const host = process.env.AGENT_DESK_HOST ?? "127.0.0.1";
   const port = Number(process.env.AGENT_DESK_PORT ?? 4310);
@@ -662,6 +727,11 @@ export async function startServer({
   const legacyObserver = new LegacyObserver(service);
   legacyObserver.tick();
   const machineMonitor = new MachineMonitor(service, machineOptions);
+  const { AgentStatusMonitor } = await import("./agent-status.mjs");
+  const agentStatusMonitor = new AgentStatusMonitor({
+    agents: service.store.list("agent").map((a) => a.id),
+    ...agentStatusOptions,
+  });
   const server = createAppServer({
     service,
     runner,
@@ -670,6 +740,7 @@ export async function startServer({
     allowedHost: process.env.AGENT_DESK_PUBLIC_HOST ?? "",
     syncManager,
     machineMonitor,
+    agentStatusMonitor,
     folderOptions,
   });
   await new Promise((r, reject) => {
@@ -689,6 +760,7 @@ export async function startServer({
     syncManager,
     legacyObserver,
     machineMonitor,
+    agentStatusMonitor,
   };
 }
 if (

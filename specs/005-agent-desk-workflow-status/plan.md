@@ -20,3 +20,7 @@ Status: locked. Worktree /private/tmp/agent-desk-workflow-status; base d3999b1. 
 
 ## Risks and verification
 Retired-stage migration and legacy reimport are the highest data risks; preserve identity and intent atomically. Provider status must be bounded, passive, redacted and isolated from execution readiness. Resolver privilege must be scoped to an active owned claim; starting a resolver does not authorize arbitrary related-ticket writes. Test these boundaries before broad UI checks. Do not start real user tickets as a smoke test.
+
+## Explicit contract revision 1
+
+Integration clarified two visible details: managed Start moves the claimed ticket to In progress before spawning (failures remain visible as failed executions, never Done), while keeping blockers and dependency edges. Capacity refresh accepts internal refresh({force:false}) by default with attempt cooldown; the explicit POST passes force:true for an intentional retry. Forced overlapping requests still coalesce. No request body can choose provider execution arguments.

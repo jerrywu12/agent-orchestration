@@ -13,6 +13,7 @@ import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { createHash } from "node:crypto";
 import { spawnSync } from "node:child_process";
 import { now } from "./store.mjs";
+import { ensureProjectWorkflow, legacyRole, WORKFLOW } from "./workflow.mjs";
 
 // Read only named columns. In particular, do not SELECT * from sessions or copy
 // arbitrary JSON/config blobs: those contain commands, prompts and credentials.
@@ -440,31 +441,39 @@ function ownership(row, labels, store, report, projectId) {
 }
 function stageRole(row, report, projectId) {
   if (
-    ["backlog", "planning", "active", "review", "done", "parked"].includes(
-      row.role,
-    )
+    [
+      "backlog",
+      "ready",
+      "planning",
+      "active",
+      "review",
+      "done",
+      "parked",
+    ].includes(row.role)
   )
-    return row.role;
+    return legacyRole(row.role);
   const names = {
     "to do": "backlog",
     backlog: "backlog",
-    planning: "planning",
+    ready: "ready",
+    planning: "ready",
     executing: "active",
     "in progress": "active",
     "pr / code review": "review",
     "code review": "review",
     "in review": "review",
     done: "done",
-    parked: "parked",
+    parked: "backlog",
   };
-  const role = names[text(row.name).toLowerCase()];
+  const key = text(row.name).trim().replace(/\s+/g, " ").toLowerCase();
+  const role = Object.hasOwn(names, key) ? names[key] : null;
   if (!role)
     warn(report, "UNMAPPED_STAGE_ROLE", {
       projectId,
       sourceId: row.id,
-      message: "Unknown source stage is held as parked until reviewed.",
+      message: "Unknown source stage is held in Backlog until reviewed.",
     });
-  return role ?? "parked";
+  return role;
 }
 function metadata(row, table) {
   const result = pick(
@@ -589,7 +598,6 @@ export async function importKangentic(service, sourceDir, { backupDir } = {}) {
           path: isAbsolute(text(source.path)) ? source.path : "",
           repo: projectRepository(source),
           githubProjectNumber: null,
-          stageMapping: {},
           createdAt: report.snapshotAt,
         },
         "projects",
@@ -600,51 +608,60 @@ export async function importKangentic(service, sourceDir, { backupDir } = {}) {
           "An imported project was deleted locally; explicit reconciliation is required.",
         );
       const stages = new Map();
-      for (const row of bundle.swimlanes) {
-        const stage = insert(
-          "stage",
-          pid,
-          row,
-          "stage",
-          {
-            id: mappingKey("stage", pid, row.id),
-            projectId: project.id,
-            name: text(row.name) || "Imported stage",
-            role: stageRole(row, report, pid),
-            position:
-              typeof row.position === "number" && row.position >= 0
-                ? row.position
-                : stages.size,
-            color: /^#[\da-f]{6}$/i.test(text(row.color))
-              ? row.color
-              : "#87909b",
-            autoStart: false,
-          },
-          "swimlanes",
-          "stages",
-        ).value;
-        if (stage) stages.set(row.id, stage);
-      }
-      const fallback = () => {
-        const stageId = mappingKey("stage", pid, "__unmapped__");
-        let stage = store.get("stage", stageId);
-        if (!stage) {
-          stage = store.put("stage", {
-            id: stageId,
-            projectId: project.id,
-            name: "Imported / needs reconciliation",
-            role: "parked",
-            color: "#87909b",
-            position: stages.size,
-            autoStart: false,
-          });
-          created.stages++;
+      const sourceRoles = new Map(
+        bundle.swimlanes.map((row) => [row.id, stageRole(row, report, pid)]),
+      );
+      const beforeStages = store.list("stage", project.id);
+      // A first import retains source IDs for surviving roles. Later imports map
+      // directly to the canonical stages and cannot resurrect retired IDs.
+      if (!beforeStages.length) {
+        for (const definition of WORKFLOW) {
+          const candidates = bundle.swimlanes.filter(
+            (row) =>
+              sourceRoles.get(row.id) === definition.role &&
+              row.role !== "parked" &&
+              text(row.name).trim().toLowerCase() !== "parked",
+          );
+          const row =
+            candidates.find((row) => row.role === definition.role) ??
+            candidates[0];
+          if (row) {
+            const stageId = mappingKey("stage", pid, row.id);
+            if (store.get("stage", stageId))
+              throw new Error(
+                "Migration target identity already exists without a source mapping.",
+              );
+            store.put("stage", {
+              id: stageId,
+              projectId: project.id,
+              ...definition,
+              position: WORKFLOW.indexOf(definition),
+              autoStart: false,
+            });
+          }
         }
-        return stage;
-      };
-      const backlogStage = [...stages.values()]
-        .sort((a, b) => a.position - b.position)
-        .find((s) => s.role === "backlog");
+      }
+      const canonical = ensureProjectWorkflow(store, project.id);
+      created.stages += Math.max(0, canonical.length - beforeStages.length);
+      for (const row of bundle.swimlanes) {
+        const prior = store.get(
+          "migration-record",
+          mappingKey("stage", pid, row.id),
+        );
+        if (prior) skipped.stages++;
+        const role = sourceRoles.get(row.id) ?? "backlog";
+        const target = prior
+          ? store.get("stage", prior.mapping.targetId)
+          : canonical.find((stage) => stage.role === role);
+        if (!target)
+          throw new Error(
+            "A source stage mapping requires explicit reconciliation.",
+          );
+        remember("stage", pid, row, "stage", target.id, "swimlanes");
+        stages.set(row.id, target);
+      }
+      const backlogStage = canonical[0];
+      const fallback = () => backlogStage;
       const tickets = new Map();
       const fresh = new Set();
       const numbers = new Set(
@@ -681,7 +698,10 @@ export async function importKangentic(service, sourceDir, { backupDir } = {}) {
           const stage =
             (kind === "task" ? stages.get(row.swimlane_id) : backlogStage) ??
             fallback();
-          if (kind === "task" && !stages.has(row.swimlane_id)) {
+          if (
+            kind === "task" &&
+            (!stages.has(row.swimlane_id) || !sourceRoles.get(row.swimlane_id))
+          ) {
             owner.blockedReason = [
               owner.blockedReason,
               "Source stage needs reconciliation",

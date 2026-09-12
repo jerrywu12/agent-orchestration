@@ -6,6 +6,7 @@ import { tmpdir } from "node:os";
 import { Store } from "../server/store.mjs";
 import { Service } from "../server/service.mjs";
 import { SyncManager } from "../server/sync.mjs";
+import { migrateWorkflow } from "../server/workflow.mjs";
 function fixture(t) {
   const store = new Store(":memory:");
   t.after(() => store.close());
@@ -86,24 +87,30 @@ function board(f) {
     review = stages.find((s) => s.role === "review");
   f.service.updateProject(f.p.id, {
     githubProjectNumber: 1,
-    stageMapping: {
-      [backlog.id]: "TODO",
-      [active.id]: "DOING",
-      [review.id]: "REVIEW",
-    },
   });
   let option = "TODO";
+  const options = [
+    { id: "TODO", name: " Backlog " },
+    { id: "READY", name: "Ready" },
+    { id: "DOING", name: "IN   PROGRESS" },
+    { id: "REVIEW", name: "In review" },
+    { id: "DONE", name: "Done" },
+  ];
   f.client.getProject = async () => ({
     id: "P_1",
     statusFieldId: "F_1",
-    statusOptions: [],
+    statusOptions: options,
     url: "https://github.com/users/owner/projects/1",
   });
   f.client.listProjectItems = async () => [
     {
       id: "ITEM_1",
       issue: { nodeId: "I_1" },
-      status: { optionId: option, name: option },
+      status: {
+        fieldId: "F_1",
+        optionId: option,
+        name: options.find((o) => o.id === option)?.name ?? option,
+      },
     },
   ];
   f.client.setProjectStatus = async (p, i, f, value) => {
@@ -116,8 +123,178 @@ function board(f) {
     review,
     setOption: (v) => (option = v),
     getOption: () => option,
+    options,
   };
 }
+test("exact names sync without manual mapping and unknown statuses retain pending intent", async (t) => {
+  const f = fixture(t),
+    b = board(f);
+  await f.sync.syncProject(f.p.id);
+  let ticket = f.service.state().tickets[0];
+  f.service.updateTicket(ticket.id, {
+    version: ticket.version,
+    stageId: b.active.id,
+  });
+  await f.sync.syncProject(f.p.id);
+  assert.equal(b.getOption(), "DOING");
+  b.setOption("UNRECOGNIZED");
+  await f.sync.syncProject(f.p.id);
+  ticket = f.service.getTicket(ticket.id);
+  assert.equal(ticket.stageId, b.active.id);
+  assert.equal(ticket.github.syncState, "error");
+  assert.ok(
+    f.store.db
+      .prepare("SELECT * FROM sync_jobs WHERE ticket_id=?")
+      .get(ticket.id),
+  );
+  assert.match(ticket.github.error, /status/i);
+});
+test("missing or ambiguous canonical options produce project errors without issue writes", async (t) => {
+  const f = fixture(t),
+    b = board(f);
+  let writes = 0;
+  f.client.updateIssue = async () => {
+    writes++;
+    return f.remote;
+  };
+  b.options.pop();
+  await f.sync.syncProject(f.p.id);
+  assert.equal(f.store.get("sync", f.p.id).state, "error");
+  assert.equal(writes, 0);
+  b.options.push(
+    { id: "DONE", name: "Done" },
+    { id: "DUP", name: " backlog " },
+  );
+  await f.sync.syncProject(f.p.id);
+  assert.equal(f.store.get("sync", f.p.id).state, "error");
+  assert.equal(writes, 0);
+});
+test("unknown Status keeps local edits and project error across restart until explicit retry", async (t) => {
+  const f = fixture(t),
+    b = board(f);
+  await f.sync.syncProject(f.p.id);
+  let ticket = f.service.state().tickets[0];
+  f.service.updateTicket(ticket.id, {
+    version: ticket.version,
+    title: "Pending title",
+    stageId: b.active.id,
+  });
+  const baseline = f.service.getTicket(ticket.id).github.baseline;
+  b.setOption("CUSTOM");
+  await f.sync.syncProject(f.p.id);
+  assert.equal(f.remote.title, "Remote task");
+  assert.deepEqual(f.service.getTicket(ticket.id).github.baseline, baseline);
+  assert.equal(f.service.getTicket(ticket.id).github.dirty, true);
+  const resumed = new SyncManager(f.service, { client: f.client, auto: false });
+  b.setOption("TODO");
+  await resumed.syncProject(f.p.id);
+  assert.equal(f.store.get("sync", f.p.id).state, "error");
+  assert.equal(
+    f.remote.title,
+    "Remote task",
+    "nonretryable errors require explicit retry",
+  );
+  resumed.enqueueProject(f.p.id);
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(f.remote.title, "Pending title");
+  assert.equal(b.getOption(), "DOING");
+  assert.equal(f.service.getTicket(ticket.id).github.syncState, "synced");
+});
+test("canonical remote Status is adopted only without an active claim and Done remains unverified", async (t) => {
+  const f = fixture(t),
+    b = board(f);
+  f.remote.labels = ["owner:codex"];
+  b.setOption("DOING");
+  await f.sync.syncProject(f.p.id);
+  let ticket = f.service.state().tickets[0];
+  assert.equal(ticket.stageId, b.active.id);
+  f.service.claim(ticket.id, { agentId: "codex", sessionId: "held" });
+  const execution = f.store.active(ticket.id);
+  b.setOption("REVIEW");
+  await f.sync.syncProject(f.p.id);
+  assert.equal(f.service.getTicket(ticket.id).stageId, b.active.id);
+  assert.deepEqual(f.store.active(ticket.id), execution);
+  b.setOption("DONE");
+  await f.sync.syncProject(f.p.id);
+  ticket = f.service.getTicket(ticket.id);
+  assert.equal(ticket.stageId, b.active.id);
+  assert.equal(ticket.github.projectStatusOptionId, "DONE");
+  assert.equal(ticket.delivery?.mergedAt, undefined);
+});
+test("remote workflow conflict selection uses canonical names without manual mapping", async (t) => {
+  const f = fixture(t),
+    b = board(f);
+  await f.sync.syncProject(f.p.id);
+  let ticket = f.service.state().tickets[0];
+  f.service.updateTicket(ticket.id, {
+    version: ticket.version,
+    stageId: b.active.id,
+  });
+  b.setOption("REVIEW");
+  await f.sync.syncProject(f.p.id);
+  assert.equal(f.service.getTicket(ticket.id).github.syncState, "conflict");
+  f.sync.resolve(ticket.id, "remote");
+  await f.sync.syncProject(f.p.id);
+  ticket = f.service.getTicket(ticket.id);
+  assert.equal(ticket.stageId, b.review.id);
+  assert.equal(ticket.github.syncState, "synced");
+});
+test("retired stage migration keeps a real status change pending but converged status needs no write", async (t) => {
+  const f = fixture(t),
+    b = board(f);
+  await f.sync.syncProject(f.p.id);
+  const ticket = f.service.state().tickets[0];
+  f.store.put("stage", {
+    id: "old-parked",
+    projectId: f.p.id,
+    name: "Parked",
+    role: "parked",
+    position: 5,
+    autoStart: false,
+  });
+  f.store.put("ticket", {
+    ...ticket,
+    stageId: "old-parked",
+    github: { ...ticket.github, stageIdAtSync: "old-parked" },
+  });
+  migrateWorkflow(f.store);
+  let writes = 0;
+  const setStatus = f.client.setProjectStatus;
+  f.client.setProjectStatus = async (...args) => {
+    writes++;
+    return setStatus(...args);
+  };
+  await f.sync.syncProject(f.p.id);
+  assert.equal(writes, 0, "Backlog is already the remote status");
+  assert.equal(
+    f.service.getTicket(ticket.id).github.stageIdAtSync,
+    b.backlog.id,
+  );
+  f.store.put("stage", {
+    id: "old-hold",
+    projectId: f.p.id,
+    name: "Parked",
+    role: "parked",
+    position: 5,
+    autoStart: false,
+  });
+  const current = f.service.getTicket(ticket.id);
+  f.store.put("ticket", {
+    ...current,
+    stageId: "old-hold",
+    github: {
+      ...current.github,
+      projectStatusOptionId: "DOING",
+      stageIdAtSync: "old-hold",
+    },
+  });
+  b.setOption("DOING");
+  migrateWorkflow(f.store);
+  await f.sync.syncProject(f.p.id);
+  assert.equal(writes, 1);
+  assert.equal(b.getOption(), "TODO");
+  assert.equal(f.service.getTicket(ticket.id).stageId, b.backlog.id);
+});
 test("Project failure retains durable stage intent and pull-only cannot erase it", async (t) => {
   const f = fixture(t);
   const b = board(f);
@@ -442,22 +619,38 @@ test("project intent is durable before the first provider response settles", asy
   assert.ok(intent.retryAt);
 });
 
-for (const labels of [["owner:unknown", "keep-me"], ["owner:codex", "owner:claude", "keep-me"]]) {
-  test(`import preserves unresolved routing ${labels.filter(label => label.startsWith("owner:")).join(", ")} without outgoing edits`, async (t) => {
+for (const labels of [
+  ["owner:unknown", "keep-me"],
+  ["owner:codex", "owner:claude", "keep-me"],
+]) {
+  test(`import preserves unresolved routing ${labels.filter((label) => label.startsWith("owner:")).join(", ")} without outgoing edits`, async (t) => {
     const f = fixture(t);
     f.remote.labels = [...labels];
     let writes = 0;
-    f.client.updateIssue = async (repo, number, fields) => { writes++; return Object.assign(f.remote, fields); };
+    f.client.updateIssue = async (repo, number, fields) => {
+      writes++;
+      return Object.assign(f.remote, fields);
+    };
     await f.sync.syncProject(f.p.id);
     await f.sync.syncProject(f.p.id);
     const ticket = f.service.state().tickets[0];
-    assert.equal(writes, 0, "an unmapped local owner is a projection, not permission to delete routing labels");
+    assert.equal(
+      writes,
+      0,
+      "an unmapped local owner is a projection, not permission to delete routing labels",
+    );
     assert.deepEqual([...f.remote.labels].sort(), [...labels].sort());
     assert.deepEqual([...ticket.labels].sort(), [...labels].sort());
     assert.equal(ticket.ownerId, null);
-    assert.ok(ticket.blockedReason, "unresolved GitHub routing must retain a visible assignment hold");
+    assert.ok(
+      ticket.blockedReason,
+      "unresolved GitHub routing must retain a visible assignment hold",
+    );
     assert.equal(ticket.github.dirty, false);
-    assert.equal(f.store.db.prepare("SELECT count(*) AS n FROM sync_jobs").get().n, 0);
+    assert.equal(
+      f.store.db.prepare("SELECT count(*) AS n FROM sync_jobs").get().n,
+      0,
+    );
   });
 }
 
@@ -465,10 +658,16 @@ test("an unrelated local title edit preserves unsupported remote owner labels", 
   const f = fixture(t);
   f.remote.labels = ["owner:unknown", "keep-me"];
   const writes = [];
-  f.client.updateIssue = async (repo, number, fields) => { writes.push(structuredClone(fields)); return Object.assign(f.remote, fields); };
+  f.client.updateIssue = async (repo, number, fields) => {
+    writes.push(structuredClone(fields));
+    return Object.assign(f.remote, fields);
+  };
   await f.sync.syncProject(f.p.id);
   const ticket = f.service.state().tickets[0];
-  f.service.updateTicket(ticket.id, { version: ticket.version, title: "User changed the title" });
+  f.service.updateTicket(ticket.id, {
+    version: ticket.version,
+    title: "User changed the title",
+  });
   await f.sync.syncProject(f.p.id);
   assert.equal(writes.length, 1);
   assert.equal(f.remote.title, "User changed the title");
@@ -482,12 +681,19 @@ test("explicit assignment replaces unsupported routing and explicit owner remova
   f.remote.labels = ["owner:unknown", "keep-me"];
   await f.sync.syncProject(f.p.id);
   let ticket = f.service.state().tickets[0];
-  f.service.updateTicket(ticket.id, { version: ticket.version, ownerId: "codex" });
+  f.service.updateTicket(ticket.id, {
+    version: ticket.version,
+    ownerId: "codex",
+  });
   await f.sync.syncProject(f.p.id);
   ticket = f.service.getTicket(ticket.id);
   assert.deepEqual([...f.remote.labels].sort(), ["keep-me", "owner:codex"]);
   assert.equal(ticket.ownerId, "codex");
-  assert.equal(ticket.blockedReason, "", "a resolved managed assignment hold must clear");
+  assert.equal(
+    ticket.blockedReason,
+    "",
+    "a resolved managed assignment hold must clear",
+  );
   f.service.updateTicket(ticket.id, { version: ticket.version, ownerId: null });
   await f.sync.syncProject(f.p.id);
   await f.sync.syncProject(f.p.id);
@@ -500,7 +706,10 @@ test("explicit label resolution can select one owner from ambiguous imported rou
   f.remote.labels = ["owner:codex", "owner:claude", "keep-me"];
   await f.sync.syncProject(f.p.id);
   const ticket = f.service.state().tickets[0];
-  f.service.updateTicket(ticket.id, { version: ticket.version, labels: ["keep-me", "owner:claude"] });
+  f.service.updateTicket(ticket.id, {
+    version: ticket.version,
+    labels: ["keep-me", "owner:claude"],
+  });
   await f.sync.syncProject(f.p.id);
   assert.deepEqual([...f.remote.labels].sort(), ["keep-me", "owner:claude"]);
   assert.equal(f.service.getTicket(ticket.id).ownerId, "claude");
@@ -512,14 +721,28 @@ test("ownership label edits cannot bypass an active executor's checkpointed hand
   f.remote.labels = ["owner:codex", "keep-me"];
   await f.sync.syncProject(f.p.id);
   let ticket = f.service.state().tickets[0];
-  const active = f.service.state().stages.find(stage => stage.role === "active");
-  f.service.updateTicket(ticket.id, { version: ticket.version, stageId: active.id });
+  const active = f.service
+    .state()
+    .stages.find((stage) => stage.role === "active");
+  f.service.updateTicket(ticket.id, {
+    version: ticket.version,
+    stageId: active.id,
+  });
   await f.sync.syncProject(f.p.id);
-  f.service.claim(ticket.id, { agentId: "codex", sessionId: "existing-executor" });
+  f.service.claim(ticket.id, {
+    agentId: "codex",
+    sessionId: "existing-executor",
+  });
   ticket = f.service.getTicket(ticket.id);
-  f.service.updateTicket(ticket.id, { version: ticket.version, labels: ["keep-me", "owner:claude"] });
+  f.service.updateTicket(ticket.id, {
+    version: ticket.version,
+    labels: ["keep-me", "owner:claude"],
+  });
   let writes = 0;
-  f.client.updateIssue = async () => { writes++; return f.remote; };
+  f.client.updateIssue = async () => {
+    writes++;
+    return f.remote;
+  };
   await f.sync.syncProject(f.p.id);
   assert.equal(writes, 0);
   assert.equal(f.service.getTicket(ticket.id).github.syncState, "conflict");
@@ -532,11 +755,17 @@ test("a later unsupported remote owner remains visible without overwriting an un
   f.remote.labels = ["owner:codex", "keep-me"];
   await f.sync.syncProject(f.p.id);
   let ticket = f.service.state().tickets[0];
-  f.service.updateTicket(ticket.id, { version: ticket.version, blockedReason: "Waiting on a separate dependency" });
+  f.service.updateTicket(ticket.id, {
+    version: ticket.version,
+    blockedReason: "Waiting on a separate dependency",
+  });
   await f.sync.syncProject(f.p.id);
   f.remote.labels = ["owner:unknown", "keep-me"];
   let writes = 0;
-  f.client.updateIssue = async (repo, number, fields) => { writes++; return Object.assign(f.remote, fields); };
+  f.client.updateIssue = async (repo, number, fields) => {
+    writes++;
+    return Object.assign(f.remote, fields);
+  };
   await f.sync.syncProject(f.p.id);
   await f.sync.syncProject(f.p.id);
   ticket = f.service.getTicket(ticket.id);
@@ -549,14 +778,25 @@ test("a later unsupported remote owner remains visible without overwriting an un
 
 test("fresh import does not publish title normalization or reopen a closed remote issue", async (t) => {
   const f = fixture(t);
-  Object.assign(f.remote, { title: "  Preserve remote title  ", description: "Body\n\n", state: "closed", labels: ["owner:unknown"] });
+  Object.assign(f.remote, {
+    title: "  Preserve remote title  ",
+    description: "Body\n\n",
+    state: "closed",
+    labels: ["owner:unknown"],
+  });
   let writes = 0;
-  f.client.updateIssue = async (repo, number, fields) => { writes++; return Object.assign(f.remote, fields); };
+  f.client.updateIssue = async (repo, number, fields) => {
+    writes++;
+    return Object.assign(f.remote, fields);
+  };
   await f.sync.syncProject(f.p.id);
   const ticket = f.service.state().tickets[0];
   assert.equal(writes, 0);
   assert.equal(ticket.title, "  Preserve remote title  ");
   assert.equal(ticket.description, "Body\n\n");
   assert.equal(ticket.github.state, "closed");
-  assert.notEqual(f.service.state().stages.find(stage => stage.id === ticket.stageId).role, "done");
+  assert.notEqual(
+    f.service.state().stages.find((stage) => stage.id === ticket.stageId).role,
+    "done",
+  );
 });

@@ -23,19 +23,19 @@ separate evidence. Queue/runner success only means the process finished. A draft
 PR or green unmerged branch is still in review. Report GitHub synchronization
 failures/conflicts instead of claiming both systems agree.
 
-## Stages and planning
+## Workflow and preparation
 
-Projects may rename, add and order stages. Use configured IDs and semantic roles
-rather than hard-coded display names. Imported names are retained.
+All projects use the connected GitHub workflow below, with fixed names and order.
+Legacy names are normalized; Parked is folded into Backlog. Stable surviving stage IDs,
+assignments, dependencies, execution reservations and GitHub intent are retained.
 
-| Role | Typical name | Meaning |
+| Role | Stage | Meaning |
 | --- | --- | --- |
-| `backlog` | Backlog / To Do | Captured work; execution held until moved into a ready stage. |
-| `planning` | Planning | Requirements traced to code; specification and executable acceptance tests being written. |
-| `active` | In progress / Executing | Verified executor or active child work owns the remaining scope. |
-| `review` | In review / PR / Code Review | Reviewable result exists; include its PR/artifact and verification evidence. |
+| `backlog` | Backlog | Captured work; explicit Start can begin a bounded resolution/triage pass. |
+| `ready` | Ready | Scope and next action are prepared for execution. |
+| `active` | In progress | An executor or active child work owns the remaining scope. |
+| `review` | In review | Reviewable result exists; include its PR/artifact and verification evidence. |
 | `done` | Done | Acceptance and delivery verified; code changes require merge evidence. |
-| `parked` | Parked | Deliberately held work; no automatic launch. |
 
 Planning uses specify → clarify → plan → tasks: cite current `file:line` evidence,
 define executable acceptance tests and split independently verifiable children.
@@ -66,12 +66,18 @@ A parent stays open until all children are done. After planning it may use an
 active stage as a container without its own executor or branch; delivery evidence
 is its children's verified results. It need not pass through PR review itself.
 Backward moves require reasons: review defects return to execution; changed
-requirements return to planning and explicit specification revision.
+requirements return to Ready with an explicit specification revision before implementation.
 
 **Blocked is a flag, not a stage.** Preserve stage and set a named `blockedReason`.
 Preserve existing `blocked:*` evidence, especially `blocked:duplicate-reference`.
-Clear a blocker only when its cause is resolved. Parked work, temporary blockers
-and stopped executors are distinct states.
+Clear a blocker only when its cause is resolved and record the evidence. Backlog work,
+temporary blockers and stopped executors are distinct states. Explicit Start on blocked
+or dependency-held work launches a resolution pass; it does not clear the hold itself.
+The assigned active execution can use desk_get_resolution_context, desk_update_task
+(with current version and audit reason), and desk_create_subtask. These tools preserve
+project/owner boundaries and require separate claims for children; they cannot steal
+reservations, archive tickets or mark Done. Ordinary claims and automatic starts still
+honor Backlog, dependency and blocker holds.
 
 ## Ownership, claims and handoffs
 
@@ -86,7 +92,8 @@ and stopped executors are distinct states.
    P024's division and Claude's reserved P072 scope until a proper handoff.
 3. Identify the exact native session/thread, branch/worktree and scope. Inspect
    existing execution records and worktrees. Two sessions of one AI are different
-   executors. Respect dependency, parked and blocked holds.
+   executors. Respect dependency and blocker holds except within an explicitly started,
+   bounded resolution pass. Another session's reservation always remains protected.
 4. Acquire the transactional claim via stable API/CLI/MCP before execution.
    Labels and queue files are metadata, not locks. All cooperating dispatch
    paths must claim; wrappers are not a security boundary against unrelated
@@ -145,7 +152,9 @@ bounded advisers; other agents use only configured, verified capabilities.
 ## GitHub synchronization and migration
 
 Keep stable links to canonical issues/Project items. Preserve unrelated labels and
-content; agent names are not GitHub logins. Verify stage mappings and sync results.
+content; agent names are not GitHub logins. Verify the automatically discovered exact status names and sync results.
+Manual status mapping is removed. Missing or ambiguous GitHub options are errors;
+fix the project configuration without inventing remote fields or discarding pending work.
 A closed issue is not merge evidence. Publishing an issue is explicit; import alone
 does not create one.
 

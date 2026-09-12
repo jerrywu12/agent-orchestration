@@ -8,6 +8,8 @@ import {
   createGhRequest,
   issueSnapshot,
   reconcileIssue,
+  discoverWorkflowStatus,
+  projectStatusRole,
 } from "../server/github.mjs";
 
 const repo = "octo/work";
@@ -31,6 +33,83 @@ const base = {
 const connection = (nodes, cursor = null) => ({
   nodes,
   pageInfo: { hasNextPage: cursor !== null, endCursor: cursor },
+});
+
+test("workflow discovery associates unique normalized exact names and refuses aliases or ambiguous identity", () => {
+  const project = {
+    statusFieldId: "FIELD",
+    statusOptions: [
+      { id: "B", name: " Backlog " },
+      { id: "R", name: "READY" },
+      { id: "A", name: "In   progress" },
+      { id: "V", name: "In review" },
+      { id: "D", name: "Done" },
+      { id: "X", name: "Custom" },
+    ],
+  };
+  assert.deepEqual(discoverWorkflowStatus(project), {
+    backlog: "B",
+    ready: "R",
+    active: "A",
+    review: "V",
+    done: "D",
+  });
+  assert.equal(
+    projectStatusRole(project, {
+      fieldId: "FIELD",
+      optionId: "A",
+      name: "In progress",
+    }),
+    "active",
+  );
+  const rejects = (fn, code) =>
+    assert.throws(
+      fn,
+      (error) =>
+        error instanceof GitHubError && error.code === code && !error.retryable,
+    );
+  rejects(
+    () => discoverWorkflowStatus({ ...project, statusFieldId: null }),
+    "STATUS_FIELD_MISSING",
+  );
+  rejects(
+    () =>
+      discoverWorkflowStatus({
+        ...project,
+        statusOptions: project.statusOptions.map((o) =>
+          o.id === "R" ? { ...o, name: "Planning" } : o,
+        ),
+      }),
+    "STATUS_OPTIONS_MISSING",
+  );
+  rejects(
+    () =>
+      discoverWorkflowStatus({
+        ...project,
+        statusOptions: [
+          ...project.statusOptions,
+          { id: "B2", name: "BACKLOG" },
+        ],
+      }),
+    "STATUS_OPTIONS_AMBIGUOUS",
+  );
+  rejects(
+    () =>
+      discoverWorkflowStatus({
+        ...project,
+        statusOptions: project.statusOptions.map((o) =>
+          o.id === "R" ? { ...o, id: "B" } : o,
+        ),
+      }),
+    "STATUS_OPTIONS_AMBIGUOUS",
+  );
+  for (const status of [
+    null,
+    { fieldId: "WRONG", optionId: "A" },
+    { fieldId: "FIELD", optionId: "X", name: "Custom" },
+    { fieldId: "FIELD", optionId: "MISSING", name: "Backlog" },
+  ])
+    rejects(() => projectStatusRole(project, status), "UNKNOWN_PROJECT_STATUS");
 });
 
 test("issue pagination counts raw pages, excludes PRs and retains repository identity", async () => {

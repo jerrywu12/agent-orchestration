@@ -42,6 +42,65 @@ export const definitions = [
     ),
   },
   {
+    name: "desk_get_resolution_context",
+    description:
+      "Read bounded same-project dependency and subtask metadata for your active assigned execution. Related reservations are not permission to modify another ticket.",
+    inputSchema: object({ ticketId: str, executionId: str, sessionId: str }, [
+      "ticketId",
+      "executionId",
+      "sessionId",
+    ]),
+  },
+  {
+    name: "desk_update_task",
+    description:
+      "Reorganize your actively claimed ticket with an audit reason and current version. Preserve evidence; never clear a blocker without verifying it. Cannot reassign, archive or mark Done.",
+    inputSchema: object(
+      {
+        ticketId: str,
+        executionId: str,
+        sessionId: str,
+        version: { type: "integer", minimum: 1 },
+        reason: str,
+        changes: object({
+          title: str,
+          description: str,
+          brief: object({
+            acceptanceCriteria: str,
+            scope: str,
+            verification: str,
+          }),
+          stageId: str,
+          blockedReason: str,
+          parentId: { type: ["string", "null"] },
+          dependsOn: { type: "array", items: str, maxItems: 100 },
+        }),
+      },
+      ["ticketId", "executionId", "sessionId", "version", "reason", "changes"],
+    ),
+  },
+  {
+    name: "desk_create_subtask",
+    description:
+      "Create a Ready subtask inheriting your actively claimed ticket's project and owner. Claim the new child separately before its execution; creating it does not steal any existing reservation.",
+    inputSchema: object(
+      {
+        ticketId: str,
+        executionId: str,
+        sessionId: str,
+        reason: str,
+        title: str,
+        description: str,
+        brief: object({
+          acceptanceCriteria: str,
+          scope: str,
+          verification: str,
+        }),
+      },
+      ["ticketId", "executionId", "sessionId", "reason", "title"],
+    ),
+  },
+  {
     name: "desk_report_progress",
     description:
       "Report verified progress for your exact execution. Increasing seq and unique eventId required; retries reuse both. complete means awaiting review, not delivered. checkpoint must record saved state and relinquishes execution.",
@@ -89,6 +148,28 @@ async function invoke(name, input = {}) {
       "POST",
       `/api/tickets/${encodeURIComponent(ticketId)}/claim`,
       { ...claim, agentId: config.agentId ?? input.agentId },
+      config,
+    );
+  }
+  if (name === "desk_get_resolution_context") {
+    const params = new URLSearchParams({
+      executionId: input.executionId,
+      sessionId: input.sessionId,
+    });
+    if (config.agentId) params.set("agentId", config.agentId);
+    return request(
+      "GET",
+      `/api/tickets/${encodeURIComponent(input.ticketId)}/resolution-context?${params}`,
+      undefined,
+      config,
+    );
+  }
+  if (name === "desk_update_task" || name === "desk_create_subtask") {
+    const { ticketId, ...payload } = input;
+    return request(
+      name === "desk_update_task" ? "PATCH" : "POST",
+      `/api/tickets/${encodeURIComponent(ticketId)}/${name === "desk_update_task" ? "agent-update" : "subtasks"}`,
+      { ...payload, agentId: config.agentId },
       config,
     );
   }
