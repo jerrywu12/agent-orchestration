@@ -782,7 +782,9 @@ export function WorkView({
                 ? "Restoring agent run"
                 : run.state === "running"
                   ? "Agent run in progress"
-                  : "Agent run finished"}
+                  : counts.attention > 0
+                    ? "Action required"
+                    : "Agent run finished"}
             </h2>
             <span>
               {run.concurrency} concurrent · {run.results.length} tickets
@@ -797,7 +799,9 @@ export function WorkView({
                   setPollError("");
                 }}
               >
-                Dismiss finished run
+                {counts.attention > 0
+                  ? "Dismiss results"
+                  : "Dismiss finished run"}
               </button>
             )}
           </div>
@@ -890,6 +894,19 @@ export function WorkView({
               const key = ticket
                 ? ticketKey(ticket, state.projects)
                 : result.ticketId;
+              const recoveryState = !ticket
+                ? "unknown"
+                : isActive(ticket.execution) &&
+                    ticket.execution?.id !== result.executionId
+                  ? "reserved"
+                  : ticket.archived ||
+                      state.stages.find((stage) => stage.id === ticket.stageId)
+                        ?.role === "done"
+                    ? "closed"
+                    : ticket.execution &&
+                        ticket.execution.id !== result.executionId
+                      ? "ended"
+                      : "idle";
               return (
                 <li key={result.ticketId}>
                   <button
@@ -943,8 +960,7 @@ export function WorkView({
                         !!bulkBusy ||
                         takeoverPending ||
                         runActive ||
-                        (isActive(ticket?.execution) &&
-                          ticket?.execution?.id !== result.executionId)
+                        recoveryState !== "idle"
                       }
                       title={
                         runActive
@@ -957,7 +973,9 @@ export function WorkView({
                       Run Agent
                     </button>
                   )}
-                  <p>{result.message}</p>
+                  {!["needs_takeover", "claim_released"].includes(
+                    result.status,
+                  ) && <p>{result.message}</p>}
                   {result.status === "awaiting_review" && (
                     <p className="review-activity-note">
                       {!ticket
@@ -978,6 +996,7 @@ export function WorkView({
                     ticketKey={key}
                     now={runNow}
                     paused={!!pollError}
+                    recoveryState={recoveryState}
                   />
                 </li>
               );
