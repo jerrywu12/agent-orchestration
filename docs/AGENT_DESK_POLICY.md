@@ -82,6 +82,63 @@ project/owner boundaries and require separate claims for children; they cannot s
 reservations, archive tickets or mark Done. Ordinary claims and automatic starts still
 honor Backlog, dependency and blocker holds.
 
+## Mandatory dependency, duplicate and conflict review
+
+Every AI-created ticket must be checked by its creating agent before creation and
+read back after creation. Search current tickets and source acceptance criteria,
+reuse canonical work instead of adding duplicate implementation, and record the
+review evidence. The assigned agent rechecks before substantive work; a creator's
+review does not silently transfer accountability to a different owner.
+
+Manually added, unassigned Backlog tickets are exempt at capture. Assignment or
+reassignment ends that exemption and makes the assigned AI responsible for review.
+Entry into Planning requires review before drafting or decomposition. Relevant
+changes to scope, prerequisites, peers or ownership require another check. If no
+agent is assigned in Planning, record the missing accountable owner; do not invent
+an agent or a successful review. Assignment creates the obligation, not a new
+implicit launch: existing explicit Start and confirmed Planning/Ready transitions
+remain the execution authority. An idle agent performs this mandatory first step
+when its authorized session begins.
+
+The assigned agent must:
+
+1. Read fresh ticket state, the task brief/spec and authorized dependency context.
+   Compare true prerequisites, semantic/exact duplicates, completed and archived
+   canonical work, parent/child boundaries, and competing work in the same repo
+   (including project aliases where authorized). Examine acceptance criteria and
+   shared files, APIs, schemas, migrations and other resources, plus exact current
+   reservations. Title similarity or a matching historical program number alone
+   is not proof of duplication.
+2. Separate hard completion dependencies from reviewed intermediate milestones and
+   scope conflicts. Preserve acyclic dependencies; never make a child wait for its
+   own parent to complete. Shared scope calls for serialization or narrower owned
+   slices, not an invented product prerequisite. Keep program parents as containers.
+3. Record a **Dependency review** checkpoint in the ticket description and activity:
+   reviewer agent/session and timestamp; scope and coverage limits; canonical IDs
+   examined; prerequisite evidence; duplicate disposition; conflicts and chosen
+   boundaries/order; unresolved blocker, responsible owner and next action; result.
+   A result may be clear within the inspected scope, conflicts found, or incomplete.
+   Read the current version, preserve prior content and evidence, and re-read writes.
+4. Add evidence-backed dependencies, narrow scope and name unresolved blockers only
+   within the session's authority. Preserve owners, claims, saved work and source
+   histories. Prefer the existing canonical item for duplicate work; request a
+   coordinator's consolidation when another ticket is outside the agent's scope.
+   Before creating children, check proposed siblings too; after creation read back
+   their IDs/links and record the parent audit. Child creation grants no Start.
+5. Treat unavailable or truncated context as incomplete coverage, never as proof
+   that there are no duplicates or conflicts. Scoped context currently exposes a
+   bounded same-project set and may omit archives, descriptions and alias projects.
+   Obtain missing bounded evidence from an authorized owner/coordinator, record the
+   remaining gap, and checkpoint before affected implementation. Do not obtain
+   credentials, broaden access or take over another session to complete this check.
+
+Managed task packets require this checkpoint for planning, blocker resolution and
+implementation. External/native agents follow this canonical policy with the
+stable connector and the same scope limits. Instructions and recorded findings are
+an agent review obligation, not an automated semantic-duplicate verdict. Existing
+transactional readiness and claim conflict checks remain mandatory; a written
+review never overrides them. No new AI service is launched for manual intake.
+
 ## Ownership, claims and handoffs
 
 1. Read the exact ticket, dependencies and task packet. `ownerId` is the assigned
