@@ -1,7 +1,7 @@
 import { parentPort, workerData } from "node:worker_threads";
 import { crc32, inflateRawSync } from "node:zlib";
 import { createRequire } from "node:module";
-import { DocumentProcessingError } from "./document-processor.mjs";
+import { DocumentProcessingError, validateMarkdownText } from "./document-processor.mjs";
 
 const fail = (code = "invalid_document") => {
   throw new DocumentProcessingError(code);
@@ -444,6 +444,11 @@ async function extractPdf(bytes, limits) {
 
 async function extract({ bytes: transferred, kind, limits }) {
   const bytes = Buffer.from(transferred);
+  if ([".md", ".markdown"].includes(kind))
+    return {
+      text: validateMarkdownText(decode(bytes), limits.maxMarkdownChars),
+      warnings: [],
+    };
   if (kind === ".txt")
     return { text: finishText(decode(bytes), limits), warnings: [] };
   if (kind === ".pdf") return extractPdf(bytes, limits);

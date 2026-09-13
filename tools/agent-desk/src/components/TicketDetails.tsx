@@ -247,7 +247,11 @@ export function TicketDetails({
                 ))}
               </select>
             </label>
-            <EffortSelect value={draft.effort} onChange={value => change("effort", value)} disabled={!!busy} />
+            <EffortSelect
+              value={draft.effort}
+              onChange={(value) => change("effort", value)}
+              disabled={!!busy}
+            />
             <label>
               Owner
               <select
@@ -363,7 +367,11 @@ export function TicketDetails({
             </div>
           </details>
         </form>
-        <TicketDocuments ticket={ticket} />
+        <TicketDocuments
+          ticket={ticket}
+          refresh={refresh}
+          disabled={dirty || !!busy}
+        />
         {ticket.resumeReason && (
           <p className="notice" role="status">
             {ticket.resumeReason}

@@ -5,6 +5,7 @@ import { Worker } from "node:worker_threads";
 export const DOCUMENT_LIMITS = Object.freeze({
   maxFileBytes: 10 * 1024 * 1024,
   maxTextChars: 100000,
+  maxMarkdownChars: 200000,
   maxPdfPages: 200,
   maxArchiveEntries: 1000,
   maxArchiveBytes: 32 * 1024 * 1024,
@@ -15,7 +16,7 @@ export const DOCUMENT_LIMITS = Object.freeze({
 });
 
 const messages = Object.freeze({
-  unsupported_type: "Choose a TXT, DOC, DOCX or PDF document.",
+  unsupported_type: "Choose a Markdown, TXT, DOC, DOCX or PDF document.",
   invalid_document:
     "The document is malformed, has an invalid encoding, or contains unsupported content. Export a plain text copy and retry.",
   encrypted_document:
@@ -35,15 +36,36 @@ const messages = Object.freeze({
 
 export class DocumentProcessingError extends Error {
   constructor(code) {
-    const safeCode = Object.hasOwn(messages, code) ? code : "processing_failed";
+    const safeCode = Object.hasOwn(messages, code)
+      ? code
+      : "processing_failed";
     super(messages[safeCode]);
     this.name = "DocumentProcessingError";
     this.code = safeCode;
   }
 }
 
+// Markdown source is not normalized: indentation and trailing spaces are syntax.
+export function validateMarkdownText(
+  text,
+  max = DOCUMENT_LIMITS.maxMarkdownChars,
+) {
+  if (
+    typeof text !== "string" ||
+    !text.isWellFormed() ||
+    /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f-\u009f]/.test(text)
+  )
+    throw new DocumentProcessingError("invalid_document");
+  if (!text.trim()) throw new DocumentProcessingError("no_text");
+  if (text.length > Math.min(max, DOCUMENT_LIMITS.maxMarkdownChars))
+    throw new DocumentProcessingError("document_limit");
+  return text;
+}
+
 const mediaTypes = Object.freeze({
   ".txt": "text/plain",
+  ".md": "text/markdown",
+  ".markdown": "text/markdown",
   ".pdf": "application/pdf",
   ".doc": "application/msword",
   ".docx":
@@ -90,7 +112,7 @@ export async function processDocument(input, options = {}) {
     (kind === ".pdf" && !pdf) ||
     (kind === ".doc" && !ole) ||
     (kind === ".docx" && !zip && !ole) ||
-    (kind === ".txt" && (ole || pdf || zip))
+    ([".txt", ".md", ".markdown"].includes(kind) && (ole || pdf || zip))
   )
     throw new DocumentProcessingError("invalid_document");
   if (options.signal?.aborted)
@@ -150,7 +172,10 @@ export async function processDocument(input, options = {}) {
       if (
         typeof message?.text !== "string" ||
         !message.text.trim() ||
-        message.text.length > limits.maxTextChars ||
+        message.text.length >
+          (mediaTypes[kind] === "text/markdown"
+            ? limits.maxMarkdownChars
+            : limits.maxTextChars) ||
         !Array.isArray(message.warnings) ||
         message.warnings.some(
           (warning) => typeof warning !== "string" || warning.length > 250,
