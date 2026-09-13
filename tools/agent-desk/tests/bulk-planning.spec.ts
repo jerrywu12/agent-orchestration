@@ -4,6 +4,146 @@ import { randomUUID } from "node:crypto";
 
 type Outcome = "started" | "queued" | "failed" | "refused" | "uncertain";
 
+for (const scenario of ["failed", "started", "started-without-id"] as const) {
+  const status = scenario === "failed" ? "failed" : "started";
+  test(`new ${scenario} intent cannot borrow old planning execution telemetry`, async ({
+    page,
+  }) => {
+    const app = await fixture(page);
+    const ticket = app.state.tickets[0];
+    ticket.stageId = "p-planning";
+    ticket.launchIntent = {
+      status,
+      purpose: "planning",
+      ownerId: "codex",
+      reason:
+        status === "failed"
+          ? "New planner failed to launch"
+          : "Waiting for new planner telemetry",
+      ...(scenario === "started" ? { executionId: "new-execution" } : {}),
+    };
+    ticket.execution = {
+      id: "old-execution",
+      ticketId: ticket.id,
+      agentId: "codex",
+      sessionId: "old-synthetic-session",
+      state: "checkpointed",
+      purpose: "planning",
+      summary: "Old preparation must not leak",
+      progress: 100,
+      releasedAt: app.state.serverTime,
+    };
+    await page.reload();
+    const progress = page.getByRole("region", {
+      name: "Planning progress",
+      exact: true,
+    });
+    await expect(progress).toContainText(
+      status === "failed" ? "Planning failed" : "Awaiting planning status",
+    );
+    await expect(progress).toContainText(ticket.launchIntent.reason!);
+    await expect(progress).not.toContainText("Old preparation must not leak");
+    await expect(progress).not.toContainText("Prepared for review");
+    await expect(progress.getByRole("progressbar")).toHaveCount(0);
+    expect(app.writes).toEqual([]);
+  });
+}
+
+for (const heartbeat of ["missing", "stale"] as const) {
+  test(`planning ${heartbeat} heartbeat cannot claim the agent is working`, async ({
+    page,
+  }) => {
+    await page.clock.install({ time: new Date("2026-09-13T00:00:00.000Z") });
+    const app = await fixture(page);
+    app.state.tickets[0].stageId = "p-planning";
+    app.state.tickets[0].execution = {
+      id: "unverified-planner",
+      ticketId: "ticket-0",
+      sessionId: "synthetic-unverified",
+      agentId: "codex",
+      state: "running",
+      purpose: "planning",
+      summary: "Retained planning evidence",
+      heartbeatAt: heartbeat === "stale" ? "2026-09-12T23:50:00.000Z" : null,
+    };
+    await page.reload();
+    const progress = page.getByRole("region", {
+      name: "Planning progress",
+      exact: true,
+    });
+    await expect(progress).toContainText("Retained planning evidence");
+    await expect(progress).toContainText(/needs attention/i);
+    await expect(progress).not.toContainText("Planning agent working");
+    expect(app.writes).toEqual([]);
+  });
+}
+
+test("queued planning becomes current running telemetry on polling without starting again", async ({
+  page,
+}) => {
+  await page.clock.install({ time: new Date("2026-09-13T00:00:00.000Z") });
+  const app = await fixture(page);
+  const ticket = app.state.tickets[0];
+  ticket.stageId = "p-planning";
+  ticket.launchIntent = {
+    status: "queued",
+    purpose: "planning",
+    ownerId: "codex",
+    reason: "Waiting for planner capacity",
+  };
+  ticket.execution = {
+    id: "old-plan",
+    ticketId: ticket.id,
+    agentId: "codex",
+    sessionId: "old-synthetic",
+    state: "checkpointed",
+    purpose: "planning",
+    summary: "Old session summary",
+    progress: 100,
+    releasedAt: app.state.serverTime,
+  };
+  await page.reload();
+  const progress = page.getByRole("region", {
+    name: "Planning progress",
+    exact: true,
+  });
+  await expect(progress).toContainText("Queued");
+  await expect(progress).not.toContainText("Old session summary");
+  ticket.version++;
+  ticket.launchIntent = {
+    status: "started",
+    purpose: "planning",
+    ownerId: "codex",
+    executionId: "new-plan",
+  };
+  ticket.execution = {
+    id: "new-plan",
+    ticketId: ticket.id,
+    agentId: "codex",
+    sessionId: "new-synthetic",
+    state: "running",
+    purpose: "planning",
+    summary: "Current planner developing specification",
+    progress: 35,
+    heartbeatAt: app.state.serverTime,
+  };
+  await page.clock.runFor(5000);
+  await expect(progress).toContainText("Planning agent working");
+  await expect(progress).toContainText(
+    "Current planner developing specification",
+  );
+  await expect(progress.getByRole("progressbar")).toHaveAttribute(
+    "value",
+    "35",
+  );
+  await expect(progress).not.toContainText("Old session summary");
+  await page.reload();
+  await expect(progress).toContainText(
+    "Current planner developing specification",
+  );
+  expect(app.writes).toEqual([]);
+});
+
 async function fixture(
   page: Page,
   outcomes: Outcome[] = ["started", "queued"],
@@ -226,13 +366,17 @@ for (const view of ["List", "Board"]) {
     await dialog
       .getByRole("button", { name: "Confirm and start planning", exact: true })
       .click();
-    await expect(dialog).toContainText("planning agent started");
-    await expect(dialog).toContainText("queued");
+    await expect(dialog).not.toBeVisible();
+    const progress = page.getByRole("region", {
+      name: "Planning progress",
+      exact: true,
+    });
+    await expect(progress).toContainText("planning agent started");
+    await expect(progress).toContainText("queued");
     expect(app.writes.map((w) => w.body)).toEqual([
       { version: 4, stageId: "p-planning", ownerId: "claude", confirmed: true },
       { version: 5, stageId: "q-planning", ownerId: "claude", confirmed: true },
     ]);
-    await dialog.getByRole("button", { name: "Close", exact: true }).click();
     await expect(
       page.getByRole("checkbox", { name: "Select ticket ONE-1", exact: true }),
     ).not.toBeChecked();
@@ -302,7 +446,12 @@ test("keyboard bulk confirmation maps each project and prevents duplicate submis
   app.hold();
   await confirm.click();
   await expect.poll(() => app.writes.length).toBe(1);
-  await expect(confirm).toBeDisabled();
+  await expect(dialog).not.toBeVisible();
+  const progress = page.getByRole("region", {
+    name: "Planning progress",
+    exact: true,
+  });
+  await expect(progress).toContainText(/submitting|confirming/i);
   app.release();
   await expect.poll(() => app.writes.length).toBe(2);
   expect(app.writes).toEqual([
@@ -325,9 +474,9 @@ test("keyboard bulk confirmation maps each project and prevents duplicate submis
       },
     },
   ]);
-  await expect(dialog).toContainText(/started/i);
-  await expect(dialog).toContainText(/queued|Waiting for planner capacity/i);
-  await expect(confirm).toBeDisabled();
+  await expect(progress).toContainText(/started/i);
+  await expect(progress).toContainText(/queued|Waiting for planner capacity/i);
+  await expect(confirm).toHaveCount(0);
 });
 
 test("mixed and reserved candidates stay listed but only eligible Backlog work submits", async ({
@@ -375,6 +524,121 @@ test("mixed and reserved candidates stay listed but only eligible Backlog work s
   expect(app.writes[0].path).toBe("/api/tickets/ticket-0/transition");
 });
 
+test("existing planning execution progress updates by polling and survives reload without POST", async ({
+  page,
+}) => {
+  await page.clock.install({ time: new Date("2026-09-13T00:00:00.000Z") });
+  const app = await fixture(page);
+  app.state.tickets[0].stageId = "p-planning";
+  app.state.tickets[0].ownerId = "codex";
+  app.state.tickets[0].execution = {
+    id: "planning-live",
+    ticketId: "ticket-0",
+    agentId: "codex",
+    sessionId: "synthetic-planner",
+    state: "running",
+    purpose: "planning",
+    summary: "Drafting specification",
+    progress: 25,
+    heartbeatAt: app.state.serverTime,
+  };
+  await page.reload();
+  const progress = page.getByRole("region", {
+    name: "Planning progress",
+    exact: true,
+  });
+  await expect(progress).toContainText("Drafting specification");
+  await expect(progress.getByRole("progressbar")).toHaveAttribute(
+    "value",
+    "25",
+  );
+  const priorReads = app.stateReads();
+  app.state.tickets[0].execution!.summary =
+    "Checking independent acceptance cases";
+  app.state.tickets[0].execution!.progress = 70;
+  await page.clock.runFor(16000);
+  await expect.poll(() => app.stateReads()).toBeGreaterThan(priorReads);
+  await expect(progress).toContainText("Checking independent acceptance cases");
+  await expect(progress.getByRole("progressbar")).toHaveAttribute(
+    "value",
+    "70",
+  );
+  await page.reload();
+  await expect(progress).toContainText("Checking independent acceptance cases");
+  await expect(progress.getByRole("progressbar")).toHaveAttribute(
+    "value",
+    "70",
+  );
+  expect(app.writes).toEqual([]);
+});
+
+for (const scenario of [
+  "running",
+  "resolving",
+  "checkpoint-blocked",
+  "checkpoint-saved",
+  "awaiting-review",
+] as const) {
+  test(`planning lifecycle ${scenario} reports current execution and review status`, async ({
+    page,
+  }) => {
+    await page.clock.install({ time: new Date("2026-09-13T00:00:00.000Z") });
+    const app = await fixture(page);
+    const stopped =
+      scenario.startsWith("checkpoint") || scenario === "awaiting-review";
+    app.state.tickets[0].stageId = "p-planning";
+    app.state.tickets[0].ownerId = "codex";
+    app.state.tickets[0].blockedReason =
+      scenario === "checkpoint-blocked" || scenario === "resolving"
+        ? "Waiting for independent dependency evidence"
+        : null;
+    app.state.tickets[0].execution = {
+      id: "planning-current",
+      ticketId: "ticket-0",
+      agentId: "codex",
+      sessionId: "synthetic-current-planner",
+      state:
+        scenario === "awaiting-review"
+          ? "awaiting_review"
+          : stopped
+            ? "checkpointed"
+            : "running",
+      purpose: "planning",
+      summary: stopped
+        ? "Planning artifacts saved with acceptance evidence"
+        : "Preparing independent acceptance cases",
+      heartbeatAt: app.state.serverTime,
+      releasedAt: stopped ? app.state.serverTime : null,
+    };
+    await page.reload();
+    const progress = page.getByRole("region", {
+      name: "Planning progress",
+      exact: true,
+    });
+    await expect(progress).toContainText(
+      scenario === "running"
+        ? "Planning agent working"
+        : scenario === "resolving"
+          ? "Working on blockers"
+          : scenario === "checkpoint-blocked"
+            ? "Needs attention"
+            : scenario === "awaiting-review"
+              ? "Prepared for review"
+              : "Planning checkpointed",
+    );
+    if (stopped)
+      await expect(progress).not.toContainText("Planning agent working");
+    if (stopped)
+      await expect(progress).toContainText(
+        "Planning artifacts saved with acceptance evidence",
+      );
+    if (scenario === "checkpoint-saved")
+      await expect(progress).not.toContainText("Prepared for review");
+    await expect(progress).not.toContainText("Implementation complete");
+    expect(app.writes).toEqual([]);
+  });
+}
+
 for (const failure of ["refused", "uncertain", "failed"] as const) {
   test(`partial ${failure} retains per-ticket outcomes without automatic retry`, async ({
     page,
@@ -395,9 +659,14 @@ for (const failure of ["refused", "uncertain", "failed"] as const) {
       .getByRole("button", { name: "Confirm and start planning", exact: true })
       .click();
     await expect.poll(() => app.writes.length).toBe(2);
-    await expect(dialog).toContainText("ONE-1");
-    await expect(dialog).toContainText("TWO-1");
-    await expect(dialog).toContainText(
+    await expect(dialog).not.toBeVisible();
+    const progress = page.getByRole("region", {
+      name: "Planning progress",
+      exact: true,
+    });
+    await expect(progress).toContainText("ONE-1");
+    await expect(progress).toContainText("TWO-1");
+    await expect(progress).toContainText(
       failure === "refused"
         ? /Ticket version changed/
         : failure === "uncertain"
@@ -409,10 +678,9 @@ for (const failure of ["refused", "uncertain", "failed"] as const) {
         name: "Confirm and start planning",
         exact: true,
       }),
-    ).toBeDisabled();
+    ).toHaveCount(0);
     await page.evaluate(() => window.dispatchEvent(new Event("focus")));
     expect(app.writes).toHaveLength(2);
-    await dialog.getByRole("button", { name: "Close", exact: true }).click();
     await expect(
       page.getByRole("checkbox", { name: "Select ticket ONE-1", exact: true }),
     ).not.toBeChecked();
@@ -586,9 +854,15 @@ test("an excluded reservation released during submission cannot join the confirm
     page.getByRole("article", { name: "TWO-1 Synthetic plan 2", exact: true }),
   ).not.toContainText("External session");
   app.release();
-  await expect(dialog).toContainText("Planning requests finished");
+  const progress = page.getByRole("region", {
+    name: "Planning progress",
+    exact: true,
+  });
+  await expect(progress).toContainText(
+    "Not moved: An existing execution owns this ticket",
+  );
   expect(app.writes).toHaveLength(1);
-  await expect(dialog).toContainText(
+  await expect(progress).toContainText(
     "Not moved: An existing execution owns this ticket",
   );
   expect(app.state.tickets[1].stageId).toBe("q-backlog");
@@ -613,16 +887,21 @@ test("completed outcomes survive board refresh failure without replay", async ({
   await dialog
     .getByRole("button", { name: "Confirm and start planning", exact: true })
     .click();
-  await expect(dialog).toContainText("planning agent started");
-  await expect(dialog).toContainText("queued");
-  await expect(dialog).toContainText(/could not refresh|refresh.*failed/i);
+  await expect(dialog).not.toBeVisible();
+  const progress = page.getByRole("region", {
+    name: "Planning progress",
+    exact: true,
+  });
+  await expect(progress).toContainText("planning agent started");
+  await expect(progress).toContainText("queued");
+  await expect(progress).toContainText(/could not refresh|refresh.*failed/i);
   expect(app.writes).toHaveLength(2);
   await expect(
     dialog.getByRole("button", {
       name: "Confirm and start planning",
       exact: true,
     }),
-  ).toBeDisabled();
+  ).toHaveCount(0);
 });
 
 test("real isolated API retains both Backlog tickets and history when bulk confirmation is cancelled", async ({

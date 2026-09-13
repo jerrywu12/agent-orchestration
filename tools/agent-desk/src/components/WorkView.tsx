@@ -30,6 +30,7 @@ import type {
   Ticket,
 } from "../types";
 import { BulkPlanningTransition } from "./BulkPlanningTransition";
+import { PlanningProgress, planningIsWorking } from "./PlanningProgress";
 import type { ArchiveResult, BulkRun } from "../bulk-types";
 import { api, ApiError, errorMessage, pathId } from "../api";
 import {
@@ -153,6 +154,11 @@ export function WorkView({
   const [bulkError, setBulkError] = useState("");
   const [confirmArchive, setConfirmArchive] = useState(false);
   const [planningTickets, setPlanningTickets] = useState<Ticket[] | null>(null);
+  const [planningPhase, setPlanningPhase] = useState<
+    "preview" | "submitting" | "finished"
+  >("preview");
+  const [planningKey, setPlanningKey] = useState(0);
+  const planningBusy = !!planningTickets && planningPhase !== "finished";
   const [dragCount, setDragCount] = useState(0);
   const [dropTarget, setDropTarget] = useState<string | null>(null);
   const planningGesture = useRef<{ tickets: Ticket[]; token: string } | null>(
@@ -247,11 +253,7 @@ export function WorkView({
   ]);
   const selectedIds = visibleIds.filter((id) => selected.has(id));
   const planningLocked =
-    !!bulkBusy ||
-    !!pending ||
-    !!takeover ||
-    takeoverPending ||
-    !!planningTickets;
+    !!bulkBusy || !!pending || !!takeover || takeoverPending || planningBusy;
   function clearPlanningDrag() {
     planningGesture.current = null;
     setDragCount(0);
@@ -265,6 +267,8 @@ export function WorkView({
   function openPlanning(tickets: Ticket[]) {
     if (planningLocked || archived || !tickets.length) return;
     setConfirmArchive(false);
+    setPlanningPhase("preview");
+    setPlanningKey((key) => key + 1);
     setPlanningTickets(structuredClone(tickets.slice(0, 100)));
   }
   function beginPlanningDrag(event: DragEvent<HTMLElement>, ticket: Ticket) {
@@ -371,7 +375,7 @@ export function WorkView({
     if (recoveredTicketId && !recovered) return;
     if (
       bulkBusy ||
-      planningTickets ||
+      planningBusy ||
       takeoverPending ||
       (retryOriginal
         ? !runMissing || !runRequest.current
@@ -427,7 +431,7 @@ export function WorkView({
     }
   }
   async function archiveSelected() {
-    if (bulkBusy || planningTickets || !confirmArchive || !selectedIds.length)
+    if (bulkBusy || planningBusy || !confirmArchive || !selectedIds.length)
       return;
     setBulkBusy("archive");
     setBulkError("");
@@ -563,23 +567,6 @@ export function WorkView({
   ).length;
   return (
     <>
-      {planningTickets && (
-        <BulkPlanningTransition
-          tickets={planningTickets}
-          state={state}
-          integrations={integrations}
-          boardError={boardError}
-          onClose={() => setPlanningTickets(null)}
-          onComplete={async (admittedIds) => {
-            const admitted = new Set(admittedIds);
-            setSelected(
-              (current) =>
-                new Set([...current].filter((id) => !admitted.has(id))),
-            );
-            await refresh?.();
-          }}
-        />
-      )}
       {takeover && (
         <Modal
           title={`Take over ${
@@ -817,7 +804,7 @@ export function WorkView({
             <select
               aria-label="Bulk run concurrency"
               value={concurrency}
-              disabled={!!bulkBusy || !!planningTickets || runActive}
+              disabled={!!bulkBusy || planningBusy || runActive}
               onChange={(event) => {
                 setConcurrency(Number(event.target.value));
               }}
@@ -832,10 +819,7 @@ export function WorkView({
           <button
             className="button primary small-button"
             disabled={
-              !selectedIds.length ||
-              !!bulkBusy ||
-              !!planningTickets ||
-              runActive
+              !selectedIds.length || !!bulkBusy || planningBusy || runActive
             }
             onClick={() => void runSelected()}
           >
@@ -855,7 +839,7 @@ export function WorkView({
             className="button small-button"
             aria-label="Archive selected tickets"
             disabled={
-              !selectedIds.length || !!bulkBusy || !!planningTickets || archived
+              !selectedIds.length || !!bulkBusy || planningBusy || archived
             }
             onClick={() => setConfirmArchive(true)}
           >
@@ -898,6 +882,34 @@ export function WorkView({
         <div className="bulk-feedback">
           <ErrorNotice>{bulkError}</ErrorNotice>
         </div>
+      )}
+      {planningTickets ? (
+        <BulkPlanningTransition
+          key={planningKey}
+          tickets={planningTickets}
+          state={state}
+          integrations={integrations}
+          boardError={boardError}
+          projectId={projectId}
+          onPhaseChange={setPlanningPhase}
+          onOpen={onOpen}
+          onClose={() => setPlanningTickets(null)}
+          onComplete={async (admittedIds) => {
+            const admitted = new Set(admittedIds);
+            setSelected(
+              (current) =>
+                new Set([...current].filter((id) => !admitted.has(id))),
+            );
+            await refresh?.();
+          }}
+        />
+      ) : (
+        <PlanningProgress
+          state={state}
+          projectId={projectId}
+          error={boardError}
+          onOpen={onOpen}
+        />
       )}
       {run && (
         <section className="bulk-results" aria-label="Bulk run results">
@@ -1321,7 +1333,9 @@ export function WorkView({
                           {ticket.blockedReason && (
                             <span className="status-chip warning">
                               <AlertTriangle size={11} />
-                              Blocked
+                              {planningIsWorking(ticket)
+                                ? "Resolving blockers"
+                                : "Blocked"}
                             </span>
                           )}
                           {running && (
@@ -1423,7 +1437,11 @@ export function WorkView({
                                   title={ticket.blockedReason}
                                 >
                                   <AlertTriangle size={11} />
-                                  <span>Blocked</span>
+                                  <span>
+                                    {planningIsWorking(ticket)
+                                      ? "Resolving blockers"
+                                      : "Blocked"}
+                                  </span>
                                 </span>
                               )}
                               {running && (
@@ -1473,7 +1491,7 @@ export function WorkView({
                               aria-label={`Stage for ${ticketKey(ticket, state.projects)}`}
                               disabled={
                                 pending === ticket.id ||
-                                !!planningTickets ||
+                                planningBusy ||
                                 !!bulkBusy
                               }
                               value={ticket.stageId}
@@ -1501,7 +1519,7 @@ export function WorkView({
                               aria-label={`Priority for ${ticketKey(ticket, state.projects)}`}
                               disabled={
                                 pending === ticket.id ||
-                                !!planningTickets ||
+                                planningBusy ||
                                 !!bulkBusy
                               }
                               value={ticket.priority || "none"}
@@ -1522,7 +1540,7 @@ export function WorkView({
                               aria-label={`Owner for ${ticketKey(ticket, state.projects)}`}
                               disabled={
                                 pending === ticket.id ||
-                                !!planningTickets ||
+                                planningBusy ||
                                 !!bulkBusy
                               }
                               value={ticket.ownerId || ""}

@@ -43,6 +43,9 @@ export interface Execution {
   progress?: number | null;
   summary?: string | null;
   heartbeatAt?: string | null;
+  startedAt?: string | null;
+  lastActivityAt?: string | null;
+  stale?: boolean;
   branch?: string | null;
   worktreePath?: string | null;
   prUrl?: string | null;
@@ -74,6 +77,8 @@ export interface Ticket {
     purpose: "planning" | "implementation";
     reason?: string;
     ownerId: string;
+    executionId?: string | null;
+    createdAt?: string;
   } | null;
   brief?: TaskBrief;
   attachments?: Attachment[];

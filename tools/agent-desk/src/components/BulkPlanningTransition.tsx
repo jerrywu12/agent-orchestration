@@ -3,6 +3,7 @@ import { api, ApiError, errorMessage, pathId } from "../api";
 import type { Agent, DeskState, Integrations, Ticket } from "../types";
 import type { TransitionResult } from "./StageTransition";
 import { ErrorNotice, isActive, Modal, ticketKey } from "./shared";
+import { PlanningProgress } from "./PlanningProgress";
 
 function executable(agent: Agent) {
   return (
@@ -44,6 +45,9 @@ export function BulkPlanningTransition({
   boardError = "",
   onClose,
   onComplete,
+  onPhaseChange,
+  onOpen,
+  projectId,
 }: {
   tickets: Ticket[];
   state: DeskState;
@@ -51,6 +55,9 @@ export function BulkPlanningTransition({
   boardError?: string;
   onClose: () => void;
   onComplete: (admittedIds: string[]) => Promise<void>;
+  onPhaseChange: (phase: "preview" | "submitting" | "finished") => void;
+  onOpen: (id: string) => void;
+  projectId?: string;
 }) {
   const [ownerId, setOwnerId] = useState(() =>
     tickets.every((ticket) => ticket.ownerId === tickets[0]?.ownerId)
@@ -61,6 +68,7 @@ export function BulkPlanningTransition({
     "preview",
   );
   const [results, setResults] = useState<Record<string, string>>({});
+  const [snapshots, setSnapshots] = useState<Record<string, Ticket>>({});
   const [refreshError, setRefreshError] = useState("");
   const submitted = useRef(false);
   const latest = useRef({ state, integrations });
@@ -80,6 +88,7 @@ export function BulkPlanningTransition({
     if (submitted.current || !canStart || !eligible.length) return;
     submitted.current = true;
     setPhase("submitting");
+    onPhaseChange("submitting");
     const admitted: string[] = [];
     // Confirmation can narrow eligibility as state changes, never widen it.
     const confirmed = tickets.map((ticket) => ({
@@ -116,6 +125,10 @@ export function BulkPlanningTransition({
             );
           }
           admitted.push(ticket.id);
+          setSnapshots((current) => ({
+            ...current,
+            [ticket.id]: response.ticket,
+          }));
           result =
             response.outcome === "started"
               ? "Moved to Planning · planning agent started."
@@ -138,20 +151,34 @@ export function BulkPlanningTransition({
     try {
       await onComplete(admitted);
     } catch (error) {
-      setRefreshError(
-        `Results above are retained, but the board could not refresh. ${errorMessage(error)}`,
-      );
+      setRefreshError(errorMessage(error));
     } finally {
       setPhase("finished");
+      onPhaseChange("finished");
     }
   }
+
+  if (phase !== "preview")
+    return (
+      <PlanningProgress
+        state={state}
+        tickets={tickets.map((ticket) => snapshots[ticket.id] || ticket)}
+        results={results}
+        submitting={phase === "submitting"}
+        focus
+        error={refreshError || boardError}
+        onOpen={onOpen}
+        onDismiss={onClose}
+        projectId={projectId}
+      />
+    );
 
   return (
     <Modal
       title="Move tickets to Planning"
       subtitle={`${tickets.length} selected ${tickets.length === 1 ? "ticket" : "tickets"}`}
       onClose={() => {
-        if (!submitted.current || phase === "finished") onClose();
+        if (!submitted.current) onClose();
       }}
     >
       <div className="dialog-form">
@@ -164,7 +191,6 @@ export function BulkPlanningTransition({
           Planning agent
           <select
             value={ownerId}
-            disabled={phase !== "preview"}
             onChange={(event) => setOwnerId(event.target.value)}
           >
             <option value="">Select an agent</option>
@@ -187,11 +213,7 @@ export function BulkPlanningTransition({
           </ErrorNotice>
         )}
         <p role="status">
-          {phase === "preview"
-            ? `${eligible.length} eligible · ${tickets.length - eligible.length} will not move`
-            : phase === "submitting"
-              ? "Submitting planning requests…"
-              : "Planning requests finished. Review each ticket's outcome below."}
+          {`${eligible.length} eligible · ${tickets.length - eligible.length} will not move`}
         </p>
         <ul
           className="bulk-planning-candidates"
@@ -206,35 +228,21 @@ export function BulkPlanningTransition({
                   {ticketKey(ticket, state.projects)} · {ticket.title}
                 </strong>
                 <p>
-                  {results[ticket.id] ||
-                    (reason
-                      ? `Will not move: ${reason}`
-                      : phase === "preview"
-                        ? "Ready for confirmation"
-                        : "Waiting to submit…")}
+                  {reason
+                    ? `Will not move: ${reason}`
+                    : "Ready for confirmation"}
                 </p>
               </li>
             );
           })}
         </ul>
-        {refreshError && <ErrorNotice>{refreshError}</ErrorNotice>}
-        {!refreshError && boardError && phase === "finished" && (
-          <ErrorNotice>
-            Results above are retained, but the board could not refresh.{" "}
-            {boardError}
-          </ErrorNotice>
-        )}
         <div className="dialog-footer">
-          <button
-            className="button"
-            disabled={phase === "submitting"}
-            onClick={onClose}
-          >
-            {phase === "finished" ? "Close" : "Cancel"}
+          <button className="button" onClick={onClose}>
+            Cancel
           </button>
           <button
             className="button primary"
-            disabled={phase !== "preview" || !canStart || !eligible.length}
+            disabled={!canStart || !eligible.length}
             onClick={() => void confirm()}
           >
             Confirm and start planning
