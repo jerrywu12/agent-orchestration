@@ -64,6 +64,25 @@ const confirm = (e) => ({
   confirmed: true,
   reason: "Session cannot be traced; preserve original worktree.",
 });
+test("bulk read model follows exact live execution progress without rewriting batch records", async (t) => {
+  const f = fixture(t), ticket = f.ticket();
+  const batch = f.coord.submit({ticketIds:[ticket.id],requestId:"live-progress-test",concurrency:1});
+  await tick();
+  const e=f.store.active(ticket.id), persisted=f.store.get("run-batch",batch.id);
+  f.service.event(e.id,{agentId:e.agentId,sessionId:e.sessionId,eventId:"progress-1",seq:1,type:"progress",summary:"Verifying the acceptance tests",progress:35});
+  const row=f.coord.get(batch.id).results[0];
+  assert.equal(row.message,"Verifying the acceptance tests");
+  assert.equal(row.telemetry.progress,35);
+  assert.ok(row.telemetry.lastActivityAt);
+  assert.deepEqual(f.store.get("run-batch",batch.id),persisted);
+  const activityAt=row.telemetry.lastActivityAt;
+  f.store.saveExecution({...f.store.execution(e.id),heartbeatAt:"2001-01-01T00:00:00.000Z"});
+  f.service.event(e.id,{agentId:e.agentId,sessionId:e.sessionId,eventId:"heartbeat-2",seq:2,type:"heartbeat"});
+  const next=f.coord.get(batch.id).results[0].telemetry;
+  assert.equal(next.lastActivityAt,activityAt);
+  assert.equal(next.stale,false);
+  assert.equal(next.summary,"Verifying the acceptance tests");
+});
 test("stale recovery retains old work and fences old execution events with exact confirmation", async (t) => {
   const f = fixture(t),
     ticket = f.ticket(),
