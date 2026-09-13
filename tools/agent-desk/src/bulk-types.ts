@@ -11,6 +11,17 @@ export interface RunResult {
     | "awaiting_review";
   message: string;
   executionId?: string;
+  telemetry?: {
+    state: string;
+    summary: string;
+    progress: number | null;
+    startedAt: string | null;
+    heartbeatAt: string | null;
+    lastActivityAt: string | null;
+    releasedAt: string | null;
+    reportingReadyAt: string | null;
+    stale: boolean;
+  };
 }
 export interface BulkRun {
   id: string;
@@ -18,6 +29,7 @@ export interface BulkRun {
   concurrency: number;
   results: RunResult[];
   createdAt: string;
+  observedAt: string;
 }
 export interface ArchiveResult {
   ticketId: string;

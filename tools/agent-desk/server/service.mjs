@@ -742,6 +742,10 @@ export class Service extends EventEmitter {
         ...execution,
         lastSeq: input.seq,
         heartbeatAt: now(),
+        lastActivityAt:
+          input.type === "heartbeat"
+            ? (execution.lastActivityAt ?? null)
+            : now(),
         summary,
         progress: input.progress ?? execution.progress,
         state:

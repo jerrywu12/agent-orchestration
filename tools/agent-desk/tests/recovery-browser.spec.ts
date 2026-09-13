@@ -250,6 +250,9 @@ async function mockRecovery(page: Page) {
   return {
     state,
     writes,
+    updateRun: (changes: Record<string, unknown>) => {
+      run = { ...run, ...changes };
+    },
     setStatus: (value: object) => Object.assign(status, value),
     complete: () => {
       run = {
@@ -674,4 +677,199 @@ test("a delayed success from an unmounted view cannot overwrite a newer batch", 
   expect(app.writes.filter((item) => item.path === "/api/runs")).toHaveLength(
     2,
   );
+});
+
+function liveTelemetry(changes: Record<string, unknown> = {}) {
+  return {
+    state: "running",
+    summary: "Inspecting the exact execution",
+    progress: null,
+    startedAt: "2026-09-13T11:59:00.000Z",
+    heartbeatAt: now,
+    lastActivityAt: now,
+    releasedAt: null,
+    reportingReadyAt: now,
+    stale: false,
+    ...changes,
+  };
+}
+
+test("live execution summary and reported progress advance to terminal across polls and reload", async ({
+  page,
+}) => {
+  const app = await mockRecovery(page);
+  const row = {
+    ticketId: "ticket-0",
+    executionId: "exact-execution",
+    status: "running",
+    message: "Inspecting the exact execution",
+    telemetry: liveTelemetry(),
+  };
+  app.updateRun({ observedAt: now, results: [row] });
+  await page.goto("/");
+  await page.getByLabel("Select ticket SMARTSTO-100").check();
+  await page.getByRole("button", { name: "Run Agent", exact: true }).click();
+  const progress = page.getByRole("group", {
+    name: "Progress for SMARTSTO-100",
+  });
+  await expect(
+    progress.getByText("Working · no percentage reported", { exact: true }),
+  ).toBeVisible();
+  await expect(progress.getByRole("progressbar")).not.toHaveAttribute(
+    "aria-valuenow",
+  );
+  await expect(
+    page.getByText("Updates every 2 seconds", { exact: true }),
+  ).toBeVisible();
+  await expect(page.getByText("1 working", { exact: true })).toBeVisible();
+  app.updateRun({
+    observedAt: "2026-09-13T12:00:02.000Z",
+    results: [
+      {
+        ...row,
+        message: "Validated contracts; implementing reporting",
+        telemetry: liveTelemetry({
+          summary: "Validated contracts; implementing reporting",
+          progress: 35,
+          lastActivityAt: "2026-09-13T12:00:01.000Z",
+        }),
+      },
+    ],
+  });
+  await page.clock.fastForward(2100);
+  await expect(
+    page.getByText("Validated contracts; implementing reporting", {
+      exact: true,
+    }),
+  ).toBeVisible();
+  await expect(
+    progress.getByRole("progressbar", {
+      name: "Reported progress for SMARTSTO-100",
+    }),
+  ).toHaveAttribute("value", "35");
+  await page.reload();
+  await expect(
+    progress.getByText("35% reported", { exact: true }),
+  ).toBeVisible();
+  app.updateRun({
+    observedAt: "2026-09-13T12:00:04.000Z",
+    state: "complete",
+    results: [
+      {
+        ...row,
+        status: "awaiting_review",
+        message: "Tests passed; independent review required",
+        telemetry: liveTelemetry({
+          state: "awaiting_review",
+          summary: "Tests passed; independent review required",
+          progress: 35,
+          releasedAt: "2026-09-13T12:00:04.000Z",
+        }),
+      },
+    ],
+  });
+  await page.clock.fastForward(2100);
+  await expect(
+    page.getByText("Tests passed; independent review required", {
+      exact: true,
+    }),
+  ).toBeVisible();
+  await expect(page.getByText("1 finished", { exact: true })).toBeVisible();
+  await expect(
+    progress.getByText("Last reported progress: 35%", { exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByText("Updates every 2 seconds", { exact: true }),
+  ).toHaveCount(0);
+  const terminalReads = app.reads();
+  await page.clock.fastForward(5000);
+  await expect(
+    progress
+      .getByText("Elapsed")
+      .locator("..")
+      .getByText("1m 4s", { exact: true }),
+  ).toBeVisible();
+  await expect(
+    progress.getByText("Last heartbeat").locator("..").locator("time"),
+  ).toHaveAttribute("datetime", now);
+  expect(app.reads()).toBe(terminalReads);
+});
+
+test("paused tracking retains last evidence and the heartbeat ages into attention", async ({
+  page,
+}) => {
+  const app = await mockRecovery(page);
+  app.updateRun({
+    observedAt: now,
+    results: [
+      {
+        ticketId: "ticket-0",
+        executionId: "exact-execution",
+        status: "already_running",
+        message: "Preparing the first verified change",
+        telemetry: liveTelemetry({
+          summary: "Preparing the first verified change",
+          progress: 0,
+          lastActivityAt: null,
+          reportingReadyAt: null,
+        }),
+      },
+    ],
+  });
+  await page.goto("/");
+  await page.getByLabel("Select ticket SMARTSTO-100").check();
+  await page.getByRole("button", { name: "Run Agent", exact: true }).click();
+  const progress = page.getByRole("group", {
+    name: "Progress for SMARTSTO-100",
+  });
+  await expect(
+    progress.getByRole("progressbar", {
+      name: "Reported progress for SMARTSTO-100",
+    }),
+  ).toHaveAttribute("value", "0");
+  await expect(
+    page.getByText("Waiting for agent reporting", { exact: true }),
+  ).toHaveCount(0);
+  await expect(
+    progress
+      .getByText("Latest activity")
+      .locator("..")
+      .getByText("Unknown", { exact: true }),
+  ).toBeVisible();
+  app.failPoll();
+  await page.clock.fastForward(2100);
+  await expect(
+    page.getByText("Tracking paused · showing last reported evidence", {
+      exact: true,
+    }),
+  ).toBeVisible();
+  await expect(
+    page.getByText("Preparing the first verified change", { exact: true }),
+  ).toBeVisible();
+  await page.clock.fastForward(91000);
+  await expect(
+    progress.getByText("No recent heartbeat · inspect this execution", {
+      exact: true,
+    }),
+  ).toBeVisible();
+  await expect(
+    page.getByText("1 needs attention", { exact: true }),
+  ).toBeVisible();
+  await expect(
+    progress
+      .getByText("Elapsed")
+      .locator("..")
+      .getByText("2m 33s", { exact: true }),
+  ).toBeVisible();
+  await expect(
+    progress
+      .getByText("Latest activity")
+      .locator("..")
+      .getByText("Unknown", { exact: true }),
+  ).toBeVisible();
+  await expect(
+    progress.getByRole("progressbar", {
+      name: "Reported progress for SMARTSTO-100",
+    }),
+  ).toHaveAttribute("value", "0");
 });

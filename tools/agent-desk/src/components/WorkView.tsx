@@ -18,6 +18,7 @@ import {
 import type { DeskState, Priority, Stage, Ticket } from "../types";
 import type { ArchiveResult, BulkRun } from "../bulk-types";
 import { api, ApiError, errorMessage, pathId } from "../api";
+import { RunProgress, runCounts, timestamp } from "./RunProgress";
 import {
   AgentAvatar,
   capitalize,
@@ -86,6 +87,7 @@ function restoringRun(saved: SavedRun): BulkRun {
     state: "running",
     results: [],
     createdAt: "",
+    observedAt: "",
   };
 }
 function rememberRun(run: BulkRun | null) {
@@ -131,6 +133,23 @@ export function WorkView({
     savedRun ? restoringRun(savedRun) : null,
   );
   const [runMissing, setRunMissing] = useState(false);
+  const [clockNow, setClockNow] = useState(Date.now);
+  const observation = useMemo(
+    () => ({
+      at: timestamp(run?.observedAt) ?? Date.now(),
+      receivedAt: Date.now(),
+    }),
+    [run?.id, run?.observedAt],
+  );
+  const runNow =
+    observation.at + Math.max(0, clockNow - observation.receivedAt);
+  const counts = runCounts(run?.results || [], runNow);
+  useEffect(() => {
+    setClockNow(Date.now());
+    if (run?.state !== "running") return;
+    const timer = window.setInterval(() => setClockNow(Date.now()), 1000);
+    return () => window.clearInterval(timer);
+  }, [run?.state]);
   const [pollError, setPollError] = useState("");
   const [pollRetry, setPollRetry] = useState(0);
   const runRequest = useRef<RunRequest | null>(
@@ -677,6 +696,24 @@ export function WorkView({
               </button>
             )}
           </div>
+          {!!run.results.length && (
+            <div className="run-overview" aria-label="Run overview">
+              <span>{counts.queued} queued</span>
+              <span>{counts.working} working</span>
+              <span>{counts.attention} needs attention</span>
+              <span>{counts.finished} finished</span>
+            </div>
+          )}
+          {run.state === "running" && (
+            <p
+              className={`run-update-status ${pollError ? "run-update-paused" : ""}`}
+              role="status"
+            >
+              {pollError
+                ? "Tracking paused · showing last reported evidence"
+                : "Updates every 2 seconds"}
+            </p>
+          )}
           {!run.results.length && !pollError && (
             <p role="status">
               Loading the recorded run and its ticket results…
@@ -770,6 +807,12 @@ export function WorkView({
                     {result.status.replaceAll("_", " ")}
                   </span>
                   <p>{result.message}</p>
+                  <RunProgress
+                    result={result}
+                    ticketKey={key}
+                    now={runNow}
+                    paused={!!pollError}
+                  />
                 </li>
               );
             })}

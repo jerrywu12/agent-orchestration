@@ -106,6 +106,88 @@ async function openSettings(page: Page) {
   ).toBeVisible();
 }
 
+test("real progress reports reach a tracked bulk run without reload or a second executor", async ({
+  page,
+  request,
+}) => {
+  const { project, stages } = await projectFixture(request, "Live reports");
+  const ticket = await ticketFixture(
+    request,
+    project,
+    stages.find((s) => s.role === "ready")!.id,
+    { ownerId: "codex" },
+  );
+  const claim = await request.post(`/api/tickets/${ticket.id}/claim`, {
+    data: { agentId: "codex", sessionId: unique("external-progress") },
+  });
+  expect(claim.status()).toBe(201);
+  const execution: Execution = await claim.json();
+  const report = async (
+    seq: number,
+    type: string,
+    summary: string,
+    progress?: number,
+  ) => {
+    const response = await request.post(
+      `/api/executions/${execution.id}/events`,
+      {
+        data: {
+          agentId: "codex",
+          sessionId: execution.sessionId,
+          eventId: randomUUID(),
+          seq,
+          type,
+          summary,
+          ...(progress === undefined ? {} : { progress }),
+        },
+      },
+    );
+    expect(response.ok(), await response.text()).toBeTruthy();
+  };
+  await page.goto("/");
+  const key = `${project.key}-${ticket.number}`;
+  await page
+    .getByRole("checkbox", { name: `Select ticket ${key}`, exact: true })
+    .check();
+  await page.getByRole("button", { name: "Run Agent", exact: true }).click();
+  const panel = page.getByRole("region", { name: "Bulk run results" });
+  await expect(
+    panel.getByText("already running", { exact: true }),
+  ).toBeVisible();
+  await expect(
+    panel.getByText("Working · no percentage reported", { exact: true }),
+  ).toBeVisible();
+  await report(1, "progress", "Checking baseline before implementation", 0);
+  await expect(
+    panel.getByText("Checking baseline before implementation", { exact: true }),
+  ).toBeVisible();
+  await expect(
+    panel.getByRole("progressbar", { name: `Reported progress for ${key}` }),
+  ).toHaveAttribute("value", "0");
+  await report(2, "progress", "Verifying the regression tests", 55);
+  await expect(
+    panel.getByText("Verifying the regression tests", { exact: true }),
+  ).toBeVisible();
+  await expect(
+    panel.getByRole("progressbar", { name: `Reported progress for ${key}` }),
+  ).toHaveAttribute("value", "55");
+  const current = await request.get(`/api/tickets/${ticket.id}`);
+  expect((await current.json()).execution.id).toBe(execution.id);
+  await report(3, "checkpoint", "Work saved; independent verification remains");
+  await expect(
+    panel.getByRole("heading", { name: "Agent run finished", exact: true }),
+  ).toBeVisible();
+  await expect(
+    panel.getByText("Work saved; independent verification remains", {
+      exact: true,
+    }),
+  ).toBeVisible();
+  await expect(panel.getByText("checkpointed", { exact: true })).toBeVisible();
+  await expect(
+    panel.getByText("Updates every 2 seconds", { exact: true }),
+  ).toHaveCount(0);
+});
+
 async function expectNoDocumentOverflow(page: Page, width: number) {
   const measured = await page.evaluate(() => ({
     width: document.documentElement.scrollWidth,
