@@ -21,4 +21,6 @@ User request, 2026-09-13: show progress after takeover and explain whether work 
 
 ## Delivery evidence
 
-Pending implementation, review, CI and installed runtime verification.
+- Implemented the presentation correction without changing takeover or dispatch APIs. Pending confirmation announces progress; the completed recovery shows its timestamp and current ticket guidance. Previous-session details are collapsed, and replacement/closed/missing ticket states disable row start.
+- Local Node 22.22 verification: 251 backend tests (`run-1xngdyg6.log`) and production build (`run-kfxivky9.log`) passed. The 79-journey DOM run passed 78 and found a test-only ambiguous timestamp locator; scoped it to the recovery row and the remaining complete/reload/replacement/closed journey passed (`run-ncm6flor.log`). The full CI suite will run the final test tree. The original two RED failures are absent after the change.
+- Independent review, required CI and installed runtime proof remain release gates. No screenshots, computer control, real claim takeover or provider launch were used for verification.

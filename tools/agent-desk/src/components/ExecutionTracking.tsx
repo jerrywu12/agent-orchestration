@@ -320,6 +320,11 @@ export function ExecutionTracking({
                   onChange={(event) => setReason(event.target.value)}
                 />
               </label>
+              {takingOver && (
+                <p role="status">
+                  Takeover in progress: releasing the prior reservation…
+                </p>
+              )}
               {!canTakeOver && (
                 <p className="warning-text">
                   Refresh and inspect the current trace before confirming. A

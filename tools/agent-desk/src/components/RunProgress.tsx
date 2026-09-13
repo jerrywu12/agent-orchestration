@@ -48,17 +48,73 @@ export function runCounts(results: RunResult[], now: number) {
   );
 }
 
-export function RunProgress({
-  result,
-  ticketKey,
-  now,
-  paused,
-}: {
+interface RunProgressProps {
   result: RunResult;
   ticketKey: string;
   now: number;
   paused: boolean;
-}) {
+  recoveryState?: "idle" | "reserved" | "closed" | "unknown";
+}
+const recoveryMessages = {
+  idle: "Agent not started. Click Run Agent to begin.",
+  reserved:
+    "Another session holds this ticket. Open the ticket to inspect its progress.",
+  closed: "Ticket is closed. Reopen it to start an agent.",
+  unknown: "Current ticket status is unavailable.",
+};
+export function RunProgress(props: RunProgressProps) {
+  const { result, ticketKey, recoveryState = "unknown" } = props;
+  if (["needs_takeover", "claim_released"].includes(result.status)) {
+    const complete = result.status === "claim_released";
+    const releasedAt = timestamp(result.telemetry?.releasedAt);
+    return (
+      <div
+        className="run-progress run-recovery"
+        role="group"
+        aria-label={`Progress for ${ticketKey}`}
+      >
+        <p className="run-recovery-status" role="status">
+          {complete ? "Takeover complete" : "Waiting for takeover"}
+        </p>
+        {complete && releasedAt !== null && (
+          <p className="run-recovery-time">
+            Completed{" "}
+            <time dateTime={result.telemetry?.releasedAt || undefined}>
+              {new Date(releasedAt).toLocaleString()}
+            </time>
+          </p>
+        )}
+        {complete && (
+          <p className="run-recovery-message">
+            {recoveryMessages[recoveryState]}
+          </p>
+        )}
+        <details className="run-recovery-history">
+          <summary>Previous session details</summary>
+          {result.executionId && (
+            <p className="run-recovery-reference">
+              Execution: {result.executionId}
+            </p>
+          )}
+          {result.telemetry?.summary && <p>{result.telemetry.summary}</p>}
+          {result.telemetry || result.executionId ? (
+            <ExecutionProgress {...props} previous />
+          ) : (
+            <p>No previous-session details recorded.</p>
+          )}
+        </details>
+      </div>
+    );
+  }
+  return <ExecutionProgress {...props} />;
+}
+function ExecutionProgress({
+  result,
+  ticketKey,
+  now,
+  paused,
+  previous = false,
+}: RunProgressProps & { previous?: boolean }) {
   if (result.status === "queued" || (!result.telemetry && !result.executionId))
     return null;
   const telemetry = result.telemetry;
@@ -82,7 +138,11 @@ export function RunProgress({
     <div
       className={`run-progress ${paused || stale ? "run-progress-paused" : ""}`}
       role="group"
-      aria-label={`Progress for ${ticketKey}`}
+      aria-label={
+        previous
+          ? `Previous session for ${ticketKey}`
+          : `Progress for ${ticketKey}`
+      }
     >
       <div className="run-progress-meter">
         {percent !== null ? (
@@ -95,7 +155,7 @@ export function RunProgress({
             <progress
               max={100}
               value={percent}
-              aria-label={`Reported progress for ${ticketKey}`}
+              aria-label={`${previous ? "Previous session reported progress" : "Reported progress"} for ${ticketKey}`}
             />
           </>
         ) : working ? (

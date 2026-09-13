@@ -252,7 +252,15 @@ async function mockRecovery(page: Page) {
                   ...row,
                   status: "claim_released",
                   message: "Claim released; saved work retained.",
-                  ...(row.telemetry ? {telemetry:{...row.telemetry,state:"revoked",releasedAt:now}} : {}),
+                  ...(row.telemetry
+                    ? {
+                        telemetry: {
+                          ...row.telemetry,
+                          state: "revoked",
+                          releasedAt: now,
+                        },
+                      }
+                    : {}),
                 }
               : row,
           ),
@@ -635,14 +643,14 @@ test("last batch tracking survives navigation and reload until explicitly dismis
   app.complete();
   await page.reload();
   await expect(
-    page.getByRole("heading", { name: "Agent run finished" }),
+    page.getByRole("heading", { name: "Action required" }),
   ).toBeVisible();
   await expect(page.getByText("Checkpoint saved")).toBeVisible();
   expect(app.writes.filter((item) => item.path === "/api/runs")).toHaveLength(
     1,
   );
   await page
-    .getByRole("button", { name: "Dismiss finished run", exact: true })
+    .getByRole("button", { name: "Dismiss results", exact: true })
     .click();
   await page.reload();
   await expect(page.getByRole("heading", { name: /All work/ })).toBeVisible();
@@ -667,7 +675,7 @@ test("accepted run with a dropped response survives reload without a second subm
   await page.getByLabel("Search tickets").fill("Invisible");
   await page.reload();
   await expect(
-    page.getByRole("heading", { name: "Agent run finished" }),
+    page.getByRole("heading", { name: "Action required" }),
   ).toBeVisible();
   await expect(page.getByText("Checkpoint saved")).toBeVisible();
   expect(app.reads()).toBeGreaterThan(0);
@@ -693,7 +701,7 @@ test("a delayed success from an unmounted view cannot overwrite a newer batch", 
   await page.getByRole("button", { name: "Activity", exact: true }).click();
   await page.getByRole("button", { name: /^All work/ }).click();
   await page
-    .getByRole("button", { name: "Dismiss finished run", exact: true })
+    .getByRole("button", { name: "Dismiss results", exact: true })
     .click();
   app.nextRun();
   await page.getByLabel("Select ticket SMARTSTO-101").check();
@@ -1102,6 +1110,11 @@ test("pending row takeover blocks dismissal and the subsequent run survives relo
   const app = await takeoverBatch(page);
   app.delayTakeoverResponse();
   await confirmRowTakeover(page);
+  await expect(
+    page.getByRole("status").filter({
+      hasText: "Takeover in progress: releasing the prior reservation…",
+    }),
+  ).toBeVisible();
   await page.getByRole("button", { name: "Close dialog" }).click();
   await expect(page.getByRole("dialog")).toBeVisible();
   await page.keyboard.press("Escape");
@@ -1341,34 +1354,104 @@ for (const entry of ["bulk", "drawer"]) {
   });
 }
 
-test("a recovery-only batch says action required instead of agent run finished", async ({page}) => {
+test("a recovery-only batch says action required instead of agent run finished", async ({
+  page,
+}) => {
   await takeoverBatch(page);
-  await expect(page.getByRole("heading", {name:"Action required",exact:true})).toBeVisible();
-  await expect(page.getByText("Waiting for takeover",{exact:true})).toBeVisible();
-  await expect(page.getByRole("heading", {name:"Agent run finished",exact:true})).toHaveCount(0);
+  await expect(
+    page.getByRole("heading", { name: "Action required", exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByText("Waiting for takeover", { exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "Agent run finished", exact: true }),
+  ).toHaveCount(0);
 });
-test("takeover completion shows current recovery state and separates old session timing", async ({page}) => {
-  const app=await takeoverBatch(page);
-  app.updateRun({state:"complete",results:[{ticketId:"ticket-2",executionId:"old-execution",status:"needs_takeover",message:"Inspect the prior claim",telemetry:{state:"suspended",progress:90,summary:"Old execution progress",startedAt:"2026-09-11T12:00:00.000Z",heartbeatAt:"2026-09-12T12:00:00.000Z",lastActivityAt:null,releasedAt:null,reportingReadyAt:null,stale:true}}]});
+test("takeover completion shows current recovery state and separates old session timing", async ({
+  page,
+}) => {
+  const app = await takeoverBatch(page);
+  app.updateRun({
+    state: "complete",
+    results: [
+      {
+        ticketId: "ticket-2",
+        executionId: "old-execution",
+        status: "needs_takeover",
+        message: "Inspect the prior claim",
+        telemetry: {
+          state: "suspended",
+          progress: 90,
+          summary: "Old execution progress",
+          startedAt: "2026-09-11T12:00:00.000Z",
+          heartbeatAt: "2026-09-12T12:00:00.000Z",
+          lastActivityAt: null,
+          releasedAt: null,
+          reportingReadyAt: null,
+          stale: true,
+        },
+      },
+    ],
+  });
   await page.reload();
   await confirmRowTakeover(page);
-  await expect(page.getByText("Takeover complete",{exact:true})).toBeVisible();
-  await expect(page.getByText("Agent not started. Click Run Agent to begin.",{exact:true})).toBeVisible();
-  await expect(page.locator(`time[datetime="${now}"]`)).toBeVisible();
-  await expect(page.getByText("Elapsed",{exact:true})).not.toBeVisible();
+  await expect(
+    page.getByText("Takeover complete", { exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByText("Agent not started. Click Run Agent to begin.", {
+      exact: true,
+    }),
+  ).toBeVisible();
+  await expect(
+    page
+      .getByRole("group", { name: "Progress for SMARTSTO-102", exact: true })
+      .locator(`time[datetime="${now}"]`),
+  ).toBeVisible();
+  await expect(page.getByText("Elapsed", { exact: true })).not.toBeVisible();
   await expect(page.getByRole("progressbar")).toHaveCount(0);
-  await expect(page.getByText("Previous session details",{exact:true})).toBeVisible();
-  expect(app.writes.filter(item=>item.path==="/api/runs")).toHaveLength(1);
+  await expect(
+    page.getByText("Previous session details", { exact: true }),
+  ).toBeVisible();
+  expect(app.writes.filter((item) => item.path === "/api/runs")).toHaveLength(
+    1,
+  );
   await page.reload();
-  await expect(page.getByText("Takeover complete",{exact:true})).toBeVisible();
+  await expect(
+    page.getByText("Takeover complete", { exact: true }),
+  ).toBeVisible();
   replaceDrawerExecution(app);
   await page.clock.fastForward(4100);
-  await expect(page.getByText("Another session holds this ticket. Open the ticket to inspect its progress.",{exact:true})).toBeVisible();
-  await expect(page.getByText("Agent not started. Click Run Agent to begin.",{exact:true})).toHaveCount(0);
-  await expect(page.getByRole("button",{name:"Run Agent for SMARTSTO-102",exact:true})).toBeDisabled();
-  app.state.tickets[2].execution=null;
-  app.state.tickets[2].stageId="stage-2";
+  await expect(
+    page.getByText(
+      "Another session holds this ticket. Open the ticket to inspect its progress.",
+      { exact: true },
+    ),
+  ).toBeVisible();
+  await expect(
+    page.getByText("Agent not started. Click Run Agent to begin.", {
+      exact: true,
+    }),
+  ).toHaveCount(0);
+  await expect(
+    page.getByRole("button", {
+      name: "Run Agent for SMARTSTO-102",
+      exact: true,
+    }),
+  ).toBeDisabled();
+  app.state.tickets[2].execution = null;
+  app.state.tickets[2].stageId = "stage-2";
   await page.clock.fastForward(4100);
-  await expect(page.getByText("Ticket is closed. Reopen it to start an agent.",{exact:true})).toBeVisible();
-  await expect(page.getByRole("button",{name:"Run Agent for SMARTSTO-102",exact:true})).toBeDisabled();
+  await expect(
+    page.getByText("Ticket is closed. Reopen it to start an agent.", {
+      exact: true,
+    }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("button", {
+      name: "Run Agent for SMARTSTO-102",
+      exact: true,
+    }),
+  ).toBeDisabled();
 });
