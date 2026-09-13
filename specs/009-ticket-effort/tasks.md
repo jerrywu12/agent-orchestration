@@ -13,8 +13,12 @@
 - [ ] T006 [US2] Add failing list/card/filter/order DOM checks to `tools/agent-desk/tests/browser.spec.ts`.
 - [ ] T007 [US2] Implement Effort column/card, edit, filter and stable sorting in `tools/agent-desk/src/components/WorkView.tsx`, `src/styles.css`, and shared `src/effort.ts`; run DOM checks and commit.
 
+## US3 - Sort work attributes (authorized scope revision)
+- [ ] T009 [US3] Add failing sort-direction, missing-value and clear-sort DOM tests to `tools/agent-desk/tests/browser.spec.ts`.
+- [ ] T010 [US3] Implement semantic sorting in `tools/agent-desk/src/ticket-sort.ts` and `src/components/WorkView.tsx`; verify both directions and clear behavior with preserved grouping/selection.
+
 ## Verification
 - [ ] T008 Document field contract in `tools/agent-desk/README.md`; run all `npm test`, `npm run build`, `npm run test:e2e`; review raw diff and write evidence in `specs/009-ticket-effort/verification.md`; commit.
 
 ## Dependencies and Strategy
-T001 → T002 → T003 → T004 → T005 → T006 → T007 → T008. Deliver API persistence first, then editing, then comparison. Shared schema and WorkView require one writer; no parallel implementation. Independent lead audit/release follows this bounded implementation. Every story has its independent acceptance journey in spec.md. All source files are under tools/agent-desk; no live state access.
+T001 → T002 → T003 → T004 → T005 → T006 → T007 → T009 → T010 → T008. Deliver API persistence first, then editing, then comparison. Shared schema and WorkView require one writer; no parallel implementation. Independent lead audit/release follows this bounded implementation. Every story has its independent acceptance journey in spec.md. All source files are under tools/agent-desk; no live state access.

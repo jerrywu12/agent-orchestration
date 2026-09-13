@@ -11,11 +11,14 @@ The repository constitution is an unfilled template; operative governance is AGE
 ## Source Scope
 - `tools/agent-desk/server/service.mjs`: nullable default, legacy read normalization, validation, editable field, change audit, exact-session agent update and subtask fields.
 - `tools/agent-desk/bin/mcp.mjs`: advertised nullable enum for authorized update and subtask creation.
-- `tools/agent-desk/src/types.ts`, `src/effort.ts`, `src/components/EffortSelect.tsx`: optional nullable compatibility type, canonical sizing/help/order, reusable select.
+- `tools/agent-desk/src/types.ts`, `src/effort.ts`, `src/ticket-sort.ts`, `src/components/EffortSelect.tsx`: optional nullable compatibility type, canonical sizing/help/order, reusable select.
 - `src/components/CreateDialogs.tsx`, `TicketDetails.tsx`, `WorkView.tsx`, `src/styles.css`: create/detail/inline edit, separate card property, filter and stable direction sorting, responsive grid.
 - `tools/agent-desk/tests/effort.test.mjs`, `http.test.mjs`, `mcp.test.mjs`, `browser.spec.ts`, `sync.test.mjs`: TDD, auth/version/session, legacy/restart, metadata/sync and DOM checks.
 - `tools/agent-desk/README.md`: user and integration field contract.
 - `specs/009-ticket-effort/**`, `.specify/feature.json`: locked contract, tests and verification evidence.
+
+## Authorized Scope Revision (2026-09-14)
+Lead relayed the user's related request to add Priority/Owner/Stage changed/Name sorting with clear-sort control. Add `src/ticket-sort.ts` comparator and `tests/browser.spec.ts` DOM assertions. Priority is semantic urgency, Owner displayed name, Stage changed stageChangedAt only, Name title. Missing values always last and equal values preserve original order. Add before production changes for this extension.
 
 ## Design
 All new service-created tickets store effort null when absent. Reads decorate legacy missing effort as null without rewriting history. Updates whitelist effort and validate exact XS/S/M/L/XL/null. Agent mutation only gains this planning field through existing session/version/reason guards. Store and GitHub snapshot semantics remain unchanged; outbound/inbound sync retains local effort by preserving existing ticket metadata. Shared UI data gives ordered options and rubric help. Unset sorting is explicitly last for both directions; equal effort preserves source order.
