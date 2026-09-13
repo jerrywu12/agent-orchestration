@@ -1,8 +1,8 @@
 # Feature Specification: Ticket Effort
 
-**Branch**: `codex/agent-desk-effort`  
-**Created**: 2026-09-14  
-**Status**: Locked for implementation  
+**Branch**: `codex/agent-desk-effort`
+**Created**: 2026-09-14
+**Status**: Locked for implementation
 **Input**: “Effort is not just a label, but a new field.”
 
 ## User Scenarios & Testing

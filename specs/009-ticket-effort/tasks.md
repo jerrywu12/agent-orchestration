@@ -18,7 +18,7 @@
 - [x] T010 [US3] Implement semantic sorting in `tools/agent-desk/src/ticket-sort.ts` and `src/components/WorkView.tsx`; verify both directions and clear behavior with preserved grouping/selection.
 
 ## Verification
-- [ ] T008 Document field contract in `tools/agent-desk/README.md`; run all `npm test`, `npm run build`, `npm run test:e2e`; review raw diff and write evidence in `specs/009-ticket-effort/verification.md`; commit.
+- [x] T008 Document field contract in `tools/agent-desk/README.md`; run all `npm test`, `npm run build`, `npm run test:e2e`; review raw diff and write evidence in `specs/009-ticket-effort/verification.md`; commit.
 
 ## Dependencies and Strategy
 T001 → T002 → T003 → T004 → T005 → T006 → T007 → T009 → T010 → T008. Deliver API persistence first, then editing, then comparison. Shared schema and WorkView require one writer; no parallel implementation. Independent lead audit/release follows this bounded implementation. Every story has its independent acceptance journey in spec.md. All source files are under tools/agent-desk; no live state access.
