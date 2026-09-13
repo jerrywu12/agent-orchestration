@@ -255,6 +255,23 @@ test("stale recovery retains old work and fences old execution events with exact
   assert.equal(f.store.active(ticket.id).id, replacement.id);
   assert.ok(f.store.activities().some((a) => a.kind === "claim_revoked"));
 });
+test("bulk takeover outcome becomes claim released and never adopts a replacement claim", async(t)=>{
+  const f=fixture(t), ticket=f.ticket(), old=f.oldClaim(ticket);
+  const batch=f.coord.submit({ticketIds:[ticket.id],requestId:"takeover-result-test",concurrency:1});
+  await tick();
+  assert.equal(f.coord.get(batch.id).results[0].status,"needs_takeover");
+  await f.coord.takeover(ticket.id,confirm(old));
+  const saved=f.store.get("run-batch",batch.id);
+  const result=f.coord.get(batch.id);
+  assert.equal(result.results[0].status,"claim_released");
+  assert.match(result.results[0].message,/Run Agent/);
+  assert.equal(result.results[0].executionId,old.id);
+  assert.equal(result.state,"complete");
+  assert.deepEqual(f.store.get("run-batch",batch.id),saved);
+  const replacement=f.runner.start(ticket.id);
+  assert.equal(f.coord.get(batch.id).results[0].executionId,old.id);
+  assert.equal(f.store.active(ticket.id).id,replacement.id);
+});
 test("verified live or recently reporting sessions cannot be taken over", async (t) => {
   const f = fixture(t, async () => ({
     tracking: "process",
