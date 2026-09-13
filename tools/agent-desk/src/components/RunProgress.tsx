@@ -53,12 +53,13 @@ interface RunProgressProps {
   ticketKey: string;
   now: number;
   paused: boolean;
-  recoveryState?: "idle" | "reserved" | "closed" | "unknown";
+  recoveryState?: "idle" | "reserved" | "ended" | "closed" | "unknown";
 }
 const recoveryMessages = {
   idle: "Agent not started. Click Run Agent to begin.",
   reserved:
     "Another session holds this ticket. Open the ticket to inspect its progress.",
+  ended: "A later session has ended. Open the ticket to inspect its result.",
   closed: "Ticket is closed. Reopen it to start an agent.",
   unknown: "Current ticket status is unavailable.",
 };

@@ -1446,16 +1446,23 @@ test("takeover completion shows current recovery state and separates old session
       releasedAt: now,
     });
     await page.clock.fastForward(4100);
-    await expect(page.getByText(
-      "A later session has ended. Open the ticket to inspect its result.",
-      {exact: true},
-    )).toBeVisible();
-    await expect(page.getByText(
-      "Agent not started. Click Run Agent to begin.", {exact:true},
-    )).toHaveCount(0);
-    await expect(page.getByRole("button", {
-      name: "Run Agent for SMARTSTO-102", exact: true,
-    })).toBeDisabled();
+    await expect(
+      page.getByText(
+        "A later session has ended. Open the ticket to inspect its result.",
+        { exact: true },
+      ),
+    ).toBeVisible();
+    await expect(
+      page.getByText("Agent not started. Click Run Agent to begin.", {
+        exact: true,
+      }),
+    ).toHaveCount(0);
+    await expect(
+      page.getByRole("button", {
+        name: "Run Agent for SMARTSTO-102",
+        exact: true,
+      }),
+    ).toBeDisabled();
   }
   app.state.tickets[2].execution = null;
   app.state.tickets[2].stageId = "stage-2";

@@ -903,7 +903,10 @@ export function WorkView({
                       state.stages.find((stage) => stage.id === ticket.stageId)
                         ?.role === "done"
                     ? "closed"
-                    : "idle";
+                    : ticket.execution &&
+                        ticket.execution.id !== result.executionId
+                      ? "ended"
+                      : "idle";
               return (
                 <li key={result.ticketId}>
                   <button
