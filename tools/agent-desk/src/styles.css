@@ -655,7 +655,7 @@ summary {
 .list-columns,
 .ticket-row {
   display: grid;
-  grid-template-columns: minmax(240px, 1fr) 128px 85px 115px 150px;
+  grid-template-columns: minmax(240px, 1fr) 128px 85px 70px 115px 150px;
   gap: 12px;
   align-items: center;
   padding-left: 36px;
@@ -2187,7 +2187,7 @@ progress::-moz-progress-bar {
   }
   .list-columns,
   .ticket-row {
-    grid-template-columns: minmax(320px, 1fr) 150px 95px 135px 155px;
+    grid-template-columns: minmax(320px, 1fr) 150px 95px 75px 135px 155px;
   }
   .ticket-title {
     font-size: 15px;
@@ -2201,7 +2201,7 @@ progress::-moz-progress-bar {
 @media (max-width: 1200px) {
   .list-columns,
   .ticket-row {
-    grid-template-columns: minmax(220px, 1fr) 110px 80px 105px;
+    grid-template-columns: minmax(220px, 1fr) 110px 80px 65px 105px;
     gap: 8px;
     padding-left: 26px;
     padding-right: 26px;
@@ -2263,7 +2263,7 @@ progress::-moz-progress-bar {
   }
   .list-columns,
   .ticket-row {
-    grid-template-columns: minmax(180px, 1fr) 100px 95px;
+    grid-template-columns: minmax(180px, 1fr) 100px 60px 95px;
   }
   .list-columns > span:nth-child(3),
   .priority-cell {
@@ -2393,7 +2393,7 @@ progress::-moz-progress-bar {
   }
   .list-columns,
   .ticket-row {
-    grid-template-columns: minmax(160px, 1fr) 115px 105px;
+    grid-template-columns: minmax(160px, 1fr) 115px 60px 105px;
     padding-left: 22px;
     padding-right: 22px;
   }
@@ -4657,4 +4657,17 @@ progress::-moz-progress-bar {
   margin: 5px 0 0;
   font-size: 12px;
   color: var(--muted);
+}
+
+/* Effort is a planning property, independent of labels. */
+.effort-field { display: flex; flex-direction: column; gap: 7px; }
+.effort-help { color: var(--muted); line-height: 1.5; font-size: 12px; }
+.effort-cell select { padding-left: 4px; }
+.effort-value { font-size: 12px; color: var(--muted); }
+.extra-filters { flex-wrap: wrap; }
+@media (max-width: 520px) {
+  .ticket-row .ticket-main { grid-row: 1 / span 2; }
+  .ticket-row .owner-cell { grid-column: 2; grid-row: 1; }
+  .ticket-row .effort-cell { grid-column: 2; grid-row: 2; }
+  .ticket-row .effort-cell::before { content: "Effort"; color: var(--muted); font-size: 11px; }
 }

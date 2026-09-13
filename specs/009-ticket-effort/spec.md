@@ -41,7 +41,7 @@ Independent test: deliberately unordered attributes and missing values; verify b
 Ticket gains one optional development estimate independent of priority, labels and ownership.
 
 ## Assumptions and Scope
-The fixed sizing scale is the lead's chosen estimation rubric. Time is total development effort including tests and review, not elapsed queue time. This feature adds the field; the lead separately audits and estimates live backlog tickets after release. No automatic label migration, database rewrite, dependencies, live board mutation or deployment in this implementation slice.
+The fixed sizing scale is the lead's chosen estimation rubric. Time is total development effort including tests, verification and review, not elapsed queue time. This feature adds the field; the lead separately audits and estimates live backlog tickets after release. No automatic label migration, database rewrite, dependencies, live board mutation or deployment in this implementation slice.
 
 ## Success Criteria
 Every supported estimate survives save/reload/restart; all invalid values are refused. Users can set, clear, view, filter and sort estimates in both work views. All existing guarded workflows retain their behavior.

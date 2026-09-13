@@ -7,6 +7,8 @@ import type { Attachment, FolderInspection } from "../intake-types";
 import { emptyBrief } from "../intake";
 import { DocumentAttachments } from "./DocumentAttachments";
 import { FolderPicker } from "./FolderPicker";
+import { EffortSelect } from "./EffortSelect";
+import type { Effort } from "../effort";
 import { BriefFields } from "./WorkflowBrief";
 
 export function CreateProject({
@@ -199,6 +201,7 @@ export function CreateTicket({
   const [stage, setStage] = useState(stageId || "");
   const [owner, setOwner] = useState("");
   const [priority, setPriority] = useState<Priority>("none");
+  const [effort, setEffort] = useState<Effort | null>(null);
   const [brief, setBrief] = useState(emptyBrief);
   const [attachments, setAttachments] = useState<Attachment[]>([]);
   const [documentsIncomplete, setDocumentsIncomplete] = useState(false);
@@ -226,6 +229,7 @@ export function CreateTicket({
           description,
           ownerId: owner || null,
           priority,
+          effort,
           brief,
           attachmentIds: attachments.map((attachment) => attachment.id),
           ...(stage
@@ -341,6 +345,7 @@ export function CreateTicket({
               </select>
             </label>
           </div>
+          <EffortSelect value={effort} onChange={setEffort} />
           <label>
             Owner
             <select

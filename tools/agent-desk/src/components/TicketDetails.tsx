@@ -8,6 +8,7 @@ import type {
   Ticket,
   TicketDraft,
 } from "../types";
+import { EffortSelect } from "./EffortSelect";
 import { TicketDocuments } from "./DocumentAttachments";
 import {
   capitalize,
@@ -28,6 +29,7 @@ function draftFrom(ticket: Ticket): DetailDraft {
     stageId: ticket.stageId,
     ownerId: ticket.ownerId || null,
     priority: ticket.priority || "none",
+    effort: ticket.effort ?? null,
     labels: ticket.labels || [],
     parentId: ticket.parentId || null,
     dependsOn: ticket.dependsOn || [],
@@ -245,6 +247,7 @@ export function TicketDetails({
                 ))}
               </select>
             </label>
+            <EffortSelect value={draft.effort} onChange={value => change("effort", value)} disabled={!!busy} />
             <label>
               Owner
               <select

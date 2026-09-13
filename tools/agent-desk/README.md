@@ -274,3 +274,26 @@ file; stop the service before switching its data directory. Retain the original 
 private `agent-tokens.json` securely if clients should keep existing credentials. Never commit
 DBs, backups, logs, tokens or imported ticket text. Tests use isolated temporary data and fake
 agent/GitHub transports; browser tests launch their own server at port 4318.
+
+### Ticket Effort and sorting
+
+Effort is a dedicated nullable ticket field, separate from Priority and Labels.
+Choose XS (<2h), S (2–4h), M (1–2d), L (3–5d), or XL (>5d); estimates include
+implementation, tests, verification and review. Unset means no estimate. Set or
+clear it in New ticket, ticket details or the list's Effort column. Board cards
+show it separately. Existing effort-like labels are retained and never converted.
+
+The Filters panel supports Effort (including Unset) and sorting by Effort,
+Priority, Owner, Stage changed and Name. Sorting applies within existing stage
+groups in list and board views, with equal values retaining their existing order
+and missing values last in both directions. Clear sort restores default order.
+Owner uses the displayed agent name; Stage changed uses its recorded transition
+time, never the last edit timestamp.
+
+API create/update accepts `effort: "XS" | "S" | "M" | "L" | "XL" | null`.
+Omitted updates preserve the saved value; explicit null clears. Reads expose null
+for historical tickets without the field. Invalid values return 422. Existing
+version and authorization checks apply. MCP `desk_update_task` accepts
+`changes.effort`, and `desk_create_subtask` accepts `effort`, under their existing
+active execution/session guards. Effort remains local planning metadata and does
+not publish GitHub labels or alter execution ownership.

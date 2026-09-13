@@ -1,3 +1,4 @@
+import type { Effort } from "./effort";
 import type { Attachment, TaskBrief } from "./intake-types";
 export type Priority = "urgent" | "high" | "medium" | "low" | "none";
 export type StageRole =
@@ -99,6 +100,7 @@ export interface Ticket {
   }[];
   ownerId?: string | null;
   priority: Priority;
+  effort?: Effort | null;
   labels?: string[] | null;
   parentId?: string | null;
   dependsOn?: string[] | null;
@@ -155,6 +157,7 @@ export type TicketDraft = Pick<
   | "stageId"
   | "ownerId"
   | "priority"
+  | "effort"
   | "labels"
   | "parentId"
   | "dependsOn"
