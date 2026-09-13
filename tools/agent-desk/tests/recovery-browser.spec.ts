@@ -83,7 +83,8 @@ test("Done clears checkpoint resume affordances in list board and details while 
   let dialog = page.getByRole("dialog");
   await expect(
     dialog.getByRole("button", { name: "Start agent", exact: true }),
-  ).toBeEnabled();
+  ).toHaveCount(0);
+  await expect(dialog.getByText(before.resumeReason, { exact: true })).toBeVisible();
   await dialog
     .getByRole("button", { name: "Close dialog", exact: true })
     .click();
@@ -106,7 +107,7 @@ test("Done clears checkpoint resume affordances in list board and details while 
   dialog = page.getByRole("dialog");
   await expect(
     dialog.getByRole("button", { name: "Start agent", exact: true }),
-  ).toBeDisabled();
+  ).toHaveCount(0);
   await expect(
     dialog.getByText(before.resumeReason, { exact: true }),
   ).toHaveCount(0);
@@ -796,11 +797,8 @@ test("archive confirmation reports each outcome and selections follow filters", 
 test("untraceable session confirms without a checkbox and accepts an optional reason", async ({
   page,
 }) => {
-  const app = await mockRecovery(page);
-  await page.goto("/");
-  await page
-    .getByRole("button", { name: "Invisible session", exact: true })
-    .click();
+  const app = await takeoverBatch(page);
+  await page.getByRole("button", { name: "Take over SMARTSTO-102", exact: true }).click();
   await expect(
     page.getByRole("link", { name: "Open in Codex" }),
   ).toHaveAttribute("href", `codex://threads/${nativeSessionId}`);
@@ -812,9 +810,7 @@ test("untraceable session confirms without a checkbox and accepts an optional re
   await expect(
     page.getByText("External ownership; no verified PID"),
   ).toBeVisible();
-  await page
-    .getByRole("button", { name: "Take over prior claim", exact: true })
-    .click();
+
   const takeover = page.getByRole("button", {
     name: "Confirm takeover",
     exact: true,
@@ -837,21 +833,17 @@ test("untraceable session confirms without a checkbox and accepts an optional re
     reason: "I verified the prior client cannot be found.",
     confirmed: true,
   });
-  await expect(
-    page.getByText(
-      "Prior claim released. Existing work is preserved. You can now start an agent.",
-    ),
-  ).toBeVisible();
+  await expect(page.getByRole("status").filter({ hasText: "Takeover complete" })).toBeVisible();
   expect(app.writes.some((item) => item.path.endsWith("/start"))).toBe(false);
   await expect(
-    page.getByRole("button", { name: "Start agent", exact: true }),
+    page.getByRole("button", { name: "Run Agent for SMARTSTO-102", exact: true }),
   ).toBeEnabled();
 });
 
 test("verified live session and failed trace cannot offer takeover", async ({
   page,
 }) => {
-  const app = await mockRecovery(page);
+  const app = await takeoverBatch(page);
   app.setStatus({
     processAlive: true,
     tracking: "process",
@@ -859,22 +851,19 @@ test("verified live session and failed trace cannot offer takeover", async ({
     canTakeOver: false,
     reason: "Verified live background process PID 4242",
   });
-  await page.goto("/");
-  await page
-    .getByRole("button", { name: "Invisible session", exact: true })
-    .click();
+  await page.getByRole("button", { name: "Take over SMARTSTO-102", exact: true }).click();
   await expect(
     page.getByText("Verified live background process PID 4242"),
   ).toBeVisible();
   await expect(
-    page.getByRole("button", { name: "Take over prior claim", exact: true }),
-  ).toHaveCount(0);
+    page.getByRole("button", { name: "Confirm takeover", exact: true }),
+  ).toBeDisabled();
   app.failTrace();
   await page.getByRole("button", { name: "Refresh execution trace" }).click();
   await expect(page.getByText("Trace service unavailable")).toBeVisible();
   await expect(
-    page.getByRole("button", { name: "Take over prior claim", exact: true }),
-  ).toHaveCount(0);
+    page.getByRole("button", { name: "Confirm takeover", exact: true }),
+  ).toBeDisabled();
 });
 
 test("run polling pauses on failure and stops after leaving All work", async ({
@@ -953,15 +942,9 @@ test("an unaccepted request keeps its original selection and ID for explicit ret
 test("takeover conflict keeps the reason visible and requires refreshed trace before retry", async ({
   page,
 }) => {
-  const app = await mockRecovery(page);
+  const app = await takeoverBatch(page);
   app.rejectTakeover();
-  await page.goto("/");
-  await page
-    .getByRole("button", { name: "Invisible session", exact: true })
-    .click();
-  await page
-    .getByRole("button", { name: "Take over prior claim", exact: true })
-    .click();
+  await page.getByRole("button", { name: "Take over SMARTSTO-102", exact: true }).click();
   await page
     .getByLabel("Takeover reason")
     .fill("Prior session cannot be located.");
@@ -1580,147 +1563,47 @@ function replaceDrawerExecution(app: Awaited<ReturnType<typeof mockRecovery>>) {
     reason: "Replacement execution needs inspection",
   });
 }
-async function confirmDrawerTakeover(page: Page) {
-  await page
-    .getByRole("button", { name: "Take over prior claim", exact: true })
-    .click();
-  await page
-    .getByLabel("Takeover reason")
-    .fill("Preserve this execution's work; its client cannot be found.");
-  await page
-    .getByRole("button", { name: "Confirm takeover", exact: true })
-    .click();
-}
-
-test("open drawer resets takeover state for a replacement execution", async ({
-  page,
-}) => {
+test("ticket drawer retains a human draft when an external execution is replaced", async ({ page }) => {
   const app = await mockRecovery(page);
   await page.goto("/");
-  await page
-    .getByRole("button", { name: "Invisible session", exact: true })
-    .click();
-  await confirmDrawerTakeover(page);
-  await expect(
-    page.getByText(
-      "Prior claim released. Existing work is preserved. You can now start an agent.",
-      { exact: true },
-    ),
-  ).toBeVisible();
+  await page.getByRole("button", { name: "Invisible session", exact: true }).click();
+  const dialog = page.getByRole("dialog");
+  await dialog.getByRole("textbox", { name: "Description", exact: true }).fill("Keep this human draft.");
   replaceDrawerExecution(app);
-  await page.clock.fastForward(4100);
-  await expect(
-    page
-      .locator(".execution-tracking")
-      .getByText("replacement-execution", { exact: true }),
-  ).toBeVisible();
-  await expect(
-    page.getByRole("button", { name: "Take over prior claim", exact: true }),
-  ).toBeVisible();
-  await confirmDrawerTakeover(page);
-  const requests = app.writes.filter((item) => item.path.endsWith("/takeover"));
-  expect(requests).toHaveLength(2);
-  expect(requests[1].body).toMatchObject({
-    executionId: "replacement-execution",
-    sessionId: "replacement-session",
-  });
+  await page.clock.fastForward(8100);
+  await expect(dialog.getByRole("textbox", { name: "Description", exact: true })).toHaveValue("Keep this human draft.");
+  await expect(dialog.locator(".execution-tracking")).toHaveCount(0);
+  await expect(dialog.getByRole("button", { name: "Take over prior claim", exact: true })).toHaveCount(0);
+  expect(app.traceReads()).toBe(0);
+  expect(app.writes).toEqual([]);
 });
 
-test("open drawer ignores a pending old release after execution scope changes", async ({
-  page,
-}) => {
+test("opening and closing the ticket drawer never starts execution trace polling", async ({ page }) => {
   const app = await mockRecovery(page);
-  app.delayTakeoverResponse();
   await page.goto("/");
-  await page
-    .getByRole("button", { name: "Invisible session", exact: true })
-    .click();
-  await confirmDrawerTakeover(page);
-  replaceDrawerExecution(app);
-  await page.clock.fastForward(4100);
-  await expect(
-    page
-      .locator(".execution-tracking")
-      .getByText("replacement-execution", { exact: true }),
-  ).toBeVisible();
-  await page
-    .getByRole("button", { name: "Take over prior claim", exact: true })
-    .click();
-  await page
-    .getByLabel("Takeover reason")
-    .fill("Reviewing only the replacement execution.");
-  const oldResponse = page.waitForResponse(
-    (response) =>
-      response.request().url().endsWith("/takeover") &&
-      response.request().postDataJSON()?.executionId === "old-execution",
-  );
-  await app.releaseTakeoverResponse();
-  await (await oldResponse).finished();
-  await expect(page.getByLabel("Takeover reason")).toHaveValue(
-    "Reviewing only the replacement execution.",
-  );
-  await expect(
-    page
-      .locator(".execution-tracking")
-      .getByText("replacement-execution", { exact: true }),
-  ).toBeVisible();
-  await expect(
-    page.getByText(
-      "Prior claim released. Existing work is preserved. You can now start an agent.",
-      { exact: true },
-    ),
-  ).toHaveCount(0);
-  expect(
-    app.writes.filter((item) => item.path.endsWith("/takeover")),
-  ).toHaveLength(1);
+  for (let visit = 0; visit < 2; visit++) {
+    await page.getByRole("button", { name: "Invisible session", exact: true }).click();
+    await page.clock.fastForward(8100);
+    await expect(page.getByRole("dialog").locator(".execution-tracking")).toHaveCount(0);
+    await page.getByRole("button", { name: "Close dialog" }).click();
+    await page.clock.fastForward(4100);
+  }
+  expect(app.traceReads()).toBe(0);
+  expect(app.writes).toEqual([]);
 });
 
-for (const entry of ["bulk", "drawer"]) {
-  test(`${entry} takeover can confirm with an empty reason and no acknowledgement`, async ({
-    page,
-  }) => {
-    const app =
-      entry === "bulk" ? await takeoverBatch(page) : await mockRecovery(page);
-    if (entry === "bulk") {
-      await page
-        .getByRole("button", { name: "Take over SMARTSTO-102", exact: true })
-        .click();
-    } else {
-      await page.goto("/");
-      await page
-        .getByRole("button", { name: "Invisible session", exact: true })
-        .click();
-      await page
-        .getByRole("button", { name: "Take over prior claim", exact: true })
-        .click();
-    }
-    const confirm = page.getByRole("button", {
-      name: "Confirm takeover",
-      exact: true,
-    });
-    await expect(confirm).toBeEnabled();
-    await expect(page.getByLabel("Takeover reason")).toHaveValue("");
-    await expect(
-      page.locator(".takeover-confirmation").getByRole("checkbox"),
-    ).toHaveCount(0);
-    await confirm.click();
-    await expect
-      .poll(
-        () =>
-          app.writes.filter((item) => item.path.endsWith("/takeover")).length,
-      )
-      .toBe(1);
-    expect(
-      app.writes.find((item) => item.path.endsWith("/takeover"))?.body,
-    ).toMatchObject({
-      executionId: "old-execution",
-      sessionId: "recorded-session",
-      confirmed: true,
-      reason: "",
-    });
-    expect(app.writes.some((item) => item.path.endsWith("/start"))).toBe(false);
-  });
-}
+test("bulk takeover can confirm with an empty reason and no acknowledgement", async ({ page }) => {
+  const app = await takeoverBatch(page);
+  await page.getByRole("button", { name: "Take over SMARTSTO-102", exact: true }).click();
+  const confirm = page.getByRole("button", { name: "Confirm takeover", exact: true });
+  await expect(confirm).toBeEnabled();
+  await expect(page.getByLabel("Takeover reason")).toHaveValue("");
+  await expect(page.locator(".takeover-confirmation").getByRole("checkbox")).toHaveCount(0);
+  await confirm.click();
+  await expect.poll(() => app.writes.filter(item => item.path.endsWith("/takeover")).length).toBe(1);
+  expect(app.writes.find(item => item.path.endsWith("/takeover"))?.body).toMatchObject({ executionId: "old-execution", sessionId: "recorded-session", confirmed: true, reason: "" });
+  expect(app.writes.some(item => item.path.endsWith("/start"))).toBe(false);
+});
 
 test("stopped work shows a resume badge and preserves the full reason in details", async ({
   page,

@@ -89,7 +89,7 @@ async function openNavigation(page: Page) {
   if (await menu.isVisible()) await menu.click();
 }
 
-test("All Work shows exact stage change time separately from edits and drawer preserves stage history", async ({ page, request }) => {
+test("All Work shows exact stage change time separately from edits and drawer keeps stage history out of the form", async ({ page, request }) => {
   const { project, stages } = await projectFixture(request, "Stage timestamps");
   const ticket = await ticketFixture(request, project, stages[0].id);
   const snapshot = await state(request);
@@ -114,13 +114,12 @@ test("All Work shows exact stage change time separately from edits and drawer pr
   await expect(displayed).toHaveText(exact);
   await expect(row.locator(`time[datetime="${updatedAt}"]`)).toHaveCount(0);
   await page.getByRole("button", { name: ticket.title, exact: true }).click();
-  const history = page.getByRole("region", { name: "Stage history", exact: true });
-  await expect(history).toContainText("Backlog");
-  await expect(history).toContainText("Planning");
-  await expect(history.locator("time")).toHaveCount(2);
-  for (const at of [createdAt, stageChangedAt]) {
-    await expect(history.locator(`time[datetime="${at}"]`)).toHaveText(await page.evaluate(value => new Date(value).toLocaleString(), at));
-  }
+  const dialog = page.getByRole("dialog");
+  await expect(dialog.getByRole("region", { name: "Stage history", exact: true })).toHaveCount(0);
+  await expect(dialog.locator("time")).toHaveCount(0);
+  // Stage history remains in agent data even though the human form omits it.
+  expect(snapshot.tickets[0].stageHistory).toEqual(staged.stageHistory);
+
 });
 
 test("legacy unknown stage time is explicit rather than inferred from last edit", async ({ page, request }) => {
@@ -170,10 +169,11 @@ test("completed synthetic execution reaches In review and retains exact stage hi
   const row = page.getByRole("article", { name: `${project.key}-${ticket.number} ${ticket.title}` });
   await expect(row.getByRole("combobox", { name: `Stage for ${project.key}-${ticket.number}`, exact: true })).toHaveValue(after.stageId);
   await row.getByRole("button", { name: ticket.title, exact: true }).click();
-  const history = page.getByRole("region", { name: "Stage history", exact: true });
-  await expect(history).toContainText("In review");
-  const timestamp = history.locator(`time[datetime="${after.stageChangedAt}"]`);
-  await expect(timestamp).toHaveText(await page.evaluate(at => new Date(at!).toLocaleString(), after.stageChangedAt));
+  await expect(page.getByRole("dialog").getByRole("region", { name: "Stage history", exact: true })).toHaveCount(0);
+  const reloaded = (await state(request)).tickets.find(item => item.id === ticket.id)!;
+  expect(reloaded.stageHistory).toEqual(after.stageHistory);
+  expect(reloaded.stageHistory).toEqual(expect.arrayContaining([expect.objectContaining({ toStageName: "In review", at: after.stageChangedAt })]));
+
 });
 
 test("real progress reports reach a tracked bulk run without reload or a second executor", async ({
@@ -284,7 +284,7 @@ async function expectNoDocumentOverflow(page: Page, width: number) {
   expect(measured.width).toBeLessThanOrEqual(width);
 }
 
-test("create, assign, edit and comment through the UI; reload retains the result", async ({
+test("create, assign and edit through the UI; agent comments persist outside the drawer", async ({
   page,
   request,
 }) => {
@@ -344,9 +344,10 @@ test("create, assign, edit and comment through the UI; reload retains the result
   await expect(
     dialog.getByText("Changes saved.", { exact: true }),
   ).toBeVisible();
-  await dialog.getByLabel("Add a comment", { exact: true }).fill(comment);
-  await dialog.getByRole("button", { name: "Comment", exact: true }).click();
-  await expect(dialog.getByText(comment, { exact: true })).toBeVisible();
+  const created = (await state(request)).tickets.find(ticket => ticket.title === title)!;
+  const commented = await request.post(`/api/tickets/${created.id}/comments`, { data: { summary: comment } });
+  expect(commented.ok(), await commented.text()).toBeTruthy();
+  await expect(dialog.getByLabel("Add a comment", { exact: true })).toHaveCount(0);
   await dialog
     .getByRole("button", { name: "Close dialog", exact: true })
     .click();
@@ -368,7 +369,7 @@ test("create, assign, edit and comment through the UI; reload retains the result
   await expect(dialog.getByLabel("Labels", { exact: true })).toHaveValue(
     "browser, acceptance",
   );
-  await expect(dialog.getByText(comment, { exact: true })).toBeVisible();
+  await expect(dialog.getByText(comment, { exact: true })).toHaveCount(0);
   const snapshot = await state(request);
   const stored = snapshot.tickets.find((ticket) => ticket.title === title)!;
   expect(stored.ownerId).toBe("codex");
@@ -700,41 +701,19 @@ test("external reconciliation requires evidence and confirmation for the exact s
   await page.goto("/");
   await openProject(page, project);
   await page.getByRole("button", { name: ticket.title, exact: true }).click();
-  const dialog = page.getByRole("dialog");
-  await expect(
-    dialog.getByRole("button", { name: "Stop", exact: true }),
-  ).toBeDisabled();
-  await dialog.getByText(/Reconcile imported sessions/).click();
-  const session = dialog
-    .locator(".reconcile-session")
-    .filter({ hasText: sessionId });
-  await expect(session).toContainText(sessionId);
-  const record = session.getByRole("button", {
-    name: "Record checkpoint",
-    exact: true,
-  });
-  await expect(record).toBeDisabled();
-  const evidence =
-    "Original source client stopped; checkpoint test-acceptance is saved and no executor remains active.";
-  await session
-    .getByLabel("Checkpoint evidence", { exact: true })
-    .fill(evidence);
-  await expect(record).toBeDisabled();
-  await session.getByRole("checkbox").check();
-  await expect(record).toBeEnabled();
-  const reconcileResponse = page.waitForResponse(
-    (response) =>
-      response.url().endsWith(`/api/executions/${execution.id}/reconcile`) &&
-      response.request().method() === "POST",
-  );
-  await record.click();
-  const response = await reconcileResponse;
+  await expect(page.getByRole("dialog").getByText(/Reconcile imported sessions/)).toHaveCount(0);
+  const evidence = "Original source client stopped; checkpoint test-acceptance is saved and no executor remains active.";
+  for (const input of [
+    { sessionId, summary: evidence, stopped: false },
+    { sessionId, summary: "", stopped: true },
+    { sessionId: "not-the-reserved-session", summary: evidence, stopped: true },
+  ]) {
+    const rejected = await request.post(`/api/executions/${execution.id}/reconcile`, { data: input });
+    expect(rejected.ok()).toBe(false);
+    expect((await state(request)).tickets.find(item => item.id === ticket.id)?.execution?.releasedAt).toBeFalsy();
+  }
+  const response = await request.post(`/api/executions/${execution.id}/reconcile`, { data: { sessionId, summary: evidence, stopped: true } });
   expect(response.ok(), await response.text()).toBeTruthy();
-  expect(response.request().postDataJSON()).toEqual({
-    sessionId,
-    summary: evidence,
-    stopped: true,
-  });
   await expect
     .poll(
       async () =>
@@ -754,7 +733,7 @@ test("external reconciliation requires evidence and confirmation for the exact s
   ).toBeTruthy();
 });
 
-test("bodyless Start sends JSON and reports the unavailable project boundary without launching an agent", async ({
+test("agent Start API reports the unavailable project boundary without launching an agent", async ({
   page,
   request,
 }) => {
@@ -771,25 +750,58 @@ test("bodyless Start sends JSON and reports the unavailable project boundary wit
   await openProject(page, project);
   await page.getByRole("button", { name: ticket.title, exact: true }).click();
   const dialog = page.getByRole("dialog");
-  const started = page.waitForResponse(
-    (response) =>
-      response.url().endsWith(`/api/tickets/${ticket.id}/start`) &&
-      response.request().method() === "POST",
-  );
-  await dialog
-    .getByRole("button", { name: "Start agent", exact: true })
-    .click();
-  const response = await started;
+  await expect(dialog.getByRole("button", { name: "Start agent", exact: true })).toHaveCount(0);
+  const response = await request.post(`/api/tickets/${ticket.id}/start`, { data: {} });
   expect(response.status()).toBe(422);
-  expect(response.request().headers()["content-type"]).toContain(
-    "application/json",
-  );
-  expect(response.request().postDataJSON()).toEqual({});
   const failure = await response.json();
   expect(["PROJECT_PATH", "ADAPTER_UNAVAILABLE"]).toContain(failure.error.code);
-  await expect(dialog.getByRole("alert")).toContainText(failure.error.message);
   expect(
     (await state(request)).tickets.find((item) => item.id === ticket.id)
       ?.execution,
   ).toBeNull();
+});
+
+
+test("simple ticket drawer hides agent sections and preserves their data when saving description", async ({ page, request }) => {
+  const { project, stages } = await projectFixture(request, "Simple drawer");
+  const ticket = await ticketFixture(request, project, stages.find(stage => stage.role === "ready")!.id, {
+    ownerId: "codex", description: "Original human request.", labels: ["human-request"],
+  });
+  const claim = await request.post(`/api/tickets/${ticket.id}/claim`, { data: { agentId: "codex", sessionId: unique("preserved-agent-session"), external: true } });
+  expect(claim.status(), await claim.text()).toBe(201);
+  const comment = await request.post(`/api/tickets/${ticket.id}/comments`, { data: { summary: "Agent-only verification checkpoint." } });
+  expect(comment.ok(), await comment.text()).toBeTruthy();
+  const before: Ticket = await (await request.get(`/api/tickets/${ticket.id}`)).json();
+  const beforeActivity = (await state(request)).activity.filter(item => item.ticketId === ticket.id);
+  await page.goto("/");
+  await page.getByRole("button", { name: ticket.title, exact: true }).click();
+  const dialog = page.getByRole("dialog");
+  for (const label of ["Specification", "Acceptance criteria", "Scope", "Verification plan", "Allowed paths", "Shared resources", "Add a comment"]) {
+    await expect(dialog.getByRole("textbox", { name: label, exact: true })).toHaveCount(0);
+  }
+  for (const heading of ["Task brief", "Workflow checklist", "Agent execution", "Execution trace", "GitHub", "Activity", "Stage history"]) {
+    await expect(dialog.getByText(heading, { exact: true })).toHaveCount(0);
+  }
+  for (const action of ["Copy task packet", "Start agent", "Refresh execution trace", "Record a handoff", "Publish issue", "Comment"]) {
+    await expect(dialog.getByRole("button", { name: action, exact: true })).toHaveCount(0);
+  }
+  await expect(dialog.getByText("Task packet preview", { exact: true })).toHaveCount(0);
+  await expect(dialog.getByText("Agent-only verification checkpoint.", { exact: true })).toHaveCount(0);
+  await expect(dialog.locator("time")).toHaveCount(0);
+  for (const label of ["Title", "Description", "Labels"]) await expect(dialog.getByRole("textbox", { name: label, exact: true })).toBeVisible();
+  for (const label of ["Stage", "Priority", "Owner"]) await expect(dialog.getByRole("combobox", { name: label, exact: true })).toBeVisible();
+  await expect(dialog.getByRole("button", { name: "Archive", exact: true })).toBeVisible();
+  await dialog.getByRole("textbox", { name: "Description", exact: true }).fill("A simpler, clearer human request.");
+  const savedRequest = page.waitForRequest(req => req.url().endsWith(`/api/tickets/${ticket.id}`) && req.method() === "PATCH");
+  await dialog.getByRole("button", { name: "Save changes", exact: true }).click();
+  const payload = (await savedRequest).postDataJSON();
+  for (const key of ["brief", "execution", "github", "stageHistory", "createdAt", "updatedAt"]) expect(payload).not.toHaveProperty(key);
+  await expect(dialog.getByText("Changes saved.", { exact: true })).toBeVisible();
+  const after: Ticket = await (await request.get(`/api/tickets/${ticket.id}`)).json();
+  expect(after.description).toBe("A simpler, clearer human request.");
+  for (const key of ["brief", "execution", "github", "stageHistory", "createdAt", "labels", "ownerId", "stageId"] as const) expect(after[key]).toEqual(before[key]);
+  expect((await state(request)).activity.filter(item => item.ticketId === ticket.id)).toEqual(expect.arrayContaining(beforeActivity));
+  await page.reload();
+  await page.getByRole("button", { name: ticket.title, exact: true }).click();
+  await expect(page.getByRole("dialog").getByRole("textbox", { name: "Description", exact: true })).toHaveValue(after.description!);
 });
