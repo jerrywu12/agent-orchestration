@@ -8,6 +8,7 @@ export default defineConfig({
     "workflow-browser.spec.ts",
     "recovery-browser.spec.ts",
     "planning-ready.spec.ts",
+    "archive-done.spec.ts",
   ],
   workers: 1,
   timeout: 30000,

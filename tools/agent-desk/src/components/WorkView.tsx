@@ -341,14 +341,7 @@ export function WorkView({
     }
   }
   async function archiveSelected() {
-    if (
-      bulkBusy ||
-      takeoverPending ||
-      runActive ||
-      !confirmArchive ||
-      !selectedIds.length
-    )
-      return;
+    if (bulkBusy || !confirmArchive || !selectedIds.length) return;
     setBulkBusy("archive");
     setBulkError("");
     try {
@@ -742,9 +735,7 @@ export function WorkView({
           <button
             className="button small-button"
             aria-label="Archive selected tickets"
-            disabled={
-              !selectedIds.length || !!bulkBusy || runActive || archived
-            }
+            disabled={!selectedIds.length || !!bulkBusy || archived}
             onClick={() => setConfirmArchive(true)}
           >
             <Archive size={13} />
