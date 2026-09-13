@@ -10,6 +10,7 @@ import {
   inspectReadiness,
   scopeSnapshot,
 } from "./readiness.mjs";
+const efforts = ["XS", "S", "M", "L", "XL"];
 const priorities = ["urgent", "high", "medium", "low", "none"];
 const text = (v, name, max = 500) => {
   if (typeof v !== "string" || !v.trim() || v.length > max)
@@ -79,6 +80,7 @@ export class Service extends EventEmitter {
   decorate(ticket) {
     return {
       ...ticket,
+      effort: ticket.effort ?? null,
       // Old Done records can retain checkpoint metadata; it is history, not work to resume.
       ...(this.store.get("stage", ticket.stageId)?.role === "done"
         ? { resumeReason: "" }
@@ -234,6 +236,8 @@ export class Service extends EventEmitter {
       fail(422, "PROJECT_MISMATCH", "Stage belongs to another project.");
     if (!priorities.includes(ticket.priority))
       fail(422, "VALIDATION", "Invalid priority.");
+    if (ticket.effort != null && !efforts.includes(ticket.effort))
+      fail(422, "VALIDATION", "Effort must be XS, S, M, L, XL or null.");
     if (ticket.ownerId) this.require("agent", ticket.ownerId);
     strings(ticket.labels, "Labels");
     strings(ticket.dependsOn, "Dependencies");
@@ -310,6 +314,7 @@ export class Service extends EventEmitter {
         stageId: input.stageId ?? stages[0]?.id,
         ownerId: input.ownerId ?? null,
         priority: input.priority ?? "none",
+        effort: input.effort ?? null,
         labels: input.labels ?? [],
         parentId: input.parentId ?? null,
         dependsOn: input.dependsOn ?? [],
@@ -349,6 +354,7 @@ export class Service extends EventEmitter {
         "stageId",
         "ownerId",
         "priority",
+        "effort",
         "labels",
         "parentId",
         "dependsOn",
@@ -409,6 +415,7 @@ export class Service extends EventEmitter {
         "stageId",
         "ownerId",
         "priority",
+        "effort",
         "blockedReason",
         "resumeReason",
         "archived",
@@ -448,6 +455,7 @@ export class Service extends EventEmitter {
         "title",
         "description",
         "brief",
+        "effort",
         "dependsOn",
         "blockedReason",
         "archived",
@@ -873,6 +881,7 @@ export class Service extends EventEmitter {
         "title",
         "description",
         "brief",
+        "effort",
         "stageId",
         "blockedReason",
         "parentId",
@@ -888,7 +897,7 @@ export class Service extends EventEmitter {
         fail(
           422,
           "AGENT_FIELDS",
-          "Only task content, blockers, dependencies, parent and unfinished stages can be updated.",
+          "Only task content, effort, blockers, dependencies, parent and unfinished stages can be updated.",
         );
       if (
         changes.stageId &&
@@ -929,6 +938,7 @@ export class Service extends EventEmitter {
         "title",
         "description",
         "brief",
+        "effort",
         "dependsOn",
       ];
       if (Object.keys(input).some((k) => !allowed.includes(k)))
@@ -956,6 +966,7 @@ export class Service extends EventEmitter {
         title: input.title,
         description: input.description ?? "",
         brief: input.brief,
+        effort: input.effort,
         dependsOn: dependencies,
       });
       this.store.activity(

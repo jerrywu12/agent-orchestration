@@ -231,3 +231,26 @@ test("provider status is cached, refresh intent is explicit and stage mappings a
     assert.equal((await r.json()).error.code, "READ_ONLY_WORKFLOW");
   }
 });
+
+test("Effort HTTP field supports create read edit clear and rejects invalid unauthorized stale writes", async (t) => {
+  const { url, service } = await app(t, { adminToken: "effort-fixture-admin", agentTokens: { codex: "effort-fixture-agent" } });
+  const project = service.createProject({ name: "Effort HTTP" });
+  const send = (path, method, data, token = "effort-fixture-admin") => fetch(url + path, { method, headers: { "content-type": "application/json", authorization: `Bearer ${token}` }, body: JSON.stringify(data) });
+  let response = await send("/api/tickets", "POST", { projectId: project.id, title: "Estimate", effort: "M" });
+  assert.equal(response.status, 201);
+  let ticket = await response.json();
+  assert.equal(ticket.effort, "M");
+  const endpoint = `/api/tickets/${ticket.id}`;
+  response = await send(endpoint, "PATCH", { version: ticket.version, effort: "XL" }, "effort-fixture-agent");
+  assert.equal(response.status, 403);
+  response = await send(endpoint, "PATCH", { version: ticket.version, effort: "huge" });
+  assert.equal(response.status, 422);
+  response = await send(endpoint, "PATCH", { version: ticket.version - 1, effort: "S" });
+  assert.equal(response.status, 409);
+  response = await send(endpoint, "PATCH", { version: ticket.version, effort: null });
+  assert.equal(response.status, 200);
+  ticket = await response.json();
+  assert.equal(ticket.effort, null);
+  response = await fetch(url + endpoint, { headers: { authorization: "Bearer effort-fixture-admin" } });
+  assert.equal((await response.json()).effort, null);
+});

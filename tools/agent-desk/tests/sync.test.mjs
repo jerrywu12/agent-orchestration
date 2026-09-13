@@ -814,3 +814,19 @@ test("fresh import does not publish title normalization or reopen a closed remot
     "done",
   );
 });
+
+test("local effort survives incoming GitHub changes without becoming a label", async t => {
+  const { service, p, remote, sync } = fixture(t);
+  await sync.syncProject(p.id);
+  let ticket = service.state().tickets[0];
+  service.updateTicket(ticket.id, { version: ticket.version, effort: "L" });
+  await sync.syncProject(p.id);
+  assert.deepEqual(remote.labels, []);
+  remote.title = "Remote after estimate";
+  remote.labels = ["keep-remote"];
+  await sync.syncProject(p.id);
+  ticket = service.getTicket(ticket.id);
+  assert.equal(ticket.effort, "L");
+  assert.equal(ticket.title, remote.title);
+  assert.deepEqual(ticket.labels, ["keep-remote"]);
+});
