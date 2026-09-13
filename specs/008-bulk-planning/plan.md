@@ -26,6 +26,8 @@ BulkPlanningTransition props: `tickets: Ticket[]`, live `state`, `integrations`,
 
 ## Verification / Delivery
 
+Pre-fix clarification after first DOM run: useDesk.refresh intentionally catches failures and exposes `desk.error`; pass that existing error as optional `boardError` through App/WorkView to the completed dialog, rather than changing the shared hook. Freeze exclusions at confirmation; later state may only narrow eligibility. Both boundaries have failing regressions before their fixes.
+
 RED before production edit; focused GREEN slice; full Node/DOM/build; independent exact-head review and CI; commit/push/PR/merge. Preview/apply runtime-only deployment only when managed executions are not disrupted. Read-only merged DOM verifies confirmation/cancel with no writes; otherwise report deployment hold separately.
 
 ## Complexity

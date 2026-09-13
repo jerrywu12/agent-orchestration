@@ -9,6 +9,7 @@ export default defineConfig({
     "recovery-browser.spec.ts",
     "planning-ready.spec.ts",
     "archive-done.spec.ts",
+    "bulk-planning.spec.ts",
   ],
   workers: 1,
   timeout: 30000,

@@ -4615,3 +4615,46 @@ progress::-moz-progress-bar {
   align-items: center;
   gap: 16px;
 }
+.ticket-row[draggable="true"],
+.board-ticket[draggable="true"] {
+  cursor: grab;
+}
+.ticket-row[draggable="true"]:active,
+.board-ticket[draggable="true"]:active {
+  cursor: grabbing;
+}
+.planning-drop-target {
+  transition:
+    background-color 120ms ease,
+    box-shadow 120ms ease;
+}
+.planning-drop-active {
+  background: var(--green-soft);
+  box-shadow: inset 0 0 0 2px var(--green);
+}
+.planning-drop-hint {
+  margin: 0;
+  padding: 10px 16px;
+  color: var(--muted);
+  font-size: 12px;
+}
+.bulk-planning-candidates {
+  margin: 12px 0;
+  padding: 0;
+  list-style: none;
+  max-height: 45vh;
+  overflow-y: auto;
+}
+.bulk-planning-candidates li {
+  padding: 10px 0;
+  border-bottom: 1px solid var(--line);
+  overflow-wrap: anywhere;
+}
+.bulk-planning-candidates strong {
+  font-size: 13px;
+}
+.bulk-planning-candidates p {
+  margin: 5px 0 0;
+  font-size: 12px;
+  color: var(--muted);
+}
