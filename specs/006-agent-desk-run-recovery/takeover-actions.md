@@ -1,5 +1,7 @@
 # Visible takeover actions and review status — 2026-09-13
 
+The later [single-confirmation revision](simple-confirmation.md) replaces the mandatory note and checkbox below with one explicit confirmation and optional note. The following remains the historical delivery record.
+
 ## Pre-edit diagnosis
 
 - User symptom: a bulk result says needs takeover but offers only a ticket-name link saying Inspect takeover. The actual release action exists deep in TicketDetails → ExecutionTracking → trace → confirmation. A completed execution says awaiting review without stating that no reviewer is running.

@@ -495,8 +495,12 @@ test("HTTP exposes recovery and batch contracts only to administrators", async (
     "needs_takeover",
   );
   assert.equal(
-    (await call(`/api/tickets/${ticket.id}/takeover`, "POST", { ...confirm(old), reason: "" }))
-      .status,
+    (
+      await call(`/api/tickets/${ticket.id}/takeover`, "POST", {
+        ...confirm(old),
+        reason: "",
+      })
+    ).status,
     200,
   );
   const recovered = await (await call(`/api/runs/${observedBatch.id}`)).json();
@@ -532,24 +536,52 @@ test("missing heartbeat evidence is explicitly stale, never falsely fresh", asyn
 
 test("confirmed takeover accepts omitted or blank reasons and preserves an audit entry", async (t) => {
   for (const reason of [undefined, "", "  \n", "  User supplied context.  "]) {
-    const f=fixture(t),ticket=f.ticket(),old=f.oldClaim(ticket);
-    const input={...confirm(old)};
-    if (reason === undefined) delete input.reason; else input.reason=reason;
-    await f.coord.takeover(ticket.id,input);
-    const saved=f.store.execution(old.id);
-    assert.equal(saved.state,"revoked");
-    assert.equal(saved.recoveryReason,reason?.trim() || "Explicit takeover confirmed; no additional reason provided.");
-    assert.ok(f.store.activities().some(a => a.kind === "claim_revoked" && a.summary.includes(saved.recoveryReason)));
-    assert.equal(f.store.active(ticket.id),null);
-    assert.equal(f.runner.children.size,0);
+    const f = fixture(t),
+      ticket = f.ticket(),
+      old = f.oldClaim(ticket);
+    const input = { ...confirm(old) };
+    if (reason === undefined) delete input.reason;
+    else input.reason = reason;
+    await f.coord.takeover(ticket.id, input);
+    const saved = f.store.execution(old.id);
+    assert.equal(saved.state, "revoked");
+    assert.equal(
+      saved.recoveryReason,
+      reason?.trim() ||
+        "Explicit takeover confirmed; no additional reason provided.",
+    );
+    assert.ok(
+      f.store
+        .activities()
+        .some(
+          (a) =>
+            a.kind === "claim_revoked" &&
+            a.summary.includes(saved.recoveryReason),
+        ),
+    );
+    assert.equal(f.store.active(ticket.id), null);
+    assert.equal(f.runner.children.size, 0);
   }
 });
 test("optional takeover notes retain validation and explicit confirmation", async (t) => {
-  const f=fixture(t),ticket=f.ticket(),old=f.oldClaim(ticket);
-  for (const reason of [null,42,{},[],"x".repeat(2001)]) {
-    await assert.rejects(()=>f.coord.takeover(ticket.id,{...confirm(old),reason}),e=>e.code==="VALIDATION");
-    assert.equal(f.store.active(ticket.id).id,old.id);
+  const f = fixture(t),
+    ticket = f.ticket(),
+    old = f.oldClaim(ticket);
+  for (const reason of [null, 42, {}, [], "x".repeat(2001)]) {
+    await assert.rejects(
+      () => f.coord.takeover(ticket.id, { ...confirm(old), reason }),
+      (e) => e.code === "VALIDATION",
+    );
+    assert.equal(f.store.active(ticket.id).id, old.id);
   }
-  await assert.rejects(()=>f.coord.takeover(ticket.id,{...confirm(old),reason:"",confirmed:false}),e=>e.code==="CONFIRM_REQUIRED");
-  assert.equal(f.store.active(ticket.id).id,old.id);
+  await assert.rejects(
+    () =>
+      f.coord.takeover(ticket.id, {
+        ...confirm(old),
+        reason: "",
+        confirmed: false,
+      }),
+    (e) => e.code === "CONFIRM_REQUIRED",
+  );
+  assert.equal(f.store.active(ticket.id).id, old.id);
 });

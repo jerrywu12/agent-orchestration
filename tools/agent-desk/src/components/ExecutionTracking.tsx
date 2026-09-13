@@ -36,7 +36,6 @@ export function ExecutionTracking({
   const [revision, setRevision] = useState(0);
   const [confirming, setConfirming] = useState(autoConfirm);
   const [reason, setReason] = useState("");
-  const [acknowledged, setAcknowledged] = useState(false);
   const [takingOver, setTakingOver] = useState(false);
   const [notice, setNotice] = useState("");
   const [released, setReleased] = useState(false);
@@ -68,7 +67,6 @@ export function ExecutionTracking({
     setReleased(true);
     setConfirming(false);
     setReason("");
-    setAcknowledged(false);
     setError("");
     setNotice(
       "Prior claim released. Existing work is preserved. You can now start an agent.",
@@ -127,9 +125,6 @@ export function ExecutionTracking({
       window.clearTimeout(timer);
     };
   }, [ticketId, executionId, expectedExecutionId, revision, takingOver]);
-  useEffect(() => {
-    setAcknowledged(false);
-  }, [status?.executionId, status?.sessionId, status?.lastHeartbeatAt]);
   const changedClaim =
     !!expectedExecutionId &&
     !!status &&
@@ -149,15 +144,7 @@ export function ExecutionTracking({
       ? status.nativeThreadUrl
       : undefined;
   async function takeOver() {
-    if (
-      !status ||
-      !canTakeOver ||
-      disabled ||
-      takingOver ||
-      !reason.trim() ||
-      !acknowledged
-    )
-      return;
+    if (!status || !canTakeOver || disabled || takingOver) return;
     setTakingOver(true);
     onPendingChange?.(true);
     setError("");
@@ -178,7 +165,6 @@ export function ExecutionTracking({
         );
       } catch (failure) {
         if (!mounted.current) return;
-        setAcknowledged(false);
         next = await api<ExecutionStatus>(
           `/tickets/${pathId(ticketId)}/execution-status`,
         );
@@ -312,7 +298,6 @@ export function ExecutionTracking({
               disabled={disabled || takingOver}
               onClick={() => {
                 setConfirming(true);
-                setAcknowledged(false);
               }}
             >
               Take over prior claim
@@ -326,7 +311,7 @@ export function ExecutionTracking({
                 an unknown process or start another agent.
               </p>
               <label>
-                Takeover reason
+                Takeover reason (optional)
                 <textarea
                   rows={2}
                   maxLength={2000}
@@ -334,16 +319,6 @@ export function ExecutionTracking({
                   disabled={takingOver || disabled}
                   onChange={(event) => setReason(event.target.value)}
                 />
-              </label>
-              <label className="checkbox-label">
-                <input
-                  type="checkbox"
-                  checked={acknowledged}
-                  disabled={takingOver || disabled}
-                  onChange={(event) => setAcknowledged(event.target.checked)}
-                />
-                I understand the prior process may still exist and will preserve
-                its work.
               </label>
               {!canTakeOver && (
                 <p className="warning-text">
@@ -355,13 +330,7 @@ export function ExecutionTracking({
                 <button
                   type="button"
                   className="button danger small-button"
-                  disabled={
-                    disabled ||
-                    takingOver ||
-                    !canTakeOver ||
-                    !reason.trim() ||
-                    !acknowledged
-                  }
+                  disabled={disabled || takingOver || !canTakeOver}
                   onClick={() => void takeOver()}
                 >
                   {takingOver ? "Releasing claim…" : "Confirm takeover"}
