@@ -89,6 +89,52 @@ async function openNavigation(page: Page) {
   if (await menu.isVisible()) await menu.click();
 }
 
+test("All Work shows exact stage change time separately from edits and drawer preserves stage history", async ({ page, request }) => {
+  const { project, stages } = await projectFixture(request, "Stage timestamps");
+  const ticket = await ticketFixture(request, project, stages[0].id);
+  const snapshot = await state(request);
+  const createdAt = "2026-09-10T01:02:03.000Z";
+  const stageChangedAt = "2026-09-11T04:05:06.000Z";
+  const updatedAt = "2026-09-13T07:08:09.000Z";
+  const staged = { ...ticket, stageId: stages[1].id, createdAt, updatedAt, stageChangedAt,
+    stageHistory: [
+      { fromStageId: null, fromStageName: null, toStageId: stages[0].id, toStageName: "Backlog", at: createdAt },
+      { fromStageId: stages[0].id, fromStageName: "Backlog", toStageId: stages[1].id, toStageName: "Planning", at: stageChangedAt },
+    ],
+  };
+  snapshot.tickets = [staged];
+  await page.route("**/api/state", route => route.fulfill({ json: snapshot }));
+  await page.route(`**/api/tickets/${ticket.id}`, route => route.fulfill({ json: { ...staged, attachmentContext: [] } }));
+  await page.goto("/");
+  await expect(page.getByText("Stage changed", { exact: true })).toBeVisible();
+  const row = page.getByRole("article", { name: `${project.key}-${ticket.number} ${ticket.title}` });
+  const displayed = row.locator(`time[datetime="${stageChangedAt}"]`);
+  await expect(displayed).toBeVisible();
+  const exact = await page.evaluate(at => new Date(at).toLocaleString(), stageChangedAt);
+  await expect(displayed).toHaveText(exact);
+  await expect(row.locator(`time[datetime="${updatedAt}"]`)).toHaveCount(0);
+  await page.getByRole("button", { name: ticket.title, exact: true }).click();
+  const history = page.getByRole("region", { name: "Stage history", exact: true });
+  await expect(history).toContainText("Backlog");
+  await expect(history).toContainText("Planning");
+  await expect(history.locator("time")).toHaveCount(2);
+  for (const at of [createdAt, stageChangedAt]) {
+    await expect(history.locator(`time[datetime="${at}"]`)).toHaveText(await page.evaluate(value => new Date(value).toLocaleString(), at));
+  }
+});
+
+test("legacy unknown stage time is explicit rather than inferred from last edit", async ({ page, request }) => {
+  const { project, stages } = await projectFixture(request, "Unknown stage time");
+  const ticket = await ticketFixture(request, project, stages[0].id);
+  const snapshot = await state(request);
+  snapshot.tickets = [{ ...ticket, stageChangedAt: null, stageHistory: [] } as Ticket];
+  await page.route("**/api/state", route => route.fulfill({ json: snapshot }));
+  await page.goto("/");
+  const row = page.getByRole("article", { name: `${project.key}-${ticket.number} ${ticket.title}` });
+  await expect(row.getByText("Unknown", { exact: true })).toBeVisible();
+  await expect(row.locator("time")).toHaveCount(0);
+});
+
 async function openProject(page: Page, project: Project) {
   await openNavigation(page);
   await page
@@ -107,6 +153,28 @@ async function openSettings(page: Page) {
     page.getByRole("heading", { name: "Workflow stages", exact: true }),
   ).toBeVisible();
 }
+
+test("completed synthetic execution reaches In review and retains exact stage history after reload", async ({ page, request }) => {
+  const { project, stages } = await projectFixture(request, "Completion history");
+  const ticket = await ticketFixture(request, project, stages.find(s => s.role === "ready")!.id, { ownerId: "codex" });
+  const claim = await request.post(`/api/tickets/${ticket.id}/claim`, { data: { agentId: "codex", sessionId: unique("synthetic-completion") } });
+  expect(claim.status(), await claim.text()).toBe(201);
+  const execution: Execution = await claim.json();
+  const completed = await request.post(`/api/executions/${execution.id}/events`, { data: { agentId: "codex", sessionId: execution.sessionId, eventId: randomUUID(), seq: 1, type: "complete", summary: "Synthetic implementation complete; independent review remains" } });
+  expect(completed.ok(), await completed.text()).toBeTruthy();
+  const after = (await state(request)).tickets.find(item => item.id === ticket.id)!;
+  expect(after.stageId).toBe(stages.find(s => s.role === "review")!.id);
+  expect(after.stageChangedAt).toBeTruthy();
+  await page.goto("/");
+  await page.reload();
+  const row = page.getByRole("article", { name: `${project.key}-${ticket.number} ${ticket.title}` });
+  await expect(row.getByRole("combobox", { name: `Stage for ${project.key}-${ticket.number}`, exact: true })).toHaveValue(after.stageId);
+  await row.getByRole("button", { name: ticket.title, exact: true }).click();
+  const history = page.getByRole("region", { name: "Stage history", exact: true });
+  await expect(history).toContainText("In review");
+  const timestamp = history.locator(`time[datetime="${after.stageChangedAt}"]`);
+  await expect(timestamp).toHaveText(await page.evaluate(at => new Date(at!).toLocaleString(), after.stageChangedAt));
+});
 
 test("real progress reports reach a tracked bulk run without reload or a second executor", async ({
   page,

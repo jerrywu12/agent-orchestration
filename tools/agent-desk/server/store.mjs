@@ -72,11 +72,49 @@ export class Store {
           .all(kind);
     return rows.map((r) => ({ ...JSON.parse(r.data), version: r.version }));
   }
-  put(kind, value, expected) {
+  put(kind, value, expected, { stageNormalization = false } = {}) {
+    // Ticket stage history is a read-modify-write operation even for callers
+    // (such as synchronization) that do not open their own transaction.
+    if (kind === "ticket" && !this.inTransaction)
+      return this.transaction(() =>
+        this.put(kind, value, expected, { stageNormalization }),
+      );
     const existing = this.get(kind, value.id);
     if (expected !== undefined && existing?.version !== expected)
       fail(409, "VERSION_CONFLICT", "This item changed. Reload before saving.");
     const next = { ...value, version: (existing?.version ?? 0) + 1 };
+    if (kind === "ticket") {
+      // History is server-owned. A stale source snapshot or supplied history
+      // must never erase previously observed transitions.
+      delete next.stageHistory;
+      delete next.stageChangedAt;
+      if (Object.hasOwn(existing ?? {}, "stageHistory"))
+        next.stageHistory = existing.stageHistory;
+      if (Object.hasOwn(existing ?? {}, "stageChangedAt"))
+        next.stageChangedAt = existing.stageChangedAt;
+      if (
+        !stageNormalization &&
+        next.stageId &&
+        next.stageId !== existing?.stageId
+      ) {
+        const previousStage = existing?.stageId
+          ? this.get("stage", existing.stageId)
+          : null;
+        const nextStage = this.get("stage", next.stageId);
+        const at = now();
+        next.stageChangedAt = at;
+        next.stageHistory = Array.isArray(existing?.stageHistory)
+          ? [...existing.stageHistory]
+          : [];
+        next.stageHistory.push({
+          fromStageId: existing?.stageId ?? null,
+          fromStageName: previousStage?.name ?? null,
+          toStageId: next.stageId,
+          toStageName: nextStage?.name ?? null,
+          at,
+        });
+      }
+    }
     this.db
       .prepare(
         "INSERT INTO records(kind,id,project_id,version,data) VALUES(?,?,?,?,?) ON CONFLICT(kind,id) DO UPDATE SET project_id=excluded.project_id,version=excluded.version,data=excluded.data",

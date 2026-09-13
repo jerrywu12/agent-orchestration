@@ -234,8 +234,8 @@ test("fixed executable argv runs only in an isolated base worktree and streams p
   );
   assert.equal(
     f.store.get("stage", f.service.getTicket(ticket.id).stageId).role,
-    "active",
-    "process completion is not delivery",
+    "backlog",
+    "process exit without completion checkpoints retained work in Backlog, never delivery",
   );
 });
 

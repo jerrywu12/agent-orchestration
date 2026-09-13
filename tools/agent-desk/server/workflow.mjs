@@ -95,7 +95,8 @@ export function ensureProjectWorkflow(store, projectId) {
       const next = { ...ticket, stageId };
       if (ticket.github?.number && ticket.github.stageIdAtSync === undefined)
         next.github = { ...ticket.github, stageIdAtSync: ticket.stageId };
-      store.put("ticket", next);
+      // Schema normalization redirects retired IDs, not actual ticket work.
+      store.put("ticket", next, undefined, { stageNormalization: true });
     }
     for (const record of store.list("migration-record")) {
       const target = record.mapping;

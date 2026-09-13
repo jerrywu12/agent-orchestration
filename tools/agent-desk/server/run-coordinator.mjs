@@ -175,6 +175,7 @@ export class RunCoordinator {
         ),
       });
       this.service.store.activity(ticketId, "claim_revoked", result.summary);
+      this.service.settleExecutionStage(result, "stopped");
       this.service.changed();
       return {
         ticketId,

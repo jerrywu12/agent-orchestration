@@ -419,6 +419,8 @@ test("archive confirmation reports each outcome and selections follow filters", 
     .click();
   await expect(page.getByText("Archive storage unavailable")).toBeVisible();
   await expect(page.getByText("Active reservation retained")).toBeVisible();
+  await expect(page.getByRole("region", { name: "Archive results", exact: true })).toHaveCount(0);
+  await expect(page.getByRole("heading", { name: "Archive results", exact: true })).toHaveCount(0);
   await page.getByLabel("Search tickets").fill("Invisible");
   await expect(page.getByText("1 selected", { exact: true })).toBeVisible();
   await page.getByLabel("Search tickets").fill("Blocked");
@@ -1353,6 +1355,19 @@ for (const entry of ["bulk", "drawer"]) {
     expect(app.writes.some((item) => item.path.endsWith("/start"))).toBe(false);
   });
 }
+
+test("stopped work shows a resume badge and preserves the full reason in details", async ({ page }) => {
+  const app = await mockRecovery(page);
+  const reason = "Agent stopped; saved work retained. Run Agent to resume.";
+  app.state.tickets[0].resumeReason = reason;
+  app.state.tickets[0].execution = null;
+  await page.goto("/");
+  const row = page.getByRole("article", { name: "SMARTSTO-100 Normal work" });
+  await expect(row.getByText("Resume needed", { exact: true })).toHaveAttribute("title", reason);
+  await row.getByRole("button", { name: "Normal work", exact: true }).click();
+  await expect(page.getByRole("dialog").getByText(reason, { exact: true })).toBeVisible();
+  expect(app.writes).toHaveLength(0);
+});
 
 test("a recovery-only batch says action required instead of agent run finished", async ({
   page,

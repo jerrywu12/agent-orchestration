@@ -324,7 +324,7 @@ export class Service extends EventEmitter {
       return this.decorate(result);
     });
   }
-  updateTicket(key, input, { confirmedTransition = false } = {}) {
+  updateTicket(key, input, { confirmedTransition = false, resumeReason } = {}) {
     return this.store.transaction(() => {
       const previous = this.require("ticket", key);
       if (!Number.isSafeInteger(input.version))
@@ -336,6 +336,7 @@ export class Service extends EventEmitter {
           "This ticket changed. Reload before saving.",
         );
       const next = { ...previous };
+      if (resumeReason !== undefined) next.resumeReason = resumeReason;
       for (const k of [
         "title",
         "description",
@@ -678,11 +679,15 @@ export class Service extends EventEmitter {
         const activeStage = this.store
           .list("stage", ticket.projectId)
           .find((s) => s.role === "active");
-        if (ticket.stageId !== activeStage.id)
-          this.updateTicket(key, {
-            version: ticket.version,
-            stageId: activeStage.id,
-          });
+        if (ticket.stageId !== activeStage.id || ticket.resumeReason)
+          this.updateTicket(
+            key,
+            {
+              version: ticket.version,
+              stageId: activeStage.id,
+            },
+            { resumeReason: "" },
+          );
       }
       this.store.activity(
         key,
@@ -899,6 +904,45 @@ export class Service extends EventEmitter {
       return child;
     });
   }
+  settleExecutionStage(execution, eventType) {
+    return this.store.transaction(() => {
+      const current = this.store.execution(execution.id);
+      const ticket = this.require("ticket", execution.ticketId);
+      if (
+        !current?.releasedAt ||
+        current.purpose === "planning" ||
+        ![
+          "awaiting_review",
+          "checkpointed",
+          "failed",
+          "stopped",
+          "revoked",
+        ].includes(current.state) ||
+        this.store.active(ticket.id) ||
+        this.store.latest(ticket.id)?.id !== execution.id ||
+        ticket.ownerId !== current.agentId ||
+        this.require("stage", ticket.stageId).role !== "active" ||
+        this.store.list("ticket").some((t) => t.parentId === ticket.id)
+      )
+        return ticket;
+      const complete =
+        eventType === "complete" && current.state === "awaiting_review";
+      const target = this.store
+        .list("stage", ticket.projectId)
+        .find((s) => s.role === (complete ? "review" : "backlog"));
+      const resumeReason = complete
+        ? ""
+        : `Execution ${current.state}; work and session history retained. Explicitly resume after reviewing the checkpoint. ${current.summary || ""}`.slice(
+            0,
+            4000,
+          );
+      return this.updateTicket(
+        ticket.id,
+        { version: ticket.version, stageId: target.id },
+        { resumeReason },
+      );
+    });
+  }
   event(key, input) {
     return this.store.transaction(() => {
       const execution =
@@ -978,6 +1022,17 @@ export class Service extends EventEmitter {
       );
       if (
         terminal &&
+        (this.store.active(execution.ticketId)?.id !== execution.id ||
+          this.require("ticket", execution.ticketId).ownerId !==
+            execution.agentId)
+      )
+        fail(
+          409,
+          "EXECUTION_CHANGED",
+          "Only the current owned execution can finish this ticket.",
+        );
+      if (
+        terminal &&
         (execution.heldSessions ?? []).some((session) => !session.releasedAt)
       ) {
         fail(
@@ -1024,6 +1079,7 @@ export class Service extends EventEmitter {
         .prepare("INSERT INTO events VALUES(?,?,?,?)")
         .run(key, input.eventId, input.seq, JSON.stringify(input));
       const result = this.store.saveExecution(next);
+      if (terminal) this.settleExecutionStage(result, eventType);
       if (input.type !== "heartbeat")
         this.store.activity(
           execution.ticketId,
@@ -1042,6 +1098,18 @@ export class Service extends EventEmitter {
         fail(404, "NOT_FOUND", "Execution not found.");
       if (!execution.external)
         fail(409, "LOCAL_EXECUTION", "Use Stop for a server-owned execution.");
+      if (execution.releasedAt)
+        fail(
+          409,
+          "EXECUTION_FINISHED",
+          "This execution is already finished/released.",
+        );
+      if (this.store.active(execution.ticketId)?.id !== execution.id)
+        fail(
+          409,
+          "EXECUTION_CHANGED",
+          "Reconcile only the current exact reservation.",
+        );
       if (input.stopped !== true)
         fail(
           422,
@@ -1080,6 +1148,7 @@ export class Service extends EventEmitter {
           ? "All imported sessions explicitly checkpointed; ready for handoff."
           : execution.summary,
       });
+      if (released) this.settleExecutionStage(result, "checkpoint");
       this.store.activity(
         execution.ticketId,
         "session_reconciled",

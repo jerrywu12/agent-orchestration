@@ -257,6 +257,10 @@ test("stale recovery retains old work and fences old execution events with exact
   await f.coord.takeover(ticket.id, confirm(old));
   assert.equal(f.store.active(ticket.id), null);
   assert.equal(f.store.execution(old.id).state, "revoked");
+  const parked = f.store.get("ticket", ticket.id);
+  assert.equal(f.store.get("stage", parked.stageId).role, "backlog");
+  assert.match(parked.resumeReason, /retained/);
+  assert.match(parked.resumeReason, /Previous process was not stopped/);
   const replacement = f.runner.start(ticket.id);
   assert.notEqual(replacement.id, old.id);
   assert.throws(
