@@ -4497,6 +4497,10 @@ progress::-moz-progress-bar {
   flex-wrap: wrap;
   gap: 8px 16px;
 }
+.bulk-results .run-queue-timing {
+  margin: 0;
+  color: var(--muted);
+}
 .run-progress-meter > progress,
 .run-progress-indeterminate {
   width: 160px;

@@ -18,7 +18,12 @@ import {
 import type { DeskState, Priority, Stage, Ticket } from "../types";
 import type { ArchiveResult, BulkRun } from "../bulk-types";
 import { api, ApiError, errorMessage, pathId } from "../api";
-import { RunProgress, runCounts, timestamp } from "./RunProgress";
+import {
+  RunProgress,
+  executionNeedsInspection,
+  runCounts,
+  timestamp,
+} from "./RunProgress";
 import { ExecutionTracking } from "./ExecutionTracking";
 import {
   AgentAvatar,
@@ -710,7 +715,7 @@ export function WorkView({
             </button>
           )}
           <label className="bulk-concurrency">
-            Concurrent agents
+            Agent limit
             <select
               aria-label="Bulk run concurrency"
               value={concurrency}
@@ -732,7 +737,7 @@ export function WorkView({
             onClick={() => void runSelected()}
           >
             <Play size={13} />
-            {bulkBusy === "run" ? "Starting run…" : "Run Agent"}
+            {bulkBusy === "run" ? "Submitting…" : "Run Agent"}
           </button>
           <button
             className="button small-button"
@@ -787,15 +792,21 @@ export function WorkView({
           <div className="bulk-results-heading">
             <h2>
               {!run.results.length
-                ? "Restoring agent run"
-                : run.state === "running"
+                ? bulkBusy === "run"
+                  ? "Submitting run request…"
+                  : "Restoring agent run"
+                : counts.working > 0
                   ? "Agent run in progress"
                   : counts.attention > 0
                     ? "Action required"
-                    : "Agent run finished"}
+                    : counts.queued > 0
+                      ? "Waiting to start"
+                      : "Agent run finished"}
             </h2>
             <span>
-              {run.concurrency} concurrent · {run.results.length} tickets
+              Agent limit: {run.concurrency}
+              {!!run.results.length &&
+                ` · ${run.results.length} ${run.results.length === 1 ? "ticket" : "tickets"}`}
             </span>
             {run.state === "complete" && (
               <button
@@ -821,7 +832,7 @@ export function WorkView({
               <span>{counts.finished} finished</span>
             </div>
           )}
-          {run.state === "running" && (
+          {run.state === "running" && bulkBusy !== "run" && (
             <p
               className={`run-update-status ${pollError ? "run-update-paused" : ""}`}
               role="status"
@@ -833,7 +844,9 @@ export function WorkView({
           )}
           {!run.results.length && !pollError && (
             <p role="status">
-              Loading the recorded run and its ticket results…
+              {bulkBusy === "run"
+                ? "Waiting for the selected tickets to be accepted…"
+                : "Loading the recorded run and its ticket results…"}
             </p>
           )}
           {pollError && (
@@ -856,7 +869,7 @@ export function WorkView({
                         return ticket ? ticketKey(ticket, state.projects) : id;
                       })
                       .join(", ")}
-                    . Concurrency: {runRequest.current.concurrency}.
+                    . Agent limit: {runRequest.current.concurrency}.
                   </p>
                   <button
                     className="button small-button"
@@ -932,9 +945,11 @@ export function WorkView({
                       : ""}
                   </button>
                   <span
-                    className={`status-chip ${["failed", "needs_takeover"].includes(result.status) ? "warning" : ""}`}
+                    className={`status-chip ${["failed", "needs_takeover"].includes(result.status) || executionNeedsInspection(result) ? "warning" : ""}`}
                   >
-                    {result.status.replaceAll("_", " ")}
+                    {executionNeedsInspection(result)
+                      ? `${result.telemetry?.state} session`
+                      : result.status.replaceAll("_", " ")}
                   </span>
                   {result.status === "needs_takeover" && (
                     <button
@@ -1004,6 +1019,7 @@ export function WorkView({
                     ticketKey={key}
                     now={runNow}
                     paused={!!pollError}
+                    batchCreatedAt={run.createdAt}
                     recoveryState={recoveryState}
                   />
                 </li>

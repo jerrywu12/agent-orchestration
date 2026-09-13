@@ -1,6 +1,7 @@
 import { createManagedBridge } from "./managed-bridge.mjs";
 import { captureProcessIdentity } from "./session-trace.mjs";
 import { RunCoordinator } from "./run-coordinator.mjs";
+import { assertManagedCapacity } from "./capacity.mjs";
 import { fileURLToPath } from "node:url";
 import { buildTaskPacket } from "./task-packet.mjs";
 import { spawn, execFileSync } from "node:child_process";
@@ -80,7 +81,7 @@ export class Runner {
         : "Reports through CLI/MCP; no direct launch adapter",
     }));
   }
-  start(ticketId, { automatic = false } = {}) {
+  validateStart(ticketId, { automatic = false } = {}) {
     const ticket = this.service.require("ticket", ticketId);
     if (
       [...this.children.keys()].some(
@@ -92,7 +93,14 @@ export class Runner {
         "ALREADY_RUNNING",
         "This ticket still has a managed background process; wait for it to stop.",
       );
+    if (this.service.store.active(ticketId))
+      fail(
+        409,
+        "ALREADY_CLAIMED",
+        "Another execution owns this ticket; checkpointed handoff required.",
+      );
     const agent = this.service.require("agent", ticket.ownerId);
+    if (!agent.enabled) fail(422, "AGENT_DISABLED", "This agent is disabled.");
     const adapter = adapters[agent.adapter];
     if (!adapter)
       fail(
@@ -114,6 +122,18 @@ export class Runner {
         "PROJECT_PATH",
         "Configure an existing absolute project path before starting.",
       );
+    const prior = this.service.store.latest(ticketId);
+    const resolveBlockers =
+      !automatic &&
+      this.service.require("stage", ticket.stageId).role !== "planning" &&
+      (this.service.resolutionNeeded(ticket) || prior?.state === "revoked");
+    this.service.ready(ticketId, agent.id, { resolveBlockers });
+    return { ticket, agent, adapter, command, project, prior, resolveBlockers };
+  }
+  start(ticketId, options = {}) {
+    const { ticket, agent, adapter, command, project, prior, resolveBlockers } =
+      this.validateStart(ticketId, options);
+    assertManagedCapacity(this.service, this);
     const root = realpathSync(project.path);
     let base;
     try {
@@ -129,11 +149,6 @@ export class Runner {
         "Project needs a fetched origin/main before isolated execution.",
       );
     }
-    const prior = this.service.store.latest(ticketId);
-    const resolveBlockers =
-      !automatic &&
-      this.service.require("stage", ticket.stageId).role !== "planning" &&
-      (this.service.resolutionNeeded(ticket) || prior?.state === "revoked");
     const run = this.service.claim(
       ticketId,
       {

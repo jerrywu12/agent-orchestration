@@ -1,5 +1,6 @@
 import { fail, now } from "./store.mjs";
 import { traceExecution } from "./session-trace.mjs";
+import { managedCapacity } from "./capacity.mjs";
 
 const stale = (e) =>
   !!e &&
@@ -310,16 +311,20 @@ export class RunCoordinator {
         );
       return this.get(prior.id);
     }
+    const createdAt = now();
     const batch = this.service.store.put("run-batch", {
       id: requestId,
-      createdAt: now(),
+      createdAt,
       state: "running",
       concurrency,
       ticketIds,
       results: ticketIds.map((ticketId) => ({
         ticketId,
         status: "queued",
-        message: "Waiting for an agent slot.",
+        message: "Waiting for dispatch.",
+        code: "DISPATCH_PENDING",
+        queueReason: "dispatch",
+        queuedAt: createdAt,
       })),
     });
     this.schedule();
@@ -339,8 +344,9 @@ export class RunCoordinator {
     const batches = this.service.store
       .list("run-batch")
       .filter((b) => b.state === "running");
-    const limit = Math.min(4, ...batches.map((b) => b.concurrency));
-    for (const batch of batches) {
+    for (const snapshot of batches) {
+      // A launch in an earlier batch can bind this batch transactionally.
+      const batch = this.service.store.get("run-batch", snapshot.id);
       const before = JSON.stringify(batch.results);
       for (const row of batch.results) {
         if (row.status === "running") {
@@ -381,17 +387,28 @@ export class RunCoordinator {
               "Archived or completed ticket; reopen it before running.";
             continue;
           }
-          if (this.runner.children.size >= limit) continue;
-          if (this.service.ownerBusy(t.ownerId, t.id)) continue;
+          this.runner.validateStart?.(t.id);
+          const capacity = managedCapacity(this.service, this.runner);
+          if (capacity.full) {
+            row.message = capacity.reason;
+            row.code = "CAPACITY_FULL";
+            row.queueReason = "capacity";
+            row.queuedAt ??= batch.createdAt;
+            continue;
+          }
           const run = this.runner.start(t.id);
           row.executionId = run.id;
           row.status = "running";
+          delete row.code;
+          delete row.queueReason;
           row.message =
             run.purpose === "resolve_blockers"
               ? "Resolving blockers and dependencies."
               : "Agent started.";
         } catch (e) {
-          row.status = "failed";
+          row.status = e.code === "CAPACITY_FULL" ? "queued" : "failed";
+          row.code = e.status ? e.code : "DISPATCH_FAILED";
+          if (e.code === "CAPACITY_FULL") row.queueReason = "capacity";
           row.message = e.status
             ? e.message
             : "Dispatch failed; inspect the retained execution.";

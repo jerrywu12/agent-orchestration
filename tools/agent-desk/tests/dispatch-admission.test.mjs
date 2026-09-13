@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import {
+  existsSync,
   mkdirSync,
   mkdtempSync,
   realpathSync,
@@ -11,6 +12,7 @@ import {
 } from "node:fs";
 import { delimiter, join } from "node:path";
 import { tmpdir } from "node:os";
+import { setTimeout as delay } from "node:timers/promises";
 import { Store } from "../server/store.mjs";
 import { Service } from "../server/service.mjs";
 import { Runner } from "../server/runner.mjs";
@@ -183,6 +185,15 @@ function fixture(t, { actualRunner = false } = {}) {
   };
 }
 
+async function waitFor(predicate, message) {
+  const deadline = Date.now() + 5000;
+  while (Date.now() < deadline) {
+    if (predicate()) return;
+    await delay(10);
+  }
+  assert.fail(message);
+}
+
 test("two independent tickets assigned to the same provider use two supervised slots", (t) => {
   const f = fixture(t),
     a = f.ticket(),
@@ -338,6 +349,127 @@ test("a queued batch alone follows a claim that checkpoints before the first dra
   assert.equal(row.status, "checkpointed");
   assert.equal(f.runner.children.size, 0);
 });
+
+test("all overlapping batches bind a claim completed before subsequent drain without restarting it", (t) => {
+  const f = fixture(t),
+    target = f.ticket({ stageId: f.stage("planning") });
+  const batches = [
+    f.submit([target], 2),
+    f.submit([target], 1),
+    f.submit([target], 2),
+  ];
+  const claimed = f.claim(target);
+  f.finish(claimed);
+
+  // The claim and terminal report both arrive before any scheduled drain.
+  // Every authorization must retain that execution, including after another drain.
+  for (let pass = 0; pass < 2; pass++) {
+    f.coord.drain();
+    const executions = f.store.db
+      .prepare("SELECT COUNT(*) AS count FROM executions WHERE ticket_id=?")
+      .get(target.id).count;
+    assert.equal(
+      executions,
+      1,
+      "overlapping batches must not replay a completed claim",
+    );
+    assert.deepEqual(
+      batches.map((batch) => {
+        const row = f.coord.get(batch.id).results[0];
+        return { executionId: row.executionId, status: row.status };
+      }),
+      batches.map(() => ({ executionId: claimed.id, status: "checkpointed" })),
+      "all pending rows must bind the same exact execution",
+    );
+    assert.equal(f.runner.children.size, 0);
+  }
+});
+
+test(
+  "real Runner child close flushes its checkpoint and automatically admits queued work",
+  { timeout: 15000 },
+  async (t) => {
+    const f = fixture(t, { actualRunner: true });
+    const first = f.ticket({ stageId: f.stage("planning") }),
+      second = f.ticket({ stageId: f.stage("planning") });
+    const ready = join(f.dir, "first-ready"),
+      release = join(f.dir, "release-first"),
+      secondStarted = join(f.dir, "second-started");
+    const summary =
+      "Synthetic child checkpoint published immediately before exit";
+    const clientUrl = new URL("../bin/managed-client.mjs", import.meta.url)
+      .href;
+    writeFileSync(
+      join(f.dir, "bin", "codex"),
+      `#!${process.execPath}
+(async () => {
+  const fs = require("node:fs");
+  const { randomUUID } = require("node:crypto");
+  if (process.env.AGENT_DESK_TICKET_ID !== ${JSON.stringify(first.id)}) {
+    fs.writeFileSync(${JSON.stringify(secondStarted)}, "started");
+    setInterval(() => {}, 1000);
+    return;
+  }
+  const { managedRequest, directoryIdentity, writeAtomic, requestLimit } = await import(${JSON.stringify(clientUrl)});
+  const directory = process.env.AGENT_DESK_BRIDGE_DIR;
+  await managedRequest(directory, "get_task", {}, { timeoutMs: 3000 });
+  fs.writeFileSync(${JSON.stringify(ready)}, "ready");
+  const timer = setInterval(() => {
+    if (!fs.existsSync(${JSON.stringify(release)})) return;
+    clearInterval(timer);
+    const id = randomUUID();
+    writeAtomic(directory, directoryIdentity(directory), id + ".request.json", {
+      id,
+      operation: "report_progress",
+      input: { type: "checkpoint", summary: ${JSON.stringify(summary)}, eventId: randomUUID() }
+    }, requestLimit);
+    // Exit without waiting for a response: Runner must flush the pending report.
+    process.exit(0);
+  }, 10);
+})().catch(error => { process.stderr.write(String(error)); process.exit(1); });
+`,
+      { mode: 0o700 },
+    );
+
+    const batch = f.submit([first, second], 1);
+    // Deliberately never call drain: both admission steps must be event-driven.
+    await waitFor(
+      () => existsSync(ready),
+      "the synthetic first child must complete its reporting handshake",
+    );
+    const firstExecution = f.store.active(first.id);
+    assert.ok(firstExecution.reportingReadyAt);
+    const firstChild = f.runner.children.get(firstExecution.id);
+    assert.ok(firstChild?.pid);
+    assert.equal(f.coord.get(batch.id).results[1].status, "queued");
+    assert.equal(f.store.active(second.id), null);
+    assert.equal(f.runner.children.size, 1);
+
+    writeFileSync(release, "exit");
+    await waitFor(
+      () => existsSync(secondStarted),
+      "child close must automatically re-admit the queued ticket",
+    );
+    const finalFirst = f.store.execution(firstExecution.id);
+    assert.equal(firstChild.exitCode, 0);
+    assert.equal(finalFirst.state, "checkpointed");
+    assert.equal(
+      finalFirst.summary,
+      summary,
+      "close must preserve the child's final mailbox event instead of synthesizing a fallback checkpoint",
+    );
+    assert.ok(finalFirst.releasedAt);
+    assert.equal(f.runner.children.has(firstExecution.id), false);
+    assert.equal(f.runner.children.size, 1);
+    const rows = f.coord.get(batch.id).results;
+    assert.deepEqual(
+      rows.map((row) => row.status),
+      ["checkpointed", "running"],
+    );
+    assert.equal(rows[0].executionId, firstExecution.id);
+    assert.equal(rows[1].executionId, f.store.active(second.id).id);
+  },
+);
 
 test("a capacity wait records its actual reason and does not churn unchanged queue state", (t) => {
   const f = fixture(t);

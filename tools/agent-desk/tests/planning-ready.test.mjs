@@ -53,6 +53,8 @@ test("persisted confirmed queue survives service restart and invalidates changed
   const { service, store, stage, make } = setup(t);
   const p = make({ stageId: stage("planning") });
   const run = service.claim(p.id, { agentId: "codex", sessionId: "held" });
+  const children = new Map(Array.from({ length: 4 }, (_, i) => [i, {}]));
+  service.runner = { children };
   const a = make({ brief });
   assert.equal(
     service.transition(a.id, {
@@ -68,6 +70,7 @@ test("persisted confirmed queue survives service restart and invalidates changed
   const restarted = new Service(other);
   let launches = 0;
   restarted.runner = {
+    children,
     start(key) {
       launches++;
       return restarted.claim(key, { agentId: "codex", sessionId: "restart" });
@@ -82,17 +85,20 @@ test("persisted confirmed queue survives service restart and invalidates changed
     brief: { ...brief, allowedPaths: "changed/scope/**" },
   });
   other.saveExecution({ ...run, releasedAt: new Date().toISOString() });
+  children.clear();
   restarted.dispatchConfirmed();
   assert.equal(launches, 0);
   assert.match(other.get("launch-intent", a.id).reason, /content changed/);
 });
-test("unchanged confirmed queue dispatches once after restart and owner release", (t) => {
+test("unchanged confirmed queue dispatches once after restart and managed slot release", (t) => {
   const { service, store, stage, make } = setup(t);
   const occupied = make({ stageId: stage("planning") });
   const run = service.claim(occupied.id, {
     agentId: "codex",
     sessionId: "restart-held",
   });
+  const children = new Map(Array.from({ length: 4 }, (_, i) => [i, {}]));
+  service.runner = { children };
   const ticket = make({ brief });
   service.transition(ticket.id, {
     version: ticket.version,
@@ -105,6 +111,7 @@ test("unchanged confirmed queue dispatches once after restart and owner release"
   const restarted = new Service(second);
   let launches = 0;
   restarted.runner = {
+    children,
     start(key) {
       launches++;
       return restarted.claim(key, { agentId: "codex", sessionId: "restarted" });
@@ -113,6 +120,7 @@ test("unchanged confirmed queue dispatches once after restart and owner release"
   restarted.dispatchConfirmed();
   assert.equal(launches, 0);
   second.saveExecution({ ...run, releasedAt: new Date().toISOString() });
+  children.clear();
   restarted.dispatchConfirmed();
   restarted.dispatchConfirmed();
   assert.equal(launches, 1);
@@ -249,7 +257,7 @@ test("planning claims stay planning and retry survives edited brief; scope snaps
   const b = make({ brief });
   assert.equal(service.readiness(b.id).conflicts[0].ticketId, a.id);
 });
-test("confirmed owner queue persists and rechecks preparation before dispatch", (t) => {
+test("confirmed capacity queue persists and rechecks preparation before dispatch", (t) => {
   const { service, store, stage, make } = setup(t);
   const occupied = make({ stageId: stage("planning") });
   const run = service.claim(occupied.id, {
@@ -257,7 +265,9 @@ test("confirmed owner queue persists and rechecks preparation before dispatch", 
     sessionId: "occupied",
   });
   let launches = 0;
+  const children = new Map(Array.from({ length: 4 }, (_, i) => [i, {}]));
   service.runner = {
+    children,
     start(key) {
       launches++;
       return service.claim(key, { agentId: "codex", sessionId: "new" });
@@ -283,12 +293,13 @@ test("confirmed owner queue persists and rechecks preparation before dispatch", 
     releasedAt: new Date().toISOString(),
     state: "checkpointed",
   });
+  children.clear();
   service.dispatchConfirmed();
   assert.equal(launches, 0);
   assert.equal(store.get("launch-intent", ticket.id).status, "failed");
   assert.match(store.get("launch-intent", ticket.id).reason, /Blocked/i);
 });
-test("queue launches exactly once after owner release and stale confirmation has no effects", (t) => {
+test("queue launches exactly once after managed slot release and stale confirmation has no effects", (t) => {
   const { service, store, stage, make } = setup(t);
   const occupied = make({ stageId: stage("planning") });
   const run = service.claim(occupied.id, {
@@ -296,7 +307,9 @@ test("queue launches exactly once after owner release and stale confirmation has
     sessionId: "occupied",
   });
   let launches = 0;
+  const children = new Map(Array.from({ length: 4 }, (_, i) => [i, {}]));
   service.runner = {
+    children,
     start(key) {
       launches++;
       return service.claim(key, { agentId: "codex", sessionId: "queued" });
@@ -312,6 +325,7 @@ test("queue launches exactly once after owner release and stale confirmation has
   assert.equal(service.transition(ticket.id, input).outcome, "queued");
   assert.throws(() => service.transition(ticket.id, input), /changed/i);
   store.saveExecution({ ...run, releasedAt: new Date().toISOString() });
+  children.clear();
   service.dispatchConfirmed();
   service.dispatchConfirmed();
   assert.equal(launches, 1);

@@ -11,6 +11,9 @@ export interface RunResult {
     | "checkpointed"
     | "awaiting_review";
   message: string;
+  code?: string;
+  queueReason?: "dispatch" | "capacity";
+  queuedAt?: string;
   executionId?: string;
   telemetry?: {
     state: string;

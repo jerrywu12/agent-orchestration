@@ -449,7 +449,7 @@ test("queued dispatch shows its real wait and limit before observed work across 
     ],
   });
   app.recoverPoll();
-  await panel.getByRole("button", { name: "Retry tracking" }).click();
+  await panel.getByRole("button", { name: "Retry run tracking" }).click();
   await expect(
     panel.getByRole("heading", { name: "Agent run in progress" }),
   ).toBeVisible();

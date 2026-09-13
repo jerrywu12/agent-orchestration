@@ -34,3 +34,13 @@ Production edits wait for overlapping AGENT-11 source ownership to finish; indep
 - 16 new scheduler/real-runner tests: 15 assertion failures, with exact stale-target preservation passing (`run-ixc3xtqw.log`). Actual synthetic Runner exceeded 4/4 and 1/1 limits before the fix; no model providers or network calls were used.
 - Six scripted DOM regressions: queued-only/mixed attention/submission status failures (`run-398rmxzp.log`) and fresh external/suspended/interrupted reservations wrongly counted as working (`run-rv3x3z2i.log`). Baseline build passed (`run-6vkt8e2p.log`). Test-server port collision was excluded as evidence; follow-up UI tests use an isolated private port4328 harness with screenshots/traces off.
 - Fresh external/suspended/interrupted reservation telemetry is not proof of a working agent. These states need attention/inspection guidance, without relabeling old percentages as current progress.
+
+## Integrated repair evidence
+
+PR28 lifecycle changes at 0dc4aba were merged into this branch before production edits; AGENT-11 released its exact claim. AGENT-12 then acquired execution380b949a-da9a-47bc-809f-ee45e581d454. All20 stage/lifecycle cases remained green while the15 dispatch failures reproduced on the integrated base (run-9rpodrgx.log).
+
+The new18 dispatch cases now cover actual Runner capacity, unrelated stale claims, exact takeover reservation, changed confirmations under full capacity, concrete invalid-launch outcomes, no-churn waits, fast completed claims, duplicate batches, and automatic close/bridge-flush refill. The additional duplicate-batch case failed on immutable pre-fix068e6ee (run-3yjattvu.log); the existing actual close/flush contract passed there and remains preserved (run-24mpbxlu.log). The original16 dispatch cases passed with the repair;30 confirmed-admission/coordinator cases pass (run-m4dadh09.log). Legacy queue fixtures now model occupied supervised children rather than treating an external provider claim as capacity.
+
+UI build passed (run-rrd9x1ul.log). Recovery DOM32 cases are covered:31 passed in run-254_r0m_.log and the remaining queued/reload/poll failure case passed in run-tt0uesjm.log after correcting only a new-test locator to the existing Retry run tracking label. No screenshots, native controls or live task launches were used for these checks.
+
+Related user request from the concurrent task: Archive must remain available for selected completed/unreserved tickets while an unrelated run is queued or working. The other lead is preparing standalone RED evidence; one UI writer will integrate the bounded action-guard repair here, retaining server-side exact-claim refusals and partial-failure reporting. No duplicate production writer.
