@@ -169,3 +169,30 @@ and working directory; checkpoint and stop only that writer, not its IDE/agent
 parent. Do not restart, migrate or kill existing sessions to install instructions.
 Update future sessions/connectors separately, read back configuration and retain
 rollback evidence. Source PRs do not update global settings or downstream scripts.
+
+## Managed reporting, tracing and explicit recovery
+
+Managed starts use the credential-free helper identified in their task packet and
+AGENT_DESK_BRIDGE_DIR. Read get_task first, then use the fixed same-execution
+get_resolution_context, update_task, create_subtask and report_progress operations.
+The supervisor owns identity, event ordering and Service validation. This transport
+needs no network or MCP approval and grants no other ticket, filesystem or shell
+authority. Browser/computer-control is not an Agent Desk reporting fallback.
+
+A zero process exit without a terminal report is checkpointed with its last useful
+summary. Complete with unresolved blockers/dependencies is checkpointed. Native
+Codex thread IDs, background process fingerprints and prior execution history are
+tracked separately from lease IDs. A native record is not proof of a live process.
+
+An administrator can trace an old session and explicitly revoke an untraceable
+stale claim with an audit reason and uncertainty acknowledgement. A fresh heartbeat
+or verified live process refuses takeover. Revocation fences future board updates
+from the old execution; it does not stop an unknown process. Preserve its saved
+work and inspect the recovery context before starting a new writer. This is a
+separate operator action, never an automatic response to heartbeat age.
+
+All work supports bulk Run Agent and Archive. Bulk runs are bounded, durable and
+report each item independently; stale claims require explicit recovery. Restart
+interrupts pending batches visibly without replay. Archive refuses active claims.
+For Agent Desk verification, use scripts/API/automated DOM checks; no computer
+control or screenshots.

@@ -515,6 +515,29 @@ export function createAppServer({
             return json(service.createSubtask(key, context), 201);
           fail(405, "METHOD", "Unsupported organization method.");
         }
+        if (resource === "runs" && method === "POST" && !key)
+          return json(runner.coordinator.submit(input), 202);
+        if (resource === "runs" && method === "GET" && key && !action)
+          return json(runner.coordinator.get(key));
+        if (
+          resource === "tickets" &&
+          key === "bulk-archive" &&
+          !action &&
+          method === "POST"
+        )
+          return json(runner.coordinator.archive(input));
+        if (
+          resource === "tickets" &&
+          action === "execution-status" &&
+          method === "GET"
+        )
+          return json(await runner.coordinator.status(key));
+        if (
+          resource === "tickets" &&
+          action === "takeover" &&
+          method === "POST"
+        )
+          return json(await runner.coordinator.takeover(key, input));
         if (resource === "tickets" && action === "claim" && method === "POST") {
           if (actor.role === "agent" && input.agentId !== actor.agentId)
             fail(
@@ -750,6 +773,7 @@ export async function startServer({
   server.on("close", () => {
     machineMonitor.close();
     legacyObserver.close();
+    runner.coordinator.close();
     clearInterval(syncManager.timer);
   });
   console.log(`Agent Desk listening at http://${host}:${port}`);

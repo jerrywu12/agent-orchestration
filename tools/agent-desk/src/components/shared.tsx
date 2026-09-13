@@ -74,8 +74,8 @@ export function isActive(execution?: Execution | null) {
 export function isStale(execution?: Execution | null) {
   return (
     isActive(execution) &&
-    (!execution?.heartbeatAt ||
-      Date.now() - Date.parse(execution.heartbeatAt) > 120000)
+    (!Number.isFinite(Date.parse(execution?.heartbeatAt || "")) ||
+      Date.now() - Date.parse(execution?.heartbeatAt || "") > 90000)
   );
 }
 export function colorStyle(color?: string | null): CSSProperties {

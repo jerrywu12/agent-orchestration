@@ -519,10 +519,5 @@ for (const width of [320, 768, 1440]) {
     expect(
       await page.evaluate(() => document.documentElement.scrollWidth),
     ).toBeLessThanOrEqual(width);
-    await page.screenshot({
-      path: test.info().outputPath("agent-capacity.png"),
-      fullPage: true,
-      animations: "disabled",
-    });
   });
 }

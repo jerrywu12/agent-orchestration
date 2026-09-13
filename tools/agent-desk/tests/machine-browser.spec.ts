@@ -726,17 +726,6 @@ for (const width of [320, 768, 1440]) {
       expect(
         await page.evaluate(() => document.documentElement.scrollWidth),
       ).toBeLessThanOrEqual(width);
-      if (width !== 768) {
-        await page.screenshot({
-          path: test
-            .info()
-            .outputPath(
-              `machine-${["agents", "libraries", "sources"][index]}.png`,
-            ),
-          fullPage: true,
-          animations: "disabled",
-        });
-      }
     }
     await expect(
       page.getByRole("textbox", { name: "Folder path", exact: true }),

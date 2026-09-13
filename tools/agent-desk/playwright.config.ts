@@ -6,6 +6,7 @@ export default defineConfig({
     "machine-browser.spec.ts",
     "intake-browser.spec.ts",
     "workflow-browser.spec.ts",
+    "recovery-browser.spec.ts",
   ],
   workers: 1,
   timeout: 30000,
@@ -14,8 +15,8 @@ export default defineConfig({
   use: {
     baseURL: "http://127.0.0.1:4318",
     channel: process.env.CI ? undefined : "chrome",
-    trace: "retain-on-failure",
-    screenshot: "only-on-failure",
+    trace: "off",
+    screenshot: "off",
   },
   webServer: {
     command: "node tests/serve-e2e.mjs",

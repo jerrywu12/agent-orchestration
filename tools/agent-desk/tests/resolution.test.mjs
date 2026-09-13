@@ -340,3 +340,32 @@ test("MCP organization tools reach scoped server and preserve actor identity", a
   assert.equal(f.store.active(f.foreign.id).id, f.foreignRun.id);
   assert.ok(!out.includes("test-codex"));
 });
+
+test("managed completion through legacy HTTP checkpoints unresolved work and preserves replay", async (t) => {
+  const f = await fixture(t);
+  f.store.saveExecution({ ...f.run, managedBy: "agent-desk" });
+  const input = {
+    agentId: "codex",
+    sessionId: f.run.sessionId,
+    eventId: "legacy-managed-terminal",
+    seq: 1,
+    type: "complete",
+    summary: "Result still needs dependency",
+  };
+  const first = await f.req(
+    `/api/executions/${f.run.id}/events`,
+    "POST",
+    input,
+  );
+  assert.equal(first.status, 200);
+  assert.equal(first.data.state, "checkpointed");
+  assert.match(first.data.summary, /Unresolved blockers/);
+  const repeat = await f.req(
+    `/api/executions/${f.run.id}/events`,
+    "POST",
+    input,
+  );
+  assert.equal(repeat.status, 200);
+  assert.equal(repeat.data.state, "checkpointed");
+  assert.equal(f.store.active(f.foreign.id).id, f.foreignRun.id);
+});

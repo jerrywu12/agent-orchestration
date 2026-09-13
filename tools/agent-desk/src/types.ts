@@ -30,6 +30,9 @@ export interface Agent {
   enabled: boolean;
 }
 export interface Execution {
+  nativeSessionId?: string | null;
+  nativeSessionSource?: string | null;
+  reportingReadyAt?: string | null;
   purpose?: "implementation" | "resolve_blockers";
   id: string;
   ticketId: string;

@@ -22,6 +22,7 @@ import { ReconcileSessions } from "./ReconcileSessions";
 import { TicketDocuments } from "./DocumentAttachments";
 import { BriefFields, WorkflowBrief } from "./WorkflowBrief";
 import { emptyBrief } from "../intake";
+import { ExecutionTracking } from "./ExecutionTracking";
 import {
   AgentAvatar,
   capitalize,
@@ -476,7 +477,8 @@ export function TicketDetails({
           {execution?.external && active && (
             <p className="field-hint">
               This session was started outside Agent Desk. Stop or checkpoint it
-              in its original agent client.
+              in its original agent client, or inspect the execution trace below
+              if that client cannot be found.
             </p>
           )}
           {execution && (
@@ -517,8 +519,8 @@ export function TicketDetails({
               </div>
               {stale && (
                 <p className="warning-text">
-                  No recent heartbeat. The claim is still owned by this session;
-                  no automatic takeover.
+                  No recent heartbeat. Inspect the execution trace below to
+                  locate the prior session or review an explicit takeover.
                 </p>
               )}
               <details className="session-reference">
@@ -544,6 +546,12 @@ export function TicketDetails({
               </details>
             </div>
           )}
+          <ExecutionTracking
+            ticketId={ticket.id}
+            executionId={execution?.id}
+            disabled={!!busy || dirty}
+            refresh={refresh}
+          />
           {execution?.external && active && (
             <ReconcileSessions
               execution={execution}

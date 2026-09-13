@@ -346,6 +346,7 @@ export default function App() {
             onCreateProject={() => setCreate("project")}
             onUpdate={updateTicket}
             searchRef={searchRef}
+            refresh={desk.refresh}
           />
         ) : page === "activity" ? (
           <div className="standard-page">
