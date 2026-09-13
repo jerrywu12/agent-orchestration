@@ -118,13 +118,23 @@ async function mockRecovery(page: Page) {
   let releaseAcceptedRun: (() => Promise<void>) | null = null;
   let acceptedRequestId: string | null = null;
   let rejectTakeover = false;
+  let dropTakeoverResponse = false;
+  let delayTakeoverResponse = false;
+  let releaseTakeoverResponse: (() => Promise<void>) | null = null;
   let failPoll = false;
   let failTrace = false;
+  let failStateRefresh = false;
   await page.clock.install({ time: new Date(now) });
   await page.route("**/api/**", async (route) => {
     const request = route.request();
     const path = new URL(request.url()).pathname;
-    if (path === "/api/state") return route.fulfill({ json: state });
+    if (path === "/api/state")
+      return failStateRefresh
+        ? route.fulfill({
+            status: 503,
+            json: { error: { message: "Ticket refresh unavailable" } },
+          })
+        : route.fulfill({ json: state });
     if (path === "/api/health")
       return route.fulfill({
         json: {
@@ -230,10 +240,36 @@ async function mockRecovery(page: Page) {
         };
         status = {
           ...status,
-          state: "checkpointed",
+          state: "revoked",
           canTakeOver: false,
           reason: "Prior claim revoked. Work preserved.",
         };
+        run = {
+          ...run,
+          results: run.results.map((row: any) =>
+            row.ticketId === "ticket-2" && row.executionId === "old-execution"
+              ? {
+                  ...row,
+                  status: "claim_released",
+                  message: "Claim released; saved work retained.",
+                }
+              : row,
+          ),
+        };
+        if (dropTakeoverResponse) {
+          dropTakeoverResponse = false;
+          return route.abort("failed");
+        }
+        if (delayTakeoverResponse) {
+          delayTakeoverResponse = false;
+          const released = structuredClone(status);
+          return new Promise<void>((resolve) => {
+            releaseTakeoverResponse = async () => {
+              await route.fulfill({ json: released });
+              resolve();
+            };
+          });
+        }
         return route.fulfill({ json: status });
       }
       return route.fulfill({ json: {} });
@@ -304,6 +340,17 @@ async function mockRecovery(page: Page) {
     rejectTakeover: () => {
       rejectTakeover = true;
     },
+    dropTakeoverResponse: () => {
+      dropTakeoverResponse = true;
+    },
+    delayTakeoverResponse: () => {
+      delayTakeoverResponse = true;
+    },
+    releaseTakeoverResponse: async () => {
+      if (!releaseTakeoverResponse)
+        throw new Error("No delayed takeover response");
+      await releaseTakeoverResponse();
+    },
     failPoll: () => {
       failPoll = true;
     },
@@ -312,6 +359,9 @@ async function mockRecovery(page: Page) {
     },
     failTrace: () => {
       failTrace = true;
+    },
+    failStateRefresh: () => {
+      failStateRefresh = true;
     },
   };
 }
@@ -872,4 +922,271 @@ test("paused tracking retains last evidence and the heartbeat ages into attentio
       name: "Reported progress for SMARTSTO-100",
     }),
   ).toHaveAttribute("value", "0");
+});
+
+async function takeoverBatch(page: Page) {
+  const app = await mockRecovery(page);
+  app.updateRun({
+    state: "complete",
+    results: [
+      {
+        ticketId: "ticket-2",
+        executionId: "old-execution",
+        status: "needs_takeover",
+        message: "Inspect the prior claim before takeover",
+      },
+    ],
+  });
+  await page.goto("/");
+  await page.getByLabel("Select all visible tickets").check();
+  await page.getByRole("button", { name: "Run Agent", exact: true }).click();
+  return app;
+}
+async function confirmRowTakeover(page: Page) {
+  await page
+    .getByRole("button", { name: "Take over SMARTSTO-102", exact: true })
+    .click();
+  await page
+    .getByLabel("Takeover reason")
+    .fill("The old client cannot be traced; preserve its work.");
+  await page
+    .getByLabel(
+      "I understand the prior process may still exist and will preserve its work.",
+    )
+    .check();
+  await page
+    .getByRole("button", { name: "Confirm takeover", exact: true })
+    .click();
+}
+
+test("direct row takeover confirms the exact claim and offers a single recovered-ticket run", async ({
+  page,
+}) => {
+  const app = await takeoverBatch(page);
+  await expect(
+    page.getByRole("button", { name: "Take over SMARTSTO-102", exact: true }),
+  ).toBeVisible();
+  await confirmRowTakeover(page);
+  await expect(
+    page.getByRole("button", {
+      name: "Run Agent for SMARTSTO-102",
+      exact: true,
+    }),
+  ).toBeVisible();
+  const takeover = app.writes.find((item) => item.path.endsWith("/takeover"));
+  await expect(
+    page.getByText("1 needs attention", { exact: true }),
+  ).toBeVisible();
+  expect(takeover?.body).toMatchObject({
+    executionId: "old-execution",
+    sessionId: "recorded-session",
+    confirmed: true,
+  });
+  expect(app.writes.filter((item) => item.path === "/api/runs")).toHaveLength(
+    1,
+  );
+  await page
+    .getByRole("button", { name: "Run Agent for SMARTSTO-102", exact: true })
+    .click();
+  await expect
+    .poll(() => app.writes.filter((item) => item.path === "/api/runs").length)
+    .toBe(2);
+  expect(
+    app.writes.filter((item) => item.path === "/api/runs")[1].body.ticketIds,
+  ).toEqual(["ticket-2"]);
+});
+
+test("row takeover refuses a changed execution and a fresh live claim", async ({
+  page,
+}) => {
+  const app = await takeoverBatch(page);
+  app.setStatus({ executionId: "new-execution", sessionId: "new-session" });
+  await page
+    .getByRole("button", { name: "Take over SMARTSTO-102", exact: true })
+    .click();
+  await expect(
+    page.getByText(
+      "The claim changed since this batch. This action cannot take over a different execution.",
+      { exact: true },
+    ),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "Confirm takeover", exact: true }),
+  ).toBeDisabled();
+  await page.getByRole("button", { name: "Close dialog" }).click();
+  app.setStatus({
+    executionId: "old-execution",
+    sessionId: "recorded-session",
+    processAlive: true,
+    stale: false,
+    canTakeOver: false,
+  });
+  await page
+    .getByRole("button", { name: "Take over SMARTSTO-102", exact: true })
+    .click();
+  await expect(
+    page.getByRole("button", { name: "Confirm takeover", exact: true }),
+  ).toBeDisabled();
+  expect(app.writes.some((item) => item.path.endsWith("/takeover"))).toBe(
+    false,
+  );
+});
+
+test("review results distinguish idle, newer active execution and Done", async ({
+  page,
+}) => {
+  const app = await mockRecovery(page);
+  app.updateRun({
+    state: "complete",
+    results: [
+      {
+        ticketId: "ticket-0",
+        executionId: "review-execution",
+        status: "awaiting_review",
+        message: "Implementation ready for review",
+      },
+    ],
+  });
+  await page.goto("/");
+  await page.getByLabel("Select ticket SMARTSTO-100").check();
+  await page.getByRole("button", { name: "Run Agent", exact: true }).click();
+  await expect(
+    page.getByText("No agent running; review does not start automatically", {
+      exact: true,
+    }),
+  ).toBeVisible();
+  app.state.tickets[0].execution = {
+    ...app.state.tickets[2].execution!,
+    id: "newer-active",
+    ticketId: "ticket-0",
+    heartbeatAt: now,
+  };
+  await page.clock.fastForward(4100);
+  await expect(
+    page.getByText(
+      "Another run is active; this result's review is unverified",
+      { exact: true },
+    ),
+  ).toBeVisible();
+  app.state.tickets[0].stageId = "stage-2";
+  await page.clock.fastForward(4100);
+  await expect(page.getByText("Ticket is Done", { exact: true })).toBeVisible();
+  expect(app.writes.filter((item) => item.path === "/api/runs")).toHaveLength(
+    1,
+  );
+});
+
+test("lost takeover response retraces release without a second mutation", async ({
+  page,
+}) => {
+  const app = await takeoverBatch(page);
+  app.dropTakeoverResponse();
+  app.failStateRefresh();
+  app.failPoll();
+  await confirmRowTakeover(page);
+  await expect(
+    page.getByRole("button", {
+      name: "Run Agent for SMARTSTO-102",
+      exact: true,
+    }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("button", {
+      name: "Run Agent for SMARTSTO-102",
+      exact: true,
+    }),
+  ).toBeEnabled();
+  await expect(
+    page.getByText(/The claim was released, but run results could not refresh/),
+  ).toBeVisible();
+  expect(
+    app.writes.filter((item) => item.path.endsWith("/takeover")),
+  ).toHaveLength(1);
+  expect(app.writes.filter((item) => item.path === "/api/runs")).toHaveLength(
+    1,
+  );
+});
+
+test("pending row takeover blocks dismissal and the subsequent run survives reload", async ({
+  page,
+}) => {
+  const app = await takeoverBatch(page);
+  app.delayTakeoverResponse();
+  await confirmRowTakeover(page);
+  await page.getByRole("button", { name: "Close dialog" }).click();
+  await expect(page.getByRole("dialog")).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(page.getByRole("dialog")).toBeVisible();
+  await app.releaseTakeoverResponse();
+  await expect(
+    page.getByRole("button", {
+      name: "Run Agent for SMARTSTO-102",
+      exact: true,
+    }),
+  ).toBeVisible();
+  await page
+    .getByRole("button", { name: "Run Agent for SMARTSTO-102", exact: true })
+    .click();
+  await expect
+    .poll(() => app.writes.filter((item) => item.path === "/api/runs").length)
+    .toBe(2);
+  const newerId = app.writes.filter((item) => item.path === "/api/runs")[1].body
+    .requestId;
+  await page.reload();
+  expect(
+    await page.evaluate(
+      () =>
+        JSON.parse(
+          sessionStorage.getItem("agent-desk:last-bulk-run:v1") || "null",
+        ).id,
+    ),
+  ).toBe(newerId);
+});
+
+test("delayed takeover release cannot overwrite a newer saved batch identity", async ({
+  page,
+}) => {
+  const app = await takeoverBatch(page);
+  app.delayTakeoverResponse();
+  await confirmRowTakeover(page);
+  const newer = { id: "newer-recorded-batch", concurrency: 2 };
+  await page.evaluate(
+    (saved) =>
+      sessionStorage.setItem(
+        "agent-desk:last-bulk-run:v1",
+        JSON.stringify(saved),
+      ),
+    newer,
+  );
+  const readsBeforeRelease = app.reads();
+  await app.releaseTakeoverResponse();
+  await expect(page.locator(".execution-tracking")).toHaveAttribute(
+    "aria-busy",
+    "false",
+  );
+  expect(
+    await page.evaluate(() =>
+      JSON.parse(
+        sessionStorage.getItem("agent-desk:last-bulk-run:v1") || "null",
+      ),
+    ),
+  ).toEqual(newer);
+  expect(app.reads()).toBe(readsBeforeRelease);
+  expect(
+    app.writes.filter((item) => item.path.endsWith("/takeover")),
+  ).toHaveLength(1);
+  expect(app.writes.filter((item) => item.path === "/api/runs")).toHaveLength(
+    1,
+  );
+  await page.reload();
+  await expect(
+    page.getByText("Run batch not found.", { exact: true }),
+  ).toBeVisible();
+  expect(
+    await page.evaluate(() =>
+      JSON.parse(
+        sessionStorage.getItem("agent-desk:last-bulk-run:v1") || "null",
+      ),
+    ),
+  ).toEqual(newer);
 });

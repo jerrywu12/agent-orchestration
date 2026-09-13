@@ -237,19 +237,32 @@ export class RunCoordinator {
         reportingReadyAt: timestamp(e.reportingReadyAt),
         stale: stale(e),
       };
-      if (!["running", "already_running"].includes(row.status))
+      const followsExecution = [
+        "running",
+        "already_running",
+        "needs_takeover",
+      ].includes(row.status);
+      if (
+        !followsExecution ||
+        (row.status === "needs_takeover" && !e.releasedAt)
+      )
         return { ...row, telemetry };
       const status = !e.releasedAt
         ? row.status
-        : e.state === "awaiting_review"
-          ? "awaiting_review"
-          : e.state === "checkpointed"
-            ? "checkpointed"
-            : "failed";
+        : e.state === "revoked"
+          ? "claim_released"
+          : e.state === "awaiting_review"
+            ? "awaiting_review"
+            : e.state === "checkpointed"
+              ? "checkpointed"
+              : "failed";
       return {
         ...row,
         status,
-        message: telemetry.summary || row.message,
+        message:
+          status === "claim_released"
+            ? "Prior claim released; saved work is preserved. Use Run Agent to continue."
+            : telemetry.summary || row.message,
         telemetry,
       };
     });

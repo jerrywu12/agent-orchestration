@@ -19,3 +19,12 @@
 ## Verification and delivery
 
 Focused RED/GREEN, complete backend/UI/build results, independent exact-head approval and CI are recorded with the PR. Deploy only after those gates, preserve a consistent database backup and all unrelated claims, then record the installed SHA and live non-mutating action proof on the implementation ticket.
+
+Local source receipts (Node 22.22; private logs under `~/.local/state/agent-efficiency/logs/`):
+
+- Pre-fix backend RED: `run-0x6e3n45.log`; expected claim_released, actual needs_takeover. Direct-action DOM RED: `run-ir4jny3p.log`; released-claim attention RED: `run-es0ibkwq.log`.
+- Full backend: 249/249 passed, `run-lkrythvc.log`, including real HTTP takeover with synthetic claims and separate explicit dispatch.
+- Production TypeScript/Vite build passed, `run-smaszroo.log`.
+- Full scripted DOM suite: 73/73 passed, `run-1pbmyczs.log`. Covers direct action, lost responses plus failed refresh, exact-claim protection, idle/active/Done review text, actual delayed callback fencing and existing intake/archive/progress/mobile journeys. No screenshots or real provider launches.
+
+These receipts establish source behavior. The release PR and AGENT-7 carry subsequent exact-head review, CI, installed-runtime and preservation evidence.

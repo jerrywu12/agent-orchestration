@@ -4540,3 +4540,20 @@ progress::-moz-progress-bar {
     animation: none;
   }
 }
+
+.takeover-dialog-body {
+  padding: 0 24px 24px;
+  max-height: 70vh;
+  overflow-y: auto;
+}
+.takeover-dialog-body .execution-tracking {
+  margin-top: 0;
+  padding-top: 0;
+  border-top: 0;
+}
+.bulk-results .review-activity-note {
+  padding: 8px 12px;
+  border-left: 2px solid var(--line);
+  color: var(--muted);
+  background: var(--surface);
+}
