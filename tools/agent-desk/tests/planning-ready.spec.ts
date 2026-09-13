@@ -84,7 +84,7 @@ test("stale confirmation retains modal and cannot report a successful start", as
   expect(f.state.tickets[0].stageId).toBe("backlog");
 });
 
-test("queued admission survives reload and disables duplicate Start in details", async ({ page }) => {
+test("queued admission survives reload without exposing duplicate Start in details", async ({ page }) => {
   const f = await fixture(page, { outcome: "queued" });
   await page.getByRole("combobox", { name: "Stage for PLAN-1" }).selectOption("ready");
   const confirm = page.getByRole("dialog", { name: "Move to Ready" });
@@ -95,19 +95,20 @@ test("queued admission survives reload and disables duplicate Start in details",
   await expect(page.getByRole("article", { name: "PLAN-1 Prepare synthetic feature" })).toContainText("Queued");
   await page.getByRole("button", { name: f.state.tickets[0].title, exact: true }).click();
   const detail = page.getByRole("dialog", { name: "PLAN-1" });
-  await expect(detail.getByRole("status").filter({ hasText: "Queued: agent is busy" })).toBeVisible();
-  await expect(detail.getByRole("button", { name: "Start agent", exact: true })).toBeDisabled();
+  await expect(detail.getByRole("status").filter({ hasText: "Queued: agent is busy" })).toHaveCount(0);
+  expect(f.state.tickets[0].launchIntent).toMatchObject({ status: "queued", reason: "agent is busy" });
+  await expect(detail.getByRole("button", { name: "Start agent", exact: true })).toHaveCount(0);
   expect(f.writes).toHaveLength(1);
 });
 
-test("details require saving all six preparation fields before planning confirmation", async ({ page }) => {
+test("details require saving visible edits before planning confirmation", async ({ page }) => {
   const f = await fixture(page);
   await page.getByRole("button", { name: f.state.tickets[0].title, exact: true }).click();
   const detail = page.getByRole("dialog");
-  for (const label of ["Specification", "Acceptance criteria", "Scope", "Verification plan", "Allowed paths", "Shared resources"]) await expect(detail.getByRole("textbox", { name: label, exact: true })).toBeVisible();
-  await detail.getByRole("textbox", { name: "Specification", exact: true }).fill("specs/revised.md");
+  for (const label of ["Specification", "Acceptance criteria", "Scope", "Verification plan", "Allowed paths", "Shared resources"]) await expect(detail.getByRole("textbox", { name: label, exact: true })).toHaveCount(0);
+  await detail.getByRole("textbox", { name: "Description", exact: true }).fill("Revised request for the planning agent.");
   await detail.getByRole("combobox", { name: "Stage", exact: true }).selectOption("planning");
-  await expect(detail.getByRole("alert").filter({ hasText: "Save your preparation changes" })).toBeVisible();
+  await expect(detail.getByRole("alert").filter({ hasText: "Save your changes" })).toBeVisible();
   expect(f.writes).toEqual([]);
   await detail.getByRole("button", { name: "Save changes" }).click();
   await expect(detail.getByText("Changes saved.", { exact: true })).toBeVisible();
@@ -116,7 +117,8 @@ test("details require saving all six preparation fields before planning confirma
   await dialog.getByLabel("Planning agent").selectOption("codex");
   await dialog.getByRole("button", { name: "Confirm and start planning" }).click();
   await expect(page.getByRole("dialog", { name: "PLAN-1" }).getByRole("status").filter({ hasText: "Planning agent started." })).toBeVisible();
-  await expect(page.getByText("Active local session · planning", { exact: true })).toBeVisible();
+  expect(f.state.tickets[0].execution).toMatchObject({ purpose: "planning", state: "running" });
+  expect(f.state.tickets[0].brief).toEqual(brief);
   expect(f.writes.at(-1)?.body).toMatchObject({ stageId: "planning", ownerId: "codex", confirmed: true, version: 8 });
 });
 

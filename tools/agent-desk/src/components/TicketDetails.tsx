@@ -1,20 +1,5 @@
 import { useEffect, useState, type FormEvent } from "react";
-import {
-  AlertTriangle,
-  Archive,
-  ArrowRightLeft,
-  Check,
-  Clock3,
-  ExternalLink,
-  GitBranch,
-  Github,
-  GitPullRequest,
-  MessageSquare,
-  Play,
-  RefreshCw,
-  Save,
-  Square,
-} from "lucide-react";
+import { AlertTriangle, Archive, Check, Save } from "lucide-react";
 import { api, ApiError, errorMessage, pathId } from "../api";
 import type {
   DeskState,
@@ -23,26 +8,20 @@ import type {
   Ticket,
   TicketDraft,
 } from "../types";
-import { ActivityFeed } from "./ActivityFeed";
-import { ReconcileSessions } from "./ReconcileSessions";
 import { TicketDocuments } from "./DocumentAttachments";
-import { BriefFields, WorkflowBrief } from "./WorkflowBrief";
-import { emptyBrief } from "../intake";
-import { ExecutionTracking } from "./ExecutionTracking";
 import {
-  AgentAvatar,
   capitalize,
   ErrorNotice,
   isActive,
-  isStale,
   Modal,
   priorities,
-  safeUrl,
   ticketKey,
-  timeAgo,
 } from "./shared";
 
-function draftFrom(ticket: Ticket): TicketDraft {
+// Agent preparation stays server-owned; ordinary edits must never resubmit it.
+type DetailDraft = Omit<TicketDraft, "brief">;
+
+function draftFrom(ticket: Ticket): DetailDraft {
   return {
     title: ticket.title,
     description: ticket.description || "",
@@ -53,13 +32,11 @@ function draftFrom(ticket: Ticket): TicketDraft {
     parentId: ticket.parentId || null,
     dependsOn: ticket.dependsOn || [],
     blockedReason: ticket.blockedReason || "",
-    brief: { ...emptyBrief(), ...ticket.brief },
   };
 }
 export function TicketDetails({
   ticket,
   state,
-  integrations,
   onClose,
   refresh,
   onOpen,
@@ -82,10 +59,6 @@ export function TicketDetails({
   const [conflict, setConflict] = useState(false);
   const [busy, setBusy] = useState("");
   const [notice, setNotice] = useState("");
-  const [comment, setComment] = useState("");
-  const [handoff, setHandoff] = useState(false);
-  const [handoffOwner, setHandoffOwner] = useState("");
-  const [handoffSummary, setHandoffSummary] = useState("");
   const [confirmDiscard, setConfirmDiscard] = useState(false);
   useEffect(() => {
     if (!dirty && ticket.version >= version) {
@@ -93,14 +66,14 @@ export function TicketDetails({
       setVersion(ticket.version);
     }
   }, [ticket.version, dirty]);
-  function change<K extends keyof TicketDraft>(key: K, value: TicketDraft[K]) {
+  function change<K extends keyof DetailDraft>(key: K, value: DetailDraft[K]) {
     setDraft((current) => ({ ...current, [key]: value }));
     setDirty(true);
     setNotice("");
   }
   function close() {
     if (busy) return;
-    if (dirty || comment.trim()) setConfirmDiscard(true);
+    if (dirty) setConfirmDiscard(true);
     else onClose();
   }
   async function perform(
@@ -149,42 +122,7 @@ export function TicketDetails({
   const stages = state.stages
     .filter((item) => item.projectId === ticket.projectId)
     .sort((a, b) => a.position - b.position);
-  const owner = state.agents.find((item) => item.id === ticket.ownerId);
-  const execution = ticket.execution;
-  const active = isActive(execution);
-  const stale = isStale(execution);
-  const availability = integrations?.agents.find(
-    (item) => item.id === ticket.ownerId,
-  );
-  const stage = stages.find((item) => item.id === ticket.stageId);
-  const unresolvedDependencies = (ticket.dependsOn || []).some((id) => {
-    const dependency = state.tickets.find((item) => item.id === id);
-    return (
-      !dependency ||
-      state.stages.find((item) => item.id === dependency.stageId)?.role !==
-        "done"
-    );
-  });
-  const resolvesBlockers =
-    !!ticket.blockedReason ||
-    unresolvedDependencies ||
-    stage?.role === "backlog";
-  const startReason =
-    ticket.launchIntent?.status === "queued"
-      ? "This confirmed launch is queued for the selected agent."
-      : dirty
-        ? "Save your changes before starting an agent."
-        : !owner
-          ? "Assign an owner to start this ticket."
-          : ticket.archived
-            ? "Restore this ticket before starting."
-            : stage?.role === "done"
-              ? "Move this ticket out of Done before starting."
-              : !owner.enabled
-                ? "This agent is disabled. Enable it in Agents."
-                : availability?.available === false
-                  ? availability.reason || "This agent cannot start locally."
-                  : null;
+  const active = isActive(ticket.execution);
   const links = state.tickets.filter(
     (item) => item.projectId === ticket.projectId && item.id !== ticket.id,
   );
@@ -277,7 +215,7 @@ export function TicketDetails({
                   ) {
                     if (dirty) {
                       setError(
-                        "Save your preparation changes before moving to Planning or Ready.",
+                        "Save your changes before moving to Planning or Ready.",
                       );
                       return;
                     }
@@ -346,8 +284,7 @@ export function TicketDetails({
           </div>
           {active && (
             <p className="field-hint">
-              The active executor retains ownership. Checkpoint and release the
-              session before a handoff.
+              This ticket is being worked on. Its owner cannot be changed yet.
             </p>
           )}
           <label className="detail-label">
@@ -359,11 +296,6 @@ export function TicketDetails({
               placeholder="Add background and useful links…"
             />
           </label>
-          <BriefFields
-            value={draft.brief}
-            onChange={(value) => change("brief", value)}
-            disabled={!!busy}
-          />
           <details className="detail-disclosure">
             <summary>
               Relationships & blockers{" "}
@@ -434,402 +366,6 @@ export function TicketDetails({
             {ticket.resumeReason}
           </p>
         )}
-        <WorkflowBrief
-          ticket={{ ...ticket, ...draft }}
-          state={state}
-          unsaved={dirty}
-        />
-        <section className="detail-section">
-          <div className="section-title">
-            <h3>Agent execution</h3>
-            {execution && (
-              <span
-                className={`status-chip ${stale ? "warning" : active ? "active" : ""}`}
-              >
-                {stale ? "Heartbeat stale" : execution.state}
-              </span>
-            )}
-          </div>
-          {ticket.launchIntent && ticket.launchIntent.status !== "started" && (
-            <p className="field-hint" role="status">
-              {ticket.launchIntent.status === "queued"
-                ? "Queued"
-                : "Launch failed"}
-              :{" "}
-              {ticket.launchIntent.reason ||
-                (ticket.launchIntent.status === "queued"
-                  ? "Waiting for the selected agent to become available."
-                  : "Open the stage confirmation to retry.")}
-            </p>
-          )}
-          {ticket.launchIntent?.status === "failed" &&
-            stage &&
-            ["planning", "ready"].includes(stage.role) &&
-            !active && (
-              <button
-                className="button small-button"
-                disabled={dirty || !!busy}
-                onClick={() => onTransition(ticket, stage)}
-              >
-                Retry launch confirmation
-              </button>
-            )}
-          <div className="execution-owner">
-            <AgentAvatar agent={owner} />
-            <div>
-              <strong>{owner?.name || "No owner assigned"}</strong>
-              <span>
-                {active
-                  ? execution?.external
-                    ? "Externally managed session"
-                    : execution?.purpose === "planning"
-                      ? "Active local session · planning"
-                      : execution?.purpose === "resolve_blockers"
-                        ? "Active local session · blocker resolution"
-                        : execution?.purpose === "implementation"
-                          ? "Active local session · implementation"
-                          : "Active local session"
-                  : stage?.role === "planning"
-                    ? "Start planning · specification and task breakdown"
-                    : resolvesBlockers
-                      ? "Explicit start · blocker resolution"
-                      : "Explicit start · implementation"}
-              </span>
-            </div>
-            {active ? (
-              <button
-                className="button small-button danger"
-                disabled={!!busy || !!execution?.external}
-                onClick={() =>
-                  void perform(
-                    "stop",
-                    () => api(`/tickets/${pathId(ticket.id)}/stop`, "POST"),
-                    "Stop request recorded.",
-                  )
-                }
-              >
-                <Square size={12} />
-                {busy === "stop" ? "Stopping…" : "Stop"}
-              </button>
-            ) : (
-              <button
-                className="button primary small-button"
-                disabled={!!busy || !!startReason}
-                title={startReason || undefined}
-                onClick={() =>
-                  void perform(
-                    "start",
-                    () => api(`/tickets/${pathId(ticket.id)}/start`, "POST"),
-                    resolvesBlockers
-                      ? "Blocker-resolution agent started."
-                      : "Agent started.",
-                  )
-                }
-              >
-                <Play size={13} />
-                {busy === "start" ? "Starting…" : "Start agent"}
-              </button>
-            )}
-          </div>
-          {startReason && !active && (
-            <p className="field-hint">{startReason}</p>
-          )}
-          {resolvesBlockers && !active && (
-            <p className="resolver-start-note">
-              Start runs blocker resolution for this ticket. The assigned agent
-              can inspect dependency context, update its own ticket and create
-              subtasks. Starting does not clear blockers or dependencies
-              automatically.
-            </p>
-          )}
-          {execution?.external && active && (
-            <p className="field-hint">
-              This session was started outside Agent Desk. Stop or checkpoint it
-              in its original agent client, or inspect the execution trace below
-              if that client cannot be found.
-            </p>
-          )}
-          {execution && (
-            <div className="execution-details">
-              {execution.summary && <p>{execution.summary}</p>}
-              {typeof execution.progress === "number" && (
-                <div className="progress-line">
-                  <progress
-                    max="100"
-                    value={Math.max(0, Math.min(100, execution.progress))}
-                    aria-label="Reported progress"
-                  />
-                  <span>{execution.progress}% reported</span>
-                </div>
-              )}
-              <div className="execution-facts">
-                <span title={execution.heartbeatAt || undefined}>
-                  <Clock3 size={13} />
-                  Heartbeat {timeAgo(execution.heartbeatAt)}
-                </span>
-                {execution.branch && (
-                  <span title={execution.branch}>
-                    <GitBranch size={13} />
-                    {execution.branch}
-                  </span>
-                )}
-                {safeUrl(execution.prUrl) && (
-                  <a
-                    href={safeUrl(execution.prUrl)}
-                    target="_blank"
-                    rel="noreferrer"
-                  >
-                    <GitPullRequest size={13} />
-                    Pull request
-                    <ExternalLink size={11} />
-                  </a>
-                )}
-              </div>
-              {stale && (
-                <p className="warning-text">
-                  No recent heartbeat. Inspect the execution trace below to
-                  locate the prior session or review an explicit takeover.
-                </p>
-              )}
-              <details className="session-reference">
-                <summary>Session reference</summary>
-                <dl>
-                  <dt>Session</dt>
-                  <dd>{execution.sessionId}</dd>
-                  <dt>Execution</dt>
-                  <dd>{execution.id}</dd>
-                  {execution.worktreePath && (
-                    <>
-                      <dt>Worktree</dt>
-                      <dd>{execution.worktreePath}</dd>
-                    </>
-                  )}
-                  {execution.headSha && (
-                    <>
-                      <dt>Head</dt>
-                      <dd>{execution.headSha}</dd>
-                    </>
-                  )}
-                </dl>
-              </details>
-            </div>
-          )}
-          <ExecutionTracking
-            key={`${ticket.id}:${execution?.id || "none"}`}
-            ticketId={ticket.id}
-            executionId={execution?.id}
-            disabled={!!busy || dirty}
-            refresh={refresh}
-          />
-          {execution?.external && active && (
-            <ReconcileSessions
-              execution={execution}
-              disabled={!!busy || dirty}
-              refresh={refresh}
-            />
-          )}
-          <button
-            className="text-button"
-            type="button"
-            aria-expanded={handoff}
-            onClick={() => setHandoff(!handoff)}
-          >
-            <ArrowRightLeft size={13} />
-            Record a handoff
-          </button>
-          {handoff && (
-            <div className="handoff-form">
-              <label>
-                Next owner
-                <select
-                  value={handoffOwner}
-                  onChange={(event) => setHandoffOwner(event.target.value)}
-                >
-                  <option value="">Choose an agent</option>
-                  {state.agents
-                    .filter((agent) => agent.id !== ticket.ownerId)
-                    .map((agent) => (
-                      <option key={agent.id} value={agent.id}>
-                        {agent.name}
-                      </option>
-                    ))}
-                </select>
-              </label>
-              <label>
-                Checkpoint summary
-                <textarea
-                  rows={3}
-                  value={handoffSummary}
-                  onChange={(event) => setHandoffSummary(event.target.value)}
-                  placeholder="Completed work, current state, and the next step…"
-                />
-              </label>
-              {active && (
-                <p className="field-hint">
-                  Release the current execution before handing off.
-                </p>
-              )}
-              <button
-                className="button small-button"
-                disabled={
-                  !!busy ||
-                  active ||
-                  dirty ||
-                  !handoffOwner ||
-                  !handoffSummary.trim()
-                }
-                onClick={() =>
-                  void perform(
-                    "handoff",
-                    async () => {
-                      await api(
-                        `/tickets/${pathId(ticket.id)}/handoff`,
-                        "POST",
-                        {
-                          ownerId: handoffOwner,
-                          summary: handoffSummary.trim(),
-                        },
-                      );
-                      setHandoff(false);
-                      setHandoffSummary("");
-                    },
-                    "Handoff recorded.",
-                  )
-                }
-              >
-                <ArrowRightLeft size={13} />
-                Confirm handoff
-              </button>
-            </div>
-          )}
-        </section>
-        <section className="detail-section">
-          <div className="section-title">
-            <h3>
-              <Github size={15} />
-              GitHub
-            </h3>
-            {ticket.github?.syncState && (
-              <span
-                className={`status-chip ${ticket.github.error || ticket.github.conflict ? "warning" : ""}`}
-              >
-                {ticket.github.syncState}
-              </span>
-            )}
-          </div>
-          {safeUrl(ticket.github?.url) ? (
-            <a
-              className="github-link"
-              href={safeUrl(ticket.github?.url)}
-              target="_blank"
-              rel="noreferrer"
-            >
-              {project?.repo} #{ticket.github?.number}
-              <ExternalLink size={13} />
-            </a>
-          ) : (
-            <div className="github-empty">
-              <p>
-                {project?.repo
-                  ? "This ticket has not been published to GitHub."
-                  : "Connect a GitHub repository in project settings to publish this ticket."}
-              </p>
-              {project?.repo && (
-                <button
-                  className="button small-button"
-                  disabled={!!busy || dirty}
-                  onClick={() =>
-                    void perform(
-                      "publish",
-                      () =>
-                        api(`/tickets/${pathId(ticket.id)}/publish`, "POST"),
-                      "GitHub issue published.",
-                    )
-                  }
-                >
-                  <Github size={13} />
-                  {busy === "publish" ? "Publishing…" : "Publish issue"}
-                </button>
-              )}
-            </div>
-          )}
-          {ticket.github?.dirty && (
-            <p className="field-hint">Local changes are waiting to sync.</p>
-          )}
-          {ticket.github?.error && (
-            <ErrorNotice>{ticket.github.error}</ErrorNotice>
-          )}
-          {ticket.github?.conflict ? (
-            <div className="github-conflict">
-              <p>
-                <AlertTriangle size={14} />
-                Both this ticket and GitHub changed. Choose which version to
-                keep.
-              </p>
-              <details>
-                <summary>Review conflict</summary>
-                <pre>
-                  {typeof ticket.github.conflict === "string"
-                    ? ticket.github.conflict
-                    : JSON.stringify(ticket.github.conflict, null, 2)}
-                </pre>
-              </details>
-              <div className="button-row">
-                <button
-                  className="button small-button"
-                  disabled={!!busy || dirty}
-                  onClick={() =>
-                    void perform(
-                      "resolve",
-                      () =>
-                        api(`/tickets/${pathId(ticket.id)}/resolve`, "POST", {
-                          choice: "local",
-                        }),
-                      "Local version selected.",
-                    )
-                  }
-                >
-                  Keep local version
-                </button>
-                <button
-                  className="button small-button"
-                  disabled={!!busy || dirty}
-                  onClick={() =>
-                    void perform(
-                      "resolve",
-                      () =>
-                        api(`/tickets/${pathId(ticket.id)}/resolve`, "POST", {
-                          choice: "remote",
-                        }),
-                      "GitHub version selected.",
-                    )
-                  }
-                >
-                  Use GitHub version
-                </button>
-              </div>
-            </div>
-          ) : null}
-          {ticket.github && project && (
-            <button
-              className="text-button"
-              disabled={!!busy}
-              onClick={() =>
-                void perform(
-                  "sync",
-                  () =>
-                    api(`/projects/${pathId(project.id)}/sync`, "POST", {
-                      direction: "both",
-                    }),
-                  "Project sync queued.",
-                )
-              }
-            >
-              <RefreshCw size={13} />
-              Sync project
-            </button>
-          )}
-        </section>
         {state.tickets.some((item) => item.parentId === ticket.id) && (
           <section className="detail-section">
             <h3>Child tickets</h3>
@@ -852,89 +388,6 @@ export function TicketDetails({
               ))}
           </section>
         )}
-        <section className="detail-section">
-          <div className="section-title">
-            <h3>Activity</h3>
-            <span className="muted small">
-              {
-                state.activity.filter((item) => item.ticketId === ticket.id)
-                  .length
-              }{" "}
-              updates
-            </span>
-          </div>
-          <form
-            className="comment-form"
-            onSubmit={(event) => {
-              event.preventDefault();
-              void perform(
-                "comment",
-                async () => {
-                  await api(`/tickets/${pathId(ticket.id)}/comments`, "POST", {
-                    summary: comment.trim(),
-                  });
-                  setComment("");
-                },
-                "Comment added.",
-              );
-            }}
-          >
-            <label className="sr-only" htmlFor="new-comment">
-              Add a comment
-            </label>
-            <textarea
-              id="new-comment"
-              rows={2}
-              placeholder="Add an update or leave a note…"
-              value={comment}
-              onChange={(event) => setComment(event.target.value)}
-            />
-            <button
-              className="button small-button"
-              disabled={!!busy || !comment.trim()}
-            >
-              <MessageSquare size={13} />
-              {busy === "comment" ? "Posting…" : "Comment"}
-            </button>
-          </form>
-          <ActivityFeed
-            compact
-            items={state.activity.filter((item) => item.ticketId === ticket.id)}
-            state={state}
-          />
-        </section>
-        <section className="detail-section" aria-label="Stage history">
-          <h3>Stage history</h3>
-          <p className="muted small">
-            Recorded by Agent Desk · times shown in your local timezone.
-          </p>
-          {ticket.stageHistory?.length ? (
-            <ol className="stage-history">
-              {ticket.stageHistory.map((move, index) => (
-                <li key={`${move.at}-${index}`}>
-                  <span>
-                    {move.fromStageId
-                      ? `${move.fromStageName || move.fromStageId} → `
-                      : "First recorded in "}
-                    {move.toStageName || move.toStageId}
-                  </span>
-                  <time dateTime={move.at} title={move.at}>
-                    {new Date(move.at).toLocaleString()}
-                  </time>
-                </li>
-              ))}
-            </ol>
-          ) : (
-            <p className="muted small">
-              Earlier stage timestamps are unknown. Future moves will be
-              recorded here.
-            </p>
-          )}
-        </section>
-        <p className="detail-timestamps">
-          Created {timeAgo(ticket.createdAt)} · Updated{" "}
-          {timeAgo(ticket.updatedAt)}
-        </p>
       </div>
       <div className="drawer-footer">
         <button

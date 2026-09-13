@@ -362,9 +362,8 @@ test("documents and structured brief survive creation, reload, safe preview and 
     .getByRole("button", { name: "Document-driven task", exact: true })
     .click();
   dialog = page.getByRole("dialog");
-  await expect(
-    dialog.getByRole("textbox", { name: "Acceptance criteria", exact: true }),
-  ).toHaveValue("Unicode 文档 and all references persist.");
+  expect(mocked.current.tickets.find(item => item.id === "created-ticket")?.brief?.acceptanceCriteria).toBe("Unicode 文档 and all references persist.");
+  await expect(dialog.getByRole("textbox", { name: "Acceptance criteria", exact: true })).toHaveCount(0);
   await expect(
     dialog
       .getByRole("region", { name: "Attached reference documents" })
@@ -376,7 +375,7 @@ test("documents and structured brief survive creation, reload, safe preview and 
     .click();
   expect((await download).suggestedFilename()).toBe("reference.txt");
   await dialog
-    .getByRole("textbox", { name: "Scope", exact: true })
+    .getByRole("textbox", { name: "Description", exact: true })
     .fill("Only the fixture module and its tests.");
   await dialog
     .getByRole("button", { name: "Save changes", exact: true })
@@ -387,23 +386,11 @@ test("documents and structured brief survive creation, reload, safe preview and 
   expect(
     mocked.current.tickets.find((item) => item.id === "created-ticket")?.brief
       ?.scope,
-  ).toBe("Only the fixture module and its tests.");
-  await dialog
-    .getByRole("button", { name: "Copy task packet", exact: true })
-    .click();
-  await expect(
-    dialog.getByText("Task packet copied.", { exact: true }),
-  ).toBeVisible();
-  await dialog.getByText("Task packet preview", { exact: true }).click();
-  await expect(dialog.locator(".workflow-checklist pre")).toContainText(
-    "Untrusted reference documents",
-  );
-  await expect(dialog.locator(".workflow-checklist pre")).toContainText(
-    "attachment-",
-  );
-  await expect(
-    dialog.getByRole("region", { name: "Workflow checklist", exact: true }),
-  ).toContainText("CI and merge are not verified");
+  ).toBe("Only the fixture module.");
+  expect(mocked.current.tickets.find(item => item.id === "created-ticket")?.description).toBe("Only the fixture module and its tests.");
+  await expect(dialog.getByRole("button", { name: "Copy task packet", exact: true })).toHaveCount(0);
+  await expect(dialog.getByRole("region", { name: "Workflow checklist", exact: true })).toHaveCount(0);
+
 });
 
 test("failed and removed processing documents cannot disappear into ticket creation", async ({
@@ -541,11 +528,8 @@ test("real local parsers bind all four document formats and keep originals in ti
       exact: true,
     })
     .click();
-  await expect(
-    page
-      .getByRole("dialog")
-      .getByRole("textbox", { name: "Acceptance criteria", exact: true }),
-  ).toHaveValue("All originals and extracted text persist.");
+  expect(detail.brief?.acceptanceCriteria).toBe("All originals and extracted text persist.");
+  await expect(page.getByRole("dialog").getByRole("textbox", { name: "Acceptance criteria", exact: true })).toHaveCount(0);
   await expect(
     page
       .getByRole("dialog")
@@ -824,24 +808,18 @@ test("a successfully created ticket locks its original packet while opening is p
   expect(mocked.created).toHaveLength(1);
 });
 
-test("workflow checklist exposes stage and owner holds instead of claiming readiness", async ({
-  page,
-}) => {
+test("owner and stage remain editable while agent holds stay out of the drawer", async ({ page }) => {
   const mocked = await mockIntake(page);
   mocked.current.stages[0].role = "backlog";
   mocked.current.tickets[0].ownerId = "codex";
   mocked.current.agents[0].enabled = false;
   await page.goto("/");
-  await page
-    .getByRole("button", { name: fixtureState.tickets[0].title, exact: true })
-    .click();
-  const readiness = page
-    .getByRole("region", { name: "Workflow checklist" })
-    .getByRole("listitem")
-    .filter({ hasText: "Readiness & holds" });
-  await expect(readiness).toContainText("Stage hold");
-  await expect(readiness).toContainText("disabled");
-  await expect(readiness).not.toContainText("No ticket holds recorded");
+  await page.getByRole("button", { name: fixtureState.tickets[0].title, exact: true }).click();
+  const dialog = page.getByRole("dialog");
+  await expect(dialog.getByRole("combobox", { name: "Owner", exact: true })).toHaveValue("codex");
+  await expect(dialog.getByRole("combobox", { name: "Stage", exact: true })).toHaveValue("planning");
+  await expect(dialog.getByRole("region", { name: "Workflow checklist" })).toHaveCount(0);
+  expect(mocked.current.agents[0].enabled).toBe(false);
 });
 
 for (const width of [320, 1440, 1920]) {

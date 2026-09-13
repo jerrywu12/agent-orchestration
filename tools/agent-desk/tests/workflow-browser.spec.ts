@@ -247,55 +247,20 @@ test("workflow settings are fixed and GitHub status discovery is read-only", asy
   expect(fixture.writes[0].body).not.toHaveProperty("stageMapping");
 });
 
-test("an assigned blocked Backlog ticket can explicitly start a resolver without clearing its blocker", async ({
-  page,
-}) => {
+test("an assigned blocked Backlog ticket keeps its blocker and delegates starts to board controls", async ({ page }) => {
   const fixture = await mockWorkflow(page);
   await page.goto("/");
-  await page
-    .getByRole("button", { name: fixture.state.tickets[0].title, exact: true })
-    .click();
+  await page.getByRole("button", { name: fixture.state.tickets[0].title, exact: true }).click();
   const dialog = page.getByRole("dialog");
-  await expect(
-    dialog.getByRole("button", { name: "Start agent", exact: true }),
-  ).toBeEnabled();
-  await expect(dialog.getByText(/Start runs blocker resolution/)).toBeVisible();
-  await expect(
-    dialog.getByText(/does not clear blockers or dependencies automatically/),
-  ).toBeVisible();
-  await dialog
-    .getByRole("button", { name: "Start agent", exact: true })
-    .click();
-  await expect(
-    dialog.getByText("Active local session · blocker resolution", {
-      exact: true,
-    }),
-  ).toBeVisible();
-  expect(fixture.writes).toEqual([
-    { path: "/api/tickets/ticket/start", body: {} },
-  ]);
-  expect(fixture.state.tickets[0].blockedReason).toBe(
-    "Dependency needs a decision",
-  );
-  await expect(
-    dialog.getByRole("button", { name: "Stop", exact: true }),
-  ).toBeEnabled();
-  await dialog
-    .getByRole("button", { name: "Copy task packet", exact: true })
-    .click();
-  await expect(
-    dialog.getByText("Task packet copied.", { exact: true }),
-  ).toBeVisible();
-  await dialog.getByText("Task packet preview", { exact: true }).click();
-  await expect(dialog.locator(".workflow-checklist pre")).toContainText(
-    "Execution purpose: resolve_blockers",
-  );
-  await expect(dialog.locator(".workflow-checklist pre")).toContainText(
-    "desk_get_resolution_context, desk_update_task and desk_create_subtask",
-  );
-  await expect(dialog.locator(".workflow-checklist pre")).toContainText(
-    "Explicit blocker resolution does not grant implementation admission or clear holds",
-  );
+  await expect(dialog.getByRole("button", { name: "Start agent", exact: true })).toHaveCount(0);
+  await expect(dialog.getByRole("button", { name: "Copy task packet", exact: true })).toHaveCount(0);
+  await dialog.locator("summary").filter({ hasText: "Relationships & blockers" }).click();
+  await expect(dialog.getByLabel("Blocker", { exact: true })).toHaveValue("Dependency needs a decision");
+  expect(fixture.state.tickets[0].dependsOn).toEqual(["dependency"]);
+  expect(fixture.writes).toEqual([]);
+  await dialog.getByRole("button", { name: "Close dialog", exact: true }).click();
+  await page.getByLabel("Select ticket SMARTSTO-20").check();
+  await expect(page.getByRole("button", { name: "Run Agent", exact: true })).toBeEnabled();
 });
 
 test("capacity shows observed windows, reset times and unavailable limits separately from launchers", async ({
@@ -407,34 +372,18 @@ test("initial capacity errors remain unavailable and an explicit refresh recover
 });
 
 for (const reason of ["backlog", "dependency", "implementation"]) {
-  test(`Start describes ${reason} execution from the current saved ticket`, async ({
-    page,
-  }) => {
+  test(`the ${reason} ticket drawer does not expose agent execution details`, async ({ page }) => {
     const fixture = await mockWorkflow(page);
     fixture.state.tickets[0].blockedReason = null;
-    fixture.state.tickets[0].stageId =
-      reason === "backlog" ? "stage-0" : "stage-2";
-    fixture.state.tickets[0].dependsOn =
-      reason === "dependency" ? ["dependency"] : [];
+    fixture.state.tickets[0].stageId = reason === "backlog" ? "stage-0" : "stage-2";
+    fixture.state.tickets[0].dependsOn = reason === "dependency" ? ["dependency"] : [];
     await page.goto("/");
-    await page
-      .getByRole("button", {
-        name: fixture.state.tickets[0].title,
-        exact: true,
-      })
-      .click();
+    await page.getByRole("button", { name: fixture.state.tickets[0].title, exact: true }).click();
     const dialog = page.getByRole("dialog");
-    await expect(
-      dialog.getByRole("button", { name: "Start agent", exact: true }),
-    ).toBeEnabled();
-    await expect(
-      dialog.getByText(
-        reason === "implementation"
-          ? "Explicit start · implementation"
-          : "Explicit start · blocker resolution",
-        { exact: true },
-      ),
-    ).toBeVisible();
+    await expect(dialog.getByRole("button", { name: "Start agent", exact: true })).toHaveCount(0);
+    await expect(dialog.getByText(/Explicit start/)).toHaveCount(0);
+    await expect(dialog.getByRole("combobox", { name: "Stage", exact: true })).toHaveValue(fixture.state.tickets[0].stageId);
+    expect(fixture.writes).toEqual([]);
   });
 }
 
@@ -461,8 +410,9 @@ test("an existing external claim keeps its exact session and prevents a second S
   ).toHaveCount(0);
   await expect(
     dialog.getByRole("button", { name: "Stop", exact: true }),
-  ).toBeDisabled();
-  await expect(dialog).toContainText("external-held-session");
+  ).toHaveCount(0);
+  await expect(dialog).not.toContainText("external-held-session");
+  expect(fixture.state.tickets[0].execution?.sessionId).toBe("external-held-session");
   expect(fixture.writes).toHaveLength(0);
 });
 
@@ -474,7 +424,7 @@ for (const hold of [
   "launcher",
   "unsaved",
 ]) {
-  test(`explicit resolution preserves the ${hold} Start protection`, async ({
+  test(`the ${hold} drawer cannot dispatch an agent`, async ({
     page,
   }) => {
     const fixture = await mockWorkflow(page);
@@ -503,7 +453,7 @@ for (const hold of [
         .fill("Edited packet");
     await expect(
       dialog.getByRole("button", { name: "Start agent", exact: true }),
-    ).toBeDisabled();
+    ).toHaveCount(0);
     expect(fixture.writes).toHaveLength(0);
   });
 }
