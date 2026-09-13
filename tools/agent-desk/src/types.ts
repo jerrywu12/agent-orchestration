@@ -84,12 +84,21 @@ export interface Ticket {
   title: string;
   description?: string | null;
   stageId: string;
+  stageChangedAt?: string | null;
+  stageHistory?: {
+    fromStageId: string | null;
+    fromStageName: string | null;
+    toStageId: string;
+    toStageName: string | null;
+    at: string;
+  }[];
   ownerId?: string | null;
   priority: Priority;
   labels?: string[] | null;
   parentId?: string | null;
   dependsOn?: string[] | null;
   blockedReason?: string | null;
+  resumeReason?: string | null;
   archived?: boolean;
   version: number;
   createdAt: string;
