@@ -114,6 +114,8 @@ async function mockRecovery(page: Page) {
   let traceReads = 0;
   let failNextRun = false;
   let dropAcceptedRun = false;
+  let delayAcceptedRun = false;
+  let releaseAcceptedRun: (() => Promise<void>) | null = null;
   let acceptedRequestId: string | null = null;
   let rejectTakeover = false;
   let failPoll = false;
@@ -178,6 +180,16 @@ async function mockRecovery(page: Page) {
         if (dropAcceptedRun) {
           dropAcceptedRun = false;
           return route.abort("failed");
+        }
+        if (delayAcceptedRun) {
+          delayAcceptedRun = false;
+          const accepted = structuredClone(run);
+          return new Promise<void>((resolve) => {
+            releaseAcceptedRun = async () => {
+              await route.fulfill({ status: 202, json: accepted });
+              resolve();
+            };
+          });
         }
         return route.fulfill({ status: 202, json: run });
       }
@@ -265,6 +277,26 @@ async function mockRecovery(page: Page) {
     },
     dropAcceptedRun: () => {
       dropAcceptedRun = true;
+    },
+    delayAcceptedRun: () => {
+      delayAcceptedRun = true;
+    },
+    releaseAcceptedRun: async () => {
+      if (!releaseAcceptedRun) throw new Error("No response is delayed");
+      await releaseAcceptedRun();
+    },
+    nextRun: () => {
+      run = {
+        ...run,
+        state: "running",
+        results: [
+          {
+            ticketId: "ticket-1",
+            status: "running",
+            message: "Second batch remains tracked",
+          },
+        ],
+      };
     },
     rejectTakeover: () => {
       rejectTakeover = true;
@@ -596,4 +628,50 @@ test("accepted run with a dropped response survives reload without a second subm
     1,
   );
   expect(app.writes[0].body.requestId).toBe(request.requestId);
+});
+
+test("a delayed success from an unmounted view cannot overwrite a newer batch", async ({
+  page,
+}) => {
+  const app = await mockRecovery(page);
+  app.delayAcceptedRun();
+  await page.goto("/");
+  await page.getByLabel("Select ticket SMARTSTO-100").check();
+  await page.getByRole("button", { name: "Run Agent", exact: true }).click();
+  await expect
+    .poll(() => app.writes.filter((item) => item.path === "/api/runs").length)
+    .toBe(1);
+  const originalId = app.writes[0].body.requestId;
+  app.complete();
+  await page.getByRole("button", { name: "Activity", exact: true }).click();
+  await page.getByRole("button", { name: /^All work/ }).click();
+  await page
+    .getByRole("button", { name: "Dismiss finished run", exact: true })
+    .click();
+  app.nextRun();
+  await page.getByLabel("Select ticket SMARTSTO-101").check();
+  await page.getByRole("button", { name: "Run Agent", exact: true }).click();
+  await expect(page.getByText("Second batch remains tracked")).toBeVisible();
+  const newerId = app.writes[1].body.requestId;
+  expect(newerId).not.toBe(originalId);
+  const oldResponse = page.waitForResponse(
+    (response) =>
+      response.request().method() === "POST" &&
+      response.request().postDataJSON()?.requestId === originalId,
+  );
+  await app.releaseAcceptedRun();
+  await (await oldResponse).finished();
+  await page.reload();
+  await expect(page.getByText("Second batch remains tracked")).toBeVisible();
+  expect(
+    await page.evaluate(
+      () =>
+        JSON.parse(
+          sessionStorage.getItem("agent-desk:last-bulk-run:v1") || "null",
+        ).id,
+    ),
+  ).toBe(newerId);
+  expect(app.writes.filter((item) => item.path === "/api/runs")).toHaveLength(
+    2,
+  );
 });

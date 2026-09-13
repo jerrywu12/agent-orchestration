@@ -283,8 +283,9 @@ export function WorkView({
     setArchiveResults([]);
     try {
       const next = await api<BulkRun>("/runs", "POST", request);
+      if (!mounted.current || restoreSavedRun()?.id !== request.requestId)
+        return;
       rememberRun(next);
-      if (!mounted.current) return;
       setRun(next);
       runRequest.current = null;
       await refresh?.();

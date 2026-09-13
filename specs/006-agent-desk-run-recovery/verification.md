@@ -11,7 +11,7 @@ Base5a856ff, branch codex/agent-desk-runner-reporting, isolated worktree /privat
 - Final scripted browser suite63/63: run-hf54wozk.log. Screenshots and Playwright traces disabled; all existing DOM, sizing and interaction assertions retained.
 - Native installed Codex CLI0.154.0 sandbox synthetic proof: /private/tmp/desk-sandbox-bridge-proof.mjs and .log. Credential-free read/update/checkpoint succeeded; network and protected .codex write remained denied; no model called.
 - Native tracing found exact Codex worktree records for both reported recent runs. Original S05 reservation remained untraceable, retained and eligible only for explicit operator recovery. Private IDs retained locally, no transcript reads.
-- Independent review identified process exec-name transition, alternate-transport completion and uncertain-request persistence; each has a regression and correction. Final exact-commit sign-off pending.
+- Independent review identified process exec-name transition, alternate-transport completion and uncertain-request persistence; each has a regression and correction. Delayed-success-from-unmounted-view storage overwrite was also reproduced (run-54avkq7m.log), corrected with mounted/request-ID fencing, and verified by11/11 recovery journeys (run-515vfhuw.log) plus build (run-dszm5ib9.log). Final exact-commit sign-off pending.
 
 Full private command logs are under /Users/jerry/.local/state/agent-efficiency/logs/.
 
