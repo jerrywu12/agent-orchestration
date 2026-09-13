@@ -83,7 +83,8 @@ function fixture(t) {
       cwd: root,
       env: { ...env, ...extra },
       encoding: "utf8",
-      timeout: 10000,
+      // Bound the whole multi-process fixture, including cold macOS executable startup.
+      timeout: 30000,
     });
   const events = () =>
     existsSync(log)
@@ -109,7 +110,11 @@ test("linked Codex wraps once before worktree work and preserves exact command a
   const result = f.run("codex_auto_dev.sh", [f.spec], {
     AGENT_DESK_TICKET_ID: "ticket-123",
   });
-  assert.equal(result.status, 0, result.stderr);
+  assert.equal(
+    result.status,
+    0,
+    `error=${result.error?.code ?? "none"} signal=${result.signal ?? "none"} ${result.stderr}`,
+  );
   const events = f.events();
   assert.equal(events[0]?.type, "wrap");
   assert.equal(events.filter((x) => x.type === "wrap").length, 1);
@@ -185,7 +190,11 @@ test("queue persists explicit ticket metadata and forwards it without inheriting
     AGENT_DESK_EXECUTION_ID: "parent-run",
     AGENT_DESK_SESSION_ID: "parent-session",
   });
-  assert.equal(run.status, 0, run.stderr);
+  assert.equal(
+    run.status,
+    0,
+    `error=${run.error?.code ?? "none"} signal=${run.signal ?? "none"} ${run.stderr}`,
+  );
   assert.equal(f.events().filter((x) => x.type === "wrap").length, 1);
   assert.equal(
     f.events().find((x) => x.type === "wrap").args[2],
