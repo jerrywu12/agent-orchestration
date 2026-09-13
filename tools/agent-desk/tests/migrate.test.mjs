@@ -189,7 +189,7 @@ test("re-import keeps stable source mappings and never overwrites local edits or
     backupDir: f.backupDir,
   });
   assert.equal(f.store.list("project").length, 1);
-  assert.equal(f.store.list("stage").length, 5);
+  assert.equal(f.store.list("stage").length, 6);
   assert.equal(f.store.list("ticket").length, 5);
   assert.deepEqual(second.mappings, first.mappings);
   assert.equal(f.store.get("ticket", running.id).title, "Local edit");
@@ -282,7 +282,7 @@ test("repeat import routes new Parked and unknown-stage tasks without reviving r
   const result = await importKangentic(f.service, f.source, {
     backupDir: f.backupDir,
   });
-  assert.equal(f.store.list("stage").length, 5);
+  assert.equal(f.store.list("stage").length, 6);
   assert.deepEqual(
     f.store
       .list("stage")

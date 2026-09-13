@@ -20,15 +20,27 @@ loopback binding only, Host/Origin checks, no cross-origin access. Other local p
 operator authority unless they explicitly use an agent credential. The data directory is
 `~/.local/share/agent-desk`; override with `AGENT_DESK_DATA_DIR`. This is separate from source.
 
-Create a project, set its repository/path, add a ticket and assign an agent. Use Backlog, Ready,
-In progress, In review and Done. Explicit Start on Backlog or blocked/dependency-held work
+Create a project, set its repository/path and capture a ticket in Backlog. Use Backlog, Planning, Ready,
+In progress, In review and Done. Move a request to Planning and confirm its planning agent to prepare
+a comprehensive specification and independent child tickets. Children stay in Planning until admitted.
+Move a buildable leaf ticket to Ready, review preparation/conflicts, select its development agent and
+confirm to start or queue it. Development moves to In progress when execution starts.
+Explicit Start on Backlog or blocked/dependency-held work
 launches a resolution pass; otherwise it starts implementation. Start preserves assignments and
 existing claims, and creates a separate Git worktree from fetched `origin/main`.
 It keeps the installed CLI's model and permission defaults. Codex, Claude, Gemini and Cursor
 have fixed command adapters; a missing CLI is shown as unavailable. Antigravity, Hermes,
 Ollama and ArkCLI report through their own clients using the connector; Ollama/ArkCLI remain
-advisory providers. Assignment and stage changes never launch work automatically. Ordinary client claims still
-require readiness; the explicit Start action alone grants a bounded blocker-resolution pass.
+advisory providers. Assignment alone never launches work. Planning/Ready confirmation is the start
+authorization; imports and migration do not start agents. Implementation claims recheck readiness.
+
+Ready requires a specification reference, acceptance criteria, scope, verification plan, allowed paths
+and shared-resource identifiers. Enter repository-relative paths/directories one per line; use shared
+behavior/API/schema names to detect conflicts across different files (`none` for no shared resources).
+Unfinished dependencies, blockers, parent tickets and missing preparation prevent admission.
+Conflict checks include Ready, In progress, unmerged In review and outstanding execution reservations
+in the same repository, including project aliases. Unknown competing scope is a visible hold.
+Queue and launch-failure reasons remain visible; a failed launch is never development completion.
 
 ## Run several tickets and recover missing sessions
 
@@ -171,7 +183,7 @@ The stdio MCP server exposes `desk_list_tasks`, `desk_get_task`, `desk_claim_tas
 `desk_report_progress`, `desk_get_resolution_context`, `desk_update_task` and
 `desk_create_subtask`. Organization tools require the exact active assigned execution/session.
 Updates require a current version and evidence/reorganization reason; new subtasks inherit
-project and owner and start Ready. Claim children separately. These tools cannot steal a
+project and owner and start Planning. Prepare and admit children separately. These tools cannot steal a
 reservation, reassign, archive or mark Done. Installed per-agent connectors load their scoped token from the
 private data directory; never paste tokens in prompts or commit them. Remote clients use
 `AGENT_DESK_URL=https://...` and `AGENT_DESK_TOKEN` from secure environment configuration.
@@ -187,7 +199,7 @@ checkpointed handoff to load changed client configuration.
 
 Project settings accept `owner/repository` and an optional Projects v2 number owned by the
 repository owner. Pull discovers the board's Status options and automatically associates
-Backlog, Ready, In progress, In review and Done using unique exact names (case and whitespace
+Backlog, Planning, Ready, In progress, In review and Done using unique exact names (case and whitespace
 are normalized). No manual mapping is required. Missing, duplicate or unknown statuses show
 a sync error and preserve pending changes. The app never creates/deletes Project fields or options.
 Issues import with stable identity; PRs and draft Project items are not imported as issues.
@@ -207,7 +219,7 @@ permissions must allow repository issues and Projects v2; do not change identity
 `importKangentic` API from `server/migrate.mjs` with an explicit private backup directory after
 preview. It imports tasks **and backlog**, preserves source IDs, attachment metadata/source
 references, labels, original source-stage metadata, and source session handles. Retired stages
-are normalized into the five-stage workflow, with Parked tickets in Backlog. Original
+are normalized into the six-stage workflow, with Parked tickets in Backlog. Original
 source databases remain unchanged. Historical transcripts/commands/credentials are excluded.
 Attachment bytes stay in the source; retain the old data folder. Unsupported schema fields and
 unverified ownership are reported. Repeat import never overwrites locally edited tickets.

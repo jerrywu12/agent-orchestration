@@ -1,7 +1,14 @@
 import { Attachments } from "./attachments.mjs";
 import { EventEmitter } from "node:events";
+import { existsSync } from "node:fs";
+import { isAbsolute } from "node:path";
 import { fail, id, now } from "./store.mjs";
 import { ensureProjectWorkflow, migrateWorkflow } from "./workflow.mjs";
+import {
+  PREPARATION_FIELDS,
+  inspectReadiness,
+  scopeSnapshot,
+} from "./readiness.mjs";
 const priorities = ["urgent", "high", "medium", "low", "none"];
 const text = (v, name, max = 500) => {
   if (typeof v !== "string" || !v.trim() || v.length > max)
@@ -73,6 +80,7 @@ export class Service extends EventEmitter {
       ...ticket,
       attachments: this.attachments.list(ticket.id),
       execution: this.store.latest(ticket.id),
+      launchIntent: this.store.get("launch-intent", ticket.id) ?? null,
     };
   }
   getTicket(key) {
@@ -192,7 +200,7 @@ export class Service extends EventEmitter {
     if (!value || typeof value !== "object" || Array.isArray(value))
       fail(422, "BRIEF", "Task brief must be an object.");
     const brief = {};
-    for (const key of ["acceptanceCriteria", "scope", "verification"]) {
+    for (const key of PREPARATION_FIELDS) {
       const part = value[key] ?? "";
       if (typeof part !== "string" || part.length > 10000)
         fail(
@@ -307,6 +315,8 @@ export class Service extends EventEmitter {
         github: null,
       };
       this.validateTicket(value);
+      if (this.require("stage", value.stageId).role === "ready")
+        this.assertReadiness(value);
       const result = this.store.put("ticket", value);
       this.attachments.bind(input.attachmentIds ?? [], result.id);
       this.store.activity(value.id, "created", "Ticket created", value.ownerId);
@@ -314,7 +324,7 @@ export class Service extends EventEmitter {
       return this.decorate(result);
     });
   }
-  updateTicket(key, input) {
+  updateTicket(key, input, { confirmedTransition = false } = {}) {
     return this.store.transaction(() => {
       const previous = this.require("ticket", key);
       if (!Number.isSafeInteger(input.version))
@@ -355,6 +365,25 @@ export class Service extends EventEmitter {
       if (input.brief !== undefined)
         next.brief = this.normalizeBrief(input.brief);
       this.validateTicket(next);
+      const role = this.require("stage", next.stageId).role;
+      if (
+        next.stageId !== previous.stageId &&
+        ["planning", "ready"].includes(role) &&
+        !confirmedTransition
+      )
+        fail(
+          409,
+          "CONFIRMATION_REQUIRED",
+          "Select an owner and confirm the transition.",
+        );
+      if (
+        role === "ready" &&
+        !next.archived &&
+        (next.stageId !== previous.stageId ||
+          input.brief !== undefined ||
+          next.ownerId !== previous.ownerId)
+      )
+        this.assertReadiness(next);
       next.title = next.title.trim();
       next.updatedAt = now();
       if (next.github) {
@@ -386,6 +415,181 @@ export class Service extends EventEmitter {
       return this.decorate(result);
     });
   }
+  readiness(key) {
+    return inspectReadiness(this, this.require("ticket", key));
+  }
+  assertReadiness(ticket) {
+    const result = inspectReadiness(this, ticket);
+    if (!result.ready)
+      fail(
+        409,
+        "NOT_READY",
+        `Work is not ready: ${[...result.missing.map((k) => `missing preparation ${k}`), ...result.holds, ...result.conflicts.map((c) => `conflict with ${c.key}: ${c.reasons.join(", ")}`)].join("; ")}`,
+      );
+    return result;
+  }
+  ownerBusy(ownerId, exceptId) {
+    return this.store
+      .list("ticket")
+      .some(
+        (t) =>
+          t.id !== exceptId && this.store.active(t.id)?.agentId === ownerId,
+      );
+  }
+  launchFingerprint(ticket) {
+    return JSON.stringify(
+      [
+        "title",
+        "description",
+        "brief",
+        "dependsOn",
+        "blockedReason",
+        "archived",
+        "parentId",
+        "stageId",
+        "ownerId",
+      ].map((key) => ticket[key]),
+    );
+  }
+  transition(key, input) {
+    const ticket = this.store.transaction(() => {
+      if (input.confirmed !== true)
+        fail(
+          422,
+          "CONFIRMATION_REQUIRED",
+          "Explicit confirmation is required.",
+        );
+      const previous = this.require("ticket", key);
+      if (input.version !== previous.version)
+        fail(
+          409,
+          "VERSION_CONFLICT",
+          "This ticket changed. Reload before confirming.",
+        );
+      const stage = this.require("stage", input.stageId);
+      if (!["planning", "ready"].includes(stage.role))
+        fail(422, "TRANSITION_STAGE", "Confirm Planning or Ready.");
+      const agent = this.require("agent", input.ownerId);
+      if (!agent.enabled)
+        fail(422, "AGENT_DISABLED", "This agent is disabled.");
+      if (agent.capabilities?.execute === false)
+        fail(422, "EXTERNAL_AGENT", "Select an agent with a launch adapter.");
+      const availability = this.runner
+        ?.availability?.()
+        .find((a) => a.id === agent.id);
+      if (availability && !availability.available)
+        fail(
+          422,
+          "ADAPTER_UNAVAILABLE",
+          availability.reason || "The selected agent is unavailable.",
+        );
+      if (this.store.active(key))
+        fail(
+          409,
+          "ALREADY_CLAIMED",
+          "Checkpoint the existing session before confirming another launch.",
+        );
+      if (previous.archived)
+        fail(409, "ARCHIVED", "Archived work cannot start.");
+      const project = this.require("project", previous.projectId);
+      if (
+        !project.path ||
+        !isAbsolute(project.path) ||
+        !existsSync(project.path)
+      )
+        fail(
+          422,
+          "PROJECT_PATH",
+          "Configure an existing absolute project path before confirming a launch.",
+        );
+      if (stage.role === "ready")
+        this.assertReadiness({
+          ...previous,
+          stageId: input.stageId,
+          ownerId: input.ownerId,
+        });
+      const result = this.updateTicket(
+        key,
+        {
+          version: input.version,
+          stageId: input.stageId,
+          ownerId: input.ownerId,
+        },
+        { confirmedTransition: true },
+      );
+      this.store.put("launch-intent", {
+        id: key,
+        ticketId: key,
+        ownerId: input.ownerId,
+        stageId: input.stageId,
+        purpose: stage.role === "planning" ? "planning" : "implementation",
+        confirmed: true,
+        fingerprint: this.launchFingerprint(result),
+        status: "queued",
+        createdAt: now(),
+      });
+      return result;
+    });
+    const result = this.dispatchIntent(key);
+    this.changed();
+    return { ticket: this.getTicket(key), ...result };
+  }
+  dispatchIntent(key) {
+    const intent = this.store.get("launch-intent", key);
+    if (!intent || intent.status !== "queued")
+      return {
+        outcome: intent?.status === "started" ? "started" : "failed",
+        reason: intent?.reason,
+      };
+    if (this.ownerBusy(intent.ownerId, key))
+      return {
+        outcome: "queued",
+        reason: "The selected owner is busy. Confirmed launch is queued.",
+      };
+    // A missing supervisor is a visible post-admission failure, never silent approval.
+    try {
+      const ticket = this.require("ticket", key);
+      if (
+        ticket.ownerId !== intent.ownerId ||
+        ticket.stageId !== intent.stageId
+      )
+        fail(
+          409,
+          "INTENT_CHANGED",
+          "Queued stage or owner changed; confirm again.",
+        );
+      this.ready(key, intent.ownerId);
+      if (intent.fingerprint !== this.launchFingerprint(ticket))
+        fail(
+          409,
+          "INTENT_CHANGED",
+          "Queued preparation or task content changed; confirm again.",
+        );
+      if (!this.runner)
+        fail(503, "RUNNER_UNAVAILABLE", "Launch supervisor is unavailable.");
+      this.runner.start(key, { automatic: true });
+      this.store.put("launch-intent", {
+        ...intent,
+        status: "started",
+        updatedAt: now(),
+      });
+      return { outcome: "started" };
+    } catch (error) {
+      this.store.put("launch-intent", {
+        ...intent,
+        status: "failed",
+        reason: error.message,
+        updatedAt: now(),
+      });
+      this.store.activity(key, "start_failed", error.message);
+      return { outcome: "failed", reason: error.message };
+    }
+  }
+  dispatchConfirmed() {
+    for (const intent of this.store.list("launch-intent"))
+      if (intent.confirmed && intent.status === "queued")
+        this.dispatchIntent(intent.ticketId);
+  }
   ready(key, agentId, { resolveBlockers = false } = {}) {
     const ticket = this.require("ticket", key);
     if (!ticket.ownerId || ticket.ownerId !== agentId)
@@ -405,6 +609,8 @@ export class Service extends EventEmitter {
         "Completed work cannot start. Reopen the ticket first.",
       );
     if (resolveBlockers) return ticket;
+    if (stage.role === "planning") return ticket;
+    this.assertReadiness(ticket);
     if (ticket.blockedReason)
       fail(409, "BLOCKED", `Ticket is blocked: ${ticket.blockedReason}`);
     if (
@@ -425,7 +631,6 @@ export class Service extends EventEmitter {
   }
   claim(key, input, { resolveBlockers = false } = {}) {
     return this.store.transaction(() => {
-      const ticket = this.ready(key, input.agentId, { resolveBlockers });
       const sessionId = text(input.sessionId, "Session ID", 300);
       const existing = this.store.active(key);
       if (existing) {
@@ -440,10 +645,20 @@ export class Service extends EventEmitter {
           "Another execution owns this ticket; checkpointed handoff required.",
         );
       }
+      const ticket = this.ready(key, input.agentId, { resolveBlockers });
+      const purpose = resolveBlockers
+        ? "resolve_blockers"
+        : this.require("stage", ticket.stageId).role === "planning"
+          ? "planning"
+          : "implementation";
       const execution = this.store.saveExecution({
         id: id(),
         ticketId: key,
-        purpose: resolveBlockers ? "resolve_blockers" : "implementation",
+        purpose,
+        scopeSnapshot:
+          purpose === "implementation"
+            ? scopeSnapshot(ticket, this.require("project", ticket.projectId))
+            : null,
         agentId: input.agentId,
         sessionId,
         state: input.external ? "external" : "running",
@@ -459,6 +674,16 @@ export class Service extends EventEmitter {
         external: !!input.external,
         releasedAt: null,
       });
+      if (purpose === "implementation") {
+        const activeStage = this.store
+          .list("stage", ticket.projectId)
+          .find((s) => s.role === "active");
+        if (ticket.stageId !== activeStage.id)
+          this.updateTicket(key, {
+            version: ticket.version,
+            stageId: activeStage.id,
+          });
+      }
       this.store.activity(
         key,
         "claimed",
@@ -557,13 +782,25 @@ export class Service extends EventEmitter {
   }
   agentUpdate(key, input) {
     return this.store.transaction(() => {
-      const { ticket } = this.requireOwnedExecution(key, input);
+      const { ticket, execution } = this.requireOwnedExecution(key, input);
       const reason = text(
         input.reason,
         "Evidence or reorganization reason",
         2000,
       );
       const changes = input.changes;
+      if (
+        changes?.stageId &&
+        ["planning", "resolve_blockers"].includes(execution.purpose) &&
+        !["backlog", "planning"].includes(
+          this.require("stage", changes.stageId).role,
+        )
+      )
+        fail(
+          409,
+          "PLANNING_ONLY",
+          "Preparation sessions cannot promote work into implementation or review.",
+        );
       const allowed = [
         "title",
         "description",
@@ -624,6 +861,7 @@ export class Service extends EventEmitter {
         "title",
         "description",
         "brief",
+        "dependsOn",
       ];
       if (Object.keys(input).some((k) => !allowed.includes(k)))
         fail(
@@ -633,7 +871,15 @@ export class Service extends EventEmitter {
         );
       const ready = this.store
         .list("stage", ticket.projectId)
-        .find((s) => s.role === "ready");
+        .find((s) => s.role === "planning");
+      const dependencies = strings(input.dependsOn ?? [], "Dependencies");
+      for (const dependency of dependencies)
+        if (this.require("ticket", dependency).projectId !== ticket.projectId)
+          fail(
+            422,
+            "PROJECT_MISMATCH",
+            "Child dependencies must belong to the same project.",
+          );
       const child = this.createTicket({
         projectId: ticket.projectId,
         ownerId: ticket.ownerId,
@@ -642,6 +888,7 @@ export class Service extends EventEmitter {
         title: input.title,
         description: input.description ?? "",
         brief: input.brief,
+        dependsOn: dependencies,
       });
       this.store.activity(
         key,
@@ -715,13 +962,14 @@ export class Service extends EventEmitter {
       // idempotent replay while recording the truthful effective outcome.
       const eventType =
         input.type === "complete" &&
-        execution.managedBy === "agent-desk" &&
-        this.resolutionNeeded(this.require("ticket", execution.ticketId))
+        (execution.purpose === "planning" ||
+          (execution.managedBy === "agent-desk" &&
+            this.resolutionNeeded(this.require("ticket", execution.ticketId))))
           ? "checkpoint"
           : input.type;
       if (eventType !== input.type)
         summary =
-          `Unresolved blockers or dependencies remain. ${summary}`.slice(
+          `${execution.purpose === "planning" ? "Planning prepared for review." : "Unresolved blockers or dependencies remain."} ${summary}`.slice(
             0,
             4000,
           );

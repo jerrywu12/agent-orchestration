@@ -20,7 +20,8 @@ import {
 } from "lucide-react";
 import { api, errorMessage, pathId } from "./api";
 import { useDesk } from "./useDesk";
-import type { Page, Ticket } from "./types";
+import type { Page, Stage, Ticket } from "./types";
+import { StageTransition } from "./components/StageTransition";
 import { ActivityFeed } from "./components/ActivityFeed";
 import { AgentsView } from "./components/AgentsView";
 import { MachineView } from "./components/MachineView";
@@ -49,6 +50,12 @@ export default function App() {
   const [createStage, setCreateStage] = useState<string | undefined>();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [actionError, setActionError] = useState("");
+  const [actionNotice, setActionNotice] = useState("");
+  const [actionNoticeId, setActionNoticeId] = useState("");
+  const [transition, setTransition] = useState<{
+    ticket: Ticket;
+    stage: Stage;
+  } | null>(null);
   const searchRef = useRef<HTMLInputElement>(null);
   function newTicket(stageId?: string) {
     setCreateStage(stageId);
@@ -89,6 +96,15 @@ export default function App() {
   }, [state?.projects, projectId]);
   async function updateTicket(ticket: Ticket, fields: Partial<Ticket>) {
     setActionError("");
+    const target = state?.stages.find((item) => item.id === fields.stageId);
+    if (
+      target &&
+      target.id !== ticket.stageId &&
+      ["planning", "ready"].includes(target.role)
+    ) {
+      setTransition({ ticket, stage: target });
+      return;
+    }
     try {
       await api(`/tickets/${pathId(ticket.id)}`, "PATCH", {
         version: ticket.version,
@@ -412,6 +428,17 @@ export default function App() {
           />
         )}
       </main>
+      {actionNotice && (
+        <div className="transition-notice" role="status">
+          {actionNotice}
+          <button
+            className="button small-button"
+            onClick={() => setActionNotice("")}
+          >
+            Dismiss
+          </button>
+        </div>
+      )}
       {create === "project" && (
         <CreateProject
           projects={state?.projects}
@@ -429,10 +456,14 @@ export default function App() {
           projectId={projectId || undefined}
           stageId={createStage}
           onClose={() => setCreate(null)}
-          onCreated={async (ticket) => {
+          onCreated={async (ticket, targetStageId) => {
             await desk.refresh();
             setCreate(null);
             setSelectedId(ticket.id);
+            const target = state.stages.find(
+              (item) => item.id === targetStageId,
+            );
+            if (target) setTransition({ ticket, stage: target });
           }}
         />
       )}
@@ -445,6 +476,34 @@ export default function App() {
           onClose={() => setSelectedId(null)}
           refresh={desk.refresh}
           onOpen={setSelectedId}
+          onTransition={(ticket, stage) => setTransition({ ticket, stage })}
+          transitionNotice={
+            actionNoticeId === selectedTicket.id ? actionNotice : ""
+          }
+        />
+      )}
+      {transition && state && (
+        <StageTransition
+          key={`${transition.ticket.id}-${transition.ticket.version}-${transition.stage.id}`}
+          {...transition}
+          state={state}
+          integrations={desk.integrations}
+          onClose={() => setTransition(null)}
+          onResult={async (result) => {
+            setTransition(null);
+            setActionNoticeId(result.ticket.id);
+            setActionNotice(
+              result.outcome === "started"
+                ? transition.stage.role === "planning"
+                  ? "Planning agent started."
+                  : "Development agent started."
+                : result.reason ||
+                    (result.outcome === "queued"
+                      ? "Queued: waiting for agent capacity."
+                      : "The agent could not start. Open the ticket to retry."),
+            );
+            await desk.refresh();
+          }}
         />
       )}
     </div>

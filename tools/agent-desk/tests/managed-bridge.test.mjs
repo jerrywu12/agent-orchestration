@@ -27,10 +27,21 @@ function fixture(t, options = {}) {
   const worktree = mkdtempSync(join(tmpdir(), "desk-mailbox-"));
   const store = new Store(":memory:");
   const service = new Service(store);
-  const project = service.createProject({ name: "Mailbox fixture" });
+  const project = service.createProject({
+    name: "Mailbox fixture",
+    repo: "fixture/mailbox",
+  });
   const ticket = service.createTicket({
     projectId: project.id,
     title: "Claimed mailbox work",
+    brief: {
+      specification: "Fixture specification",
+      acceptanceCriteria: "Verify the behavior under test",
+      scope: "Isolated fixture implementation",
+      verification: "Run the focused fixture assertions",
+      allowedPaths: `fixtures/${crypto.randomUUID()}/**`,
+      conflictKeys: "none",
+    },
     ownerId: "codex",
     stageId: store.list("stage", project.id).find((s) => s.role === "ready").id,
   });

@@ -4512,8 +4512,12 @@ progress::-moz-progress-bar {
   background: var(--muted);
 }
 @keyframes run-evidence-working {
-  from { transform: translateX(0); }
-  to { transform: translateX(230%); }
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(230%);
+  }
 }
 .run-progress-facts {
   display: flex;
@@ -4556,4 +4560,20 @@ progress::-moz-progress-bar {
   border-left: 2px solid var(--line);
   color: var(--muted);
   background: var(--surface);
+}
+.transition-notice {
+  position: fixed;
+  bottom: 24px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 200;
+  max-width: min(600px, 90vw);
+  padding: 16px;
+  border: 1px solid var(--muted);
+  border-radius: 10px;
+  background: var(--surface);
+  color: var(--text);
+  display: flex;
+  align-items: center;
+  gap: 16px;
 }

@@ -16,7 +16,13 @@ import {
   Square,
 } from "lucide-react";
 import { api, ApiError, errorMessage, pathId } from "../api";
-import type { DeskState, Integrations, Ticket, TicketDraft } from "../types";
+import type {
+  DeskState,
+  Integrations,
+  Stage,
+  Ticket,
+  TicketDraft,
+} from "../types";
 import { ActivityFeed } from "./ActivityFeed";
 import { ReconcileSessions } from "./ReconcileSessions";
 import { TicketDocuments } from "./DocumentAttachments";
@@ -57,6 +63,8 @@ export function TicketDetails({
   onClose,
   refresh,
   onOpen,
+  onTransition,
+  transitionNotice,
 }: {
   ticket: Ticket;
   state: DeskState;
@@ -64,6 +72,8 @@ export function TicketDetails({
   onClose: () => void;
   refresh: () => Promise<void>;
   onOpen: (id: string) => void;
+  onTransition: (ticket: Ticket, stage: Stage) => void;
+  transitionNotice?: string;
 }) {
   const [draft, setDraft] = useState(() => draftFrom(ticket));
   const [version, setVersion] = useState(ticket.version);
@@ -159,19 +169,22 @@ export function TicketDetails({
     !!ticket.blockedReason ||
     unresolvedDependencies ||
     stage?.role === "backlog";
-  const startReason = dirty
-    ? "Save your changes before starting an agent."
-    : !owner
-      ? "Assign an owner to start this ticket."
-      : ticket.archived
-        ? "Restore this ticket before starting."
-        : stage?.role === "done"
-          ? "Move this ticket out of Done before starting."
-          : !owner.enabled
-            ? "This agent is disabled. Enable it in Agents."
-            : availability?.available === false
-              ? availability.reason || "This agent cannot start locally."
-              : null;
+  const startReason =
+    ticket.launchIntent?.status === "queued"
+      ? "This confirmed launch is queued for the selected agent."
+      : dirty
+        ? "Save your changes before starting an agent."
+        : !owner
+          ? "Assign an owner to start this ticket."
+          : ticket.archived
+            ? "Restore this ticket before starting."
+            : stage?.role === "done"
+              ? "Move this ticket out of Done before starting."
+              : !owner.enabled
+                ? "This agent is disabled. Enable it in Agents."
+                : availability?.available === false
+                  ? availability.reason || "This agent cannot start locally."
+                  : null;
   const links = state.tickets.filter(
     (item) => item.projectId === ticket.projectId && item.id !== ticket.id,
   );
@@ -184,6 +197,11 @@ export function TicketDetails({
       onClose={close}
     >
       <div className="drawer-scroll">
+        {transitionNotice && (
+          <p className="success-notice" role="status">
+            {transitionNotice}
+          </p>
+        )}
         {confirmDiscard && (
           <div className="discard-confirm">
             <p>You have unsaved changes.</p>
@@ -248,7 +266,24 @@ export function TicketDetails({
               Stage
               <select
                 value={draft.stageId}
-                onChange={(event) => change("stageId", event.target.value)}
+                onChange={(event) => {
+                  const target = stages.find(
+                    (item) => item.id === event.target.value,
+                  );
+                  if (
+                    target &&
+                    target.id !== ticket.stageId &&
+                    ["planning", "ready"].includes(target.role)
+                  ) {
+                    if (dirty) {
+                      setError(
+                        "Save your preparation changes before moving to Planning or Ready.",
+                      );
+                      return;
+                    }
+                    onTransition(ticket, target);
+                  } else change("stageId", event.target.value);
+                }}
               >
                 {stages.map((stage) => (
                   <option key={stage.id} value={stage.id}>
@@ -410,6 +445,30 @@ export function TicketDetails({
               </span>
             )}
           </div>
+          {ticket.launchIntent && ticket.launchIntent.status !== "started" && (
+            <p className="field-hint" role="status">
+              {ticket.launchIntent.status === "queued"
+                ? "Queued"
+                : "Launch failed"}
+              :{" "}
+              {ticket.launchIntent.reason ||
+                (ticket.launchIntent.status === "queued"
+                  ? "Waiting for the selected agent to become available."
+                  : "Open the stage confirmation to retry.")}
+            </p>
+          )}
+          {ticket.launchIntent?.status === "failed" &&
+            stage &&
+            ["planning", "ready"].includes(stage.role) &&
+            !active && (
+              <button
+                className="button small-button"
+                disabled={dirty || !!busy}
+                onClick={() => onTransition(ticket, stage)}
+              >
+                Retry launch confirmation
+              </button>
+            )}
           <div className="execution-owner">
             <AgentAvatar agent={owner} />
             <div>
@@ -418,14 +477,18 @@ export function TicketDetails({
                 {active
                   ? execution?.external
                     ? "Externally managed session"
-                    : execution?.purpose === "resolve_blockers"
-                      ? "Active local session · blocker resolution"
-                      : execution?.purpose === "implementation"
-                        ? "Active local session · implementation"
-                        : "Active local session"
-                  : resolvesBlockers
-                    ? "Explicit start · blocker resolution"
-                    : "Explicit start · implementation"}
+                    : execution?.purpose === "planning"
+                      ? "Active local session · planning"
+                      : execution?.purpose === "resolve_blockers"
+                        ? "Active local session · blocker resolution"
+                        : execution?.purpose === "implementation"
+                          ? "Active local session · implementation"
+                          : "Active local session"
+                  : stage?.role === "planning"
+                    ? "Start planning · specification and task breakdown"
+                    : resolvesBlockers
+                      ? "Explicit start · blocker resolution"
+                      : "Explicit start · implementation"}
               </span>
             </div>
             {active ? (

@@ -7,6 +7,14 @@ import { Store } from "../server/store.mjs";
 import { Service } from "../server/service.mjs";
 import { SyncManager } from "../server/sync.mjs";
 import { migrateWorkflow } from "../server/workflow.mjs";
+const preparedBrief = () => ({
+  specification: "Fixture specification",
+  acceptanceCriteria: "Verify synchronization preserves ownership",
+  scope: "Isolated fixture implementation",
+  verification: "Run focused synchronization assertions",
+  allowedPaths: `fixtures/${crypto.randomUUID()}/**`,
+  conflictKeys: "none",
+});
 function fixture(t) {
   const store = new Store(":memory:");
   t.after(() => store.close());
@@ -91,6 +99,7 @@ function board(f) {
   let option = "TODO";
   const options = [
     { id: "TODO", name: " Backlog " },
+    { id: "PLANNING", name: "Planning" },
     { id: "READY", name: "Ready" },
     { id: "DOING", name: "IN   PROGRESS" },
     { id: "REVIEW", name: "In review" },
@@ -208,6 +217,10 @@ test("canonical remote Status is adopted only without an active claim and Done r
   await f.sync.syncProject(f.p.id);
   let ticket = f.service.state().tickets[0];
   assert.equal(ticket.stageId, b.active.id);
+  ticket = f.service.updateTicket(ticket.id, {
+    version: ticket.version,
+    brief: preparedBrief(),
+  });
   f.service.claim(ticket.id, { agentId: "codex", sessionId: "held" });
   const execution = f.store.active(ticket.id);
   b.setOption("REVIEW");
@@ -727,6 +740,7 @@ test("ownership label edits cannot bypass an active executor's checkpointed hand
   f.service.updateTicket(ticket.id, {
     version: ticket.version,
     stageId: active.id,
+    brief: preparedBrief(),
   });
   await f.sync.syncProject(f.p.id);
   f.service.claim(ticket.id, {
