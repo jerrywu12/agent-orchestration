@@ -357,6 +357,7 @@ function AttachDocuments({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [discardDraft, setDiscardDraft] = useState(false);
+  const [uncertain, setUncertain] = useState(false);
   const committed = useRef(false);
   const initialCount = useRef(ticket.attachments?.length || 0);
   const submission = useRef<{
@@ -370,7 +371,9 @@ function AttachDocuments({
   closeRef.current = close;
   useEffect(() => {
     const element = container.current!;
+    const outerDialog = element.querySelector(":scope > dialog");
     const cancel = (event: Event) => {
+      if (event.target !== outerDialog) return;
       event.preventDefault();
       event.stopPropagation();
       closeRef.current();
@@ -404,29 +407,38 @@ function AttachDocuments({
     setError("");
     try {
       if (!committed.current) {
-        const attachmentIds = files.map((file) => file.id);
-        if (
-          !submission.current ||
-          attachmentIds.join("\0") !==
-            submission.current.attachmentIds.join("\0")
-        ) {
-          submission.current = { version: ticket.version, attachmentIds };
+        if (!submission.current) {
+          submission.current = {
+            version: ticket.version,
+            attachmentIds: files.map((file) => file.id),
+          };
         }
+        setUncertain(true);
         await api<Ticket>(
           `/tickets/${pathId(ticket.id)}/attachments`,
           "POST",
           submission.current,
         );
         committed.current = true;
+        setUncertain(false);
       }
       if (!mounted.current) return;
       await onAttached();
       if (mounted.current) onClose();
     } catch (failure) {
-      // A definite version rejection has not bound anything. An uncertain response
-      // keeps the exact original request for the server's idempotent replay.
-      if (failure instanceof ApiError && failure.code === "VERSION_CONFLICT")
+      // Unreadable, timeout and server-error responses may follow a successful
+      // bind. Only a definite request rejection unlocks the selected IDs.
+      if (
+        !committed.current &&
+        failure instanceof ApiError &&
+        failure.status >= 400 &&
+        failure.status < 500 &&
+        failure.status !== 408 &&
+        failure.code !== "invalid_response"
+      ) {
         submission.current = null;
+        if (mounted.current) setUncertain(false);
+      }
       if (mounted.current) setError(errorMessage(failure));
     } finally {
       if (mounted.current) setBusy(false);
@@ -464,9 +476,15 @@ function AttachDocuments({
               {error}
             </p>
           )}
+          {uncertain && !busy && (
+            <p className="field-hint">
+              Retry Attach documents to confirm these files before changing the
+              selection.
+            </p>
+          )}
           <DocumentAttachments
             existingCount={initialCount.current}
-            disabled={busy || committed.current}
+            disabled={busy || uncertain || committed.current}
             isCommitted={() => committed.current}
             onChange={(next, pending) => {
               setFiles(next);

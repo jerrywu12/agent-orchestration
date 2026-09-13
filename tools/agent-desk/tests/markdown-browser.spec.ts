@@ -736,7 +736,19 @@ test("lost append response replays the same request without rebinding or another
   await expect(upload.getByRole("alert")).toContainText(
     "Unable to reach Agent Desk",
   );
+  await expect(
+    upload.getByRole("button", { name: "Choose files", exact: true }),
+  ).toBeDisabled();
+  await expect(
+    upload.getByLabel("Attach reference documents", { exact: true }),
+  ).toBeDisabled();
+  await expect(
+    upload.getByRole("button", { name: "Remove draft.md", exact: true }),
+  ).toBeDisabled();
   await page.clock.fastForward(4100);
+  await expect(
+    upload.getByRole("button", { name: "Remove draft.md", exact: true }),
+  ).toBeDisabled();
   await upload
     .getByRole("button", { name: "Attach documents", exact: true })
     .click();
@@ -814,4 +826,71 @@ test("new-ticket Markdown uploads open a complete read-only draft reader", async
   await page.keyboard.press("Escape");
   await expect(doc).not.toBeVisible();
   await expect(create).toBeVisible();
+});
+
+test("existing-ticket draft reader Escape closes only the nested reader", async ({
+  page,
+}) => {
+  const f = await fixture(page, source, true);
+  const upload = await prepareDraftUpload(page);
+  await upload
+    .getByRole("button", { name: "Read draft.md", exact: true })
+    .click();
+  const doc = page.getByRole("dialog", { name: "draft.md", exact: true });
+  await expect(
+    doc.getByRole("heading", { name: "Draft upload" }),
+  ).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(doc).not.toBeVisible();
+  await expect(upload).toBeVisible();
+  await expect(
+    upload.getByText("Discard these document uploads?", { exact: true }),
+  ).toHaveCount(0);
+  expect(
+    f.writes.filter((write) => write.path === "/api/attachments/uploaded"),
+  ).toHaveLength(0);
+  await page.keyboard.press("Escape");
+  await expect(
+    upload.getByText("Discard these document uploads?", { exact: true }),
+  ).toBeVisible();
+});
+
+test("definite append rejection keeps draft files editable for correction", async ({
+  page,
+}) => {
+  const f = await fixture(page, source, true);
+  const upload = await prepareDraftUpload(page);
+  await page.route("**/api/tickets/ticket/attachments", (route) =>
+    route.fulfill({
+      status: 409,
+      json: {
+        error: {
+          code: "ATTACHMENT_DUPLICATE",
+          message: "This document duplicates existing content.",
+        },
+      },
+    }),
+  );
+  await upload
+    .getByRole("button", { name: "Attach documents", exact: true })
+    .click();
+  await expect(upload.getByRole("alert")).toContainText(
+    "duplicates existing content",
+  );
+  await expect(
+    upload.getByRole("button", { name: "Choose files", exact: true }),
+  ).toBeEnabled();
+  await expect(
+    upload.getByLabel("Attach reference documents", { exact: true }),
+  ).toBeEnabled();
+  await expect(
+    upload.getByRole("button", { name: "Remove draft.md", exact: true }),
+  ).toBeEnabled();
+  await upload
+    .getByRole("button", { name: "Remove draft.md", exact: true })
+    .click();
+  await expect(
+    upload.getByRole("button", { name: "Remove draft.md", exact: true }),
+  ).toHaveCount(0);
+  expect(f.ticket.attachments).toHaveLength(0);
 });
