@@ -6,22 +6,22 @@
 
 ## Phase 2: Foundation
 
-- [ ] T002 Write/run RED tests in `tools/agent-desk/tests/bulk-planning.spec.ts`; register in `tools/agent-desk/playwright.config.ts`.
+- [x] T002 Write/run RED tests in `tools/agent-desk/tests/bulk-planning.spec.ts`; register in `tools/agent-desk/playwright.config.ts`.
 
 ## Phase 3: US1 — Drop, preview, confirm (MVP)
 
 Independent proof: two selected tickets, list/board drop opens one modal; cancel zero writes; confirm own-project Planning API requests.
 
-- [ ] T003 [P] [US1] Implement native drag/target/count and modal wiring in `tools/agent-desk/src/components/WorkView.tsx`, pass integrations in `tools/agent-desk/src/App.tsx`, reuse tokens in `tools/agent-desk/src/styles.css`.
-- [ ] T004 [P] [US1] Implement snapshot/owner/per-ticket confirmation in `tools/agent-desk/src/components/BulkPlanningTransition.tsx`.
-- [ ] T005 [US1] Run focused DOM/build and record RED/GREEN in `specs/008-bulk-planning/verification.md`.
+- [x] T003 [P] [US1] Implement native drag/target/count and modal wiring in `tools/agent-desk/src/components/WorkView.tsx`, pass integrations in `tools/agent-desk/src/App.tsx`, reuse tokens in `tools/agent-desk/src/styles.css`.
+- [x] T004 [P] [US1] Implement snapshot/owner/per-ticket confirmation in `tools/agent-desk/src/components/BulkPlanningTransition.tsx`.
+- [x] T005 [US1] Run focused DOM/build and record RED/GREEN in `specs/008-bulk-planning/verification.md`.
 
 ## Phase 4: US2 — Safety and accessibility
 
 Independent proof: button/keyboard, held/mixed/stale, partial failure/uncertainty and duplicate click all retain truthful outcomes.
 
-- [ ] T006 [US2] Complete exclusions, sequential rechecks, one-shot lock, refresh isolation and results in `tools/agent-desk/src/components/BulkPlanningTransition.tsx`; keyboard equivalent in `tools/agent-desk/src/components/WorkView.tsx`.
-- [ ] T007 [US2] Complete safety/edge/regression matrix in `tools/agent-desk/tests/bulk-planning.spec.ts`; run full Node/DOM/build.
+- [x] T006 [US2] Complete exclusions, sequential rechecks, one-shot lock, refresh isolation and results in `tools/agent-desk/src/components/BulkPlanningTransition.tsx`; keyboard equivalent in `tools/agent-desk/src/components/WorkView.tsx`.
+- [x] T007 [US2] Complete safety/edge/regression matrix in `tools/agent-desk/tests/bulk-planning.spec.ts`; run full Node/DOM/build.
 
 ## Phase 5: Delivery
 

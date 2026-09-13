@@ -17,7 +17,12 @@ New path: captured visible selection→same-view drag token→Planning preview�
 - Existing backend suite:308/308 passed, `run-oza71624.log`.
 - First expanded DOM run:15/16 passed, `run-zlo6wljz.log`; failed refresh warning test correctly exposed swallowed boolean refresh result. Primary list/board drag-and-confirm, payload mapping, cancel, mixed/held/stale and duplicate protection passed.
 - Independent draft review found exclusion widening during in-flight batches; regression required before fixing.
-- Final full DOM/build, exact-head independent review, CI, merge and live cutover remain pending; do not treat interim checks as delivered.
+- Exclusion-widening RED: `run-erl0_zyc.log`, expected1 POST observed2 after held claim released in-flight. Fixed frozen confirmation exclusions; later rechecks can only narrow.
+- Production build passed `run-7rfgkakt.log`; focused17/17 passed `run-r0kcxciu.log`; full121/121 DOM passed `run-ua21uy6r.log`.
+- Independent reviewer approved exact production head99832c002036cc6a4712badc9542120731bf36bc across correctness/readability/architecture/security/performance after reviewing the regression and fix.
+- Native pointer-drag follow-up: board drag passed; list default row-center hit its Stage SELECT and emitted only pointerdown, not dragstart (`run-j4iwyrni.log`, diagnostic `run-oejpdipa.log`). Native dragging from ID SPAN or title BUTTON emitted article dragstart, custom-MIME dragover/drop and opened the complete selection. This is an interactive-control test target issue, not a production defect; preserve editable dropdown and exercise actual ID drag surface. No speculative production change.
+- Final focused19/19 passed including native List/Board gestures, `run-onow30fy.log`. Production unchanged from independently approved99832c0; only native test coverage/formatting and evidence added afterward.
+- CI, merge and live cutover remain pending; do not treat tested source as delivered.
 
 ## Risk matrix
 
