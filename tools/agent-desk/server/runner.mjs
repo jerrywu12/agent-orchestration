@@ -128,12 +128,6 @@ export class Runner {
       this.service.require("stage", ticket.stageId).role !== "planning" &&
       (this.service.resolutionNeeded(ticket) || prior?.state === "revoked");
     this.service.ready(ticketId, agent.id, { resolveBlockers });
-    return { ticket, agent, adapter, command, project, prior, resolveBlockers };
-  }
-  start(ticketId, options = {}) {
-    const { ticket, agent, adapter, command, project, prior, resolveBlockers } =
-      this.validateStart(ticketId, options);
-    assertManagedCapacity(this.service, this);
     const root = realpathSync(project.path);
     let base;
     try {
@@ -149,6 +143,31 @@ export class Runner {
         "Project needs a fetched origin/main before isolated execution.",
       );
     }
+    return {
+      ticket,
+      agent,
+      adapter,
+      command,
+      project,
+      prior,
+      resolveBlockers,
+      root,
+      base,
+    };
+  }
+  start(ticketId, options = {}) {
+    const {
+      ticket,
+      agent,
+      adapter,
+      command,
+      project,
+      prior,
+      resolveBlockers,
+      root,
+      base,
+    } = this.validateStart(ticketId, options);
+    assertManagedCapacity(this.service, this);
     const run = this.service.claim(
       ticketId,
       {

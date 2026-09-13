@@ -13,7 +13,7 @@ import {
 import { delimiter, join } from "node:path";
 import { tmpdir } from "node:os";
 import { setTimeout as delay } from "node:timers/promises";
-import { Store } from "../server/store.mjs";
+import { AppError, Store } from "../server/store.mjs";
 import { Service } from "../server/service.mjs";
 import { Runner } from "../server/runner.mjs";
 import { RunCoordinator } from "../server/run-coordinator.mjs";
@@ -385,6 +385,64 @@ test("all overlapping batches bind a claim completed before subsequent drain wit
   }
 });
 
+test("synchronous preparation failure preserves the claimed execution in every overlapping batch", (t) => {
+  const f = fixture(t),
+    target = f.ticket({ stageId: f.stage("planning") });
+  const batches = [f.submit([target], 2), f.submit([target], 1)];
+  const normalStart = f.runner.start;
+  let failedExecution,
+    attempts = 0;
+  f.runner.start = (ticketId) => {
+    attempts++;
+    const claimed = f.service.claim(ticketId, {
+      agentId: target.ownerId,
+      sessionId: randomUUID(),
+    });
+    failedExecution = f.service.event(claimed.id, {
+      agentId: claimed.agentId,
+      sessionId: claimed.sessionId,
+      eventId: randomUUID(),
+      seq: claimed.lastSeq + 1,
+      type: "failed",
+      progress: 13,
+      summary: "Synthetic isolated-worktree preparation failed after claiming",
+    });
+    throw new AppError(422, "RUNNER_FAILED", failedExecution.summary);
+  };
+  f.coord.drain();
+  f.runner.start = normalStart;
+  assert.equal(attempts, 1, "the other batch must follow the failed claim");
+  assert.equal(f.store.active(target.id), null);
+  assert.equal(failedExecution.state, "failed");
+
+  const assertFailedRows = () => {
+    for (const batch of batches) {
+      const row = f.coord.get(batch.id).results[0];
+      assert.equal(
+        row.executionId,
+        failedExecution.id,
+        "dispatch's local row must retain the claim binding even when start throws",
+      );
+      assert.equal(row.status, "failed");
+      assert.equal(row.telemetry.state, "failed");
+      assert.equal(row.telemetry.summary, failedExecution.summary);
+      assert.equal(row.telemetry.progress, 13);
+      assert.equal(row.telemetry.releasedAt, failedExecution.releasedAt);
+    }
+  };
+  assertFailedRows();
+
+  // An explicit new attempt may start, but old batch history must not adopt it.
+  const replacement = f.runner.start(target.id);
+  assert.notEqual(replacement.id, failedExecution.id);
+  f.coord.drain();
+  assertFailedRows();
+  assert.equal(f.store.active(target.id).id, replacement.id);
+  f.finish(replacement);
+  f.coord.drain();
+  assertFailedRows();
+});
+
 test(
   "real Runner child close flushes its checkpoint and automatically admits queued work",
   { timeout: 15000 },
@@ -549,4 +607,57 @@ for (const problem of [
     assert.equal(f.store.active(target.id), null);
     assert.equal(f.runner.children.size, 1);
   });
+}
+
+for (const problem of ["existing non-Git project", "missing origin/main"]) {
+  for (const path of ["direct", "batch"]) {
+    test(`full capacity does not mask ${problem} on ${path} launch`, (t) => {
+      const f = fixture(t, { actualRunner: true });
+      const occupied = f.claim(
+        f.ticket({ ownerId: "claude", stageId: f.stage("planning") }),
+        { managed: true },
+      );
+      const target = f.ticket({ stageId: f.stage("planning") });
+      if (problem === "existing non-Git project") {
+        const projectPath = join(f.dir, "not-a-git-repository");
+        mkdirSync(projectPath);
+        f.service.updateProject(f.project.id, { path: projectPath });
+      } else {
+        execFileSync(
+          "git",
+          ["-C", f.repo, "update-ref", "-d", "refs/remotes/origin/main"],
+          { stdio: "ignore" },
+        );
+      }
+      const batch = f.submit([target], 1);
+      if (path === "direct") {
+        assert.throws(
+          () => f.runner.start(target.id),
+          (error) => {
+            assert.equal(error.code, "GIT_BASE");
+            assert.match(error.message, /origin\/main|git/i);
+            return true;
+          },
+        );
+      } else {
+        f.coord.drain();
+        const row = f.coord.get(batch.id).results[0];
+        assert.equal(
+          row.status,
+          "failed",
+          "Git preparation must fail before a capacity wait",
+        );
+        assert.equal(row.code, "GIT_BASE");
+        assert.match(row.message, /origin\/main|git/i);
+      }
+      assert.equal(f.store.active(target.id), null);
+      assert.equal(
+        f.store.latest(target.id),
+        null,
+        "invalid Git setup must not create a claim",
+      );
+      assert.equal(f.store.active(occupied.ticketId).id, occupied.id);
+      assert.equal(f.runner.children.size, 1);
+    });
+  }
 }

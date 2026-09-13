@@ -222,12 +222,15 @@ test("real progress reports reach a tracked bulk run without reload or a second 
   await page.getByRole("button", { name: "Run Agent", exact: true }).click();
   const panel = page.getByRole("region", { name: "Bulk run results" });
   await expect(
-    panel.getByText("already running", { exact: true }),
+    panel.getByText("external session", { exact: true }),
   ).toBeVisible();
   await expect(
-    panel.getByText("Working · no percentage reported", { exact: true }),
+    panel.getByRole("heading", { name: "Action required", exact: true }),
   ).toBeVisible();
   await report(1, "progress", "Checking baseline before implementation", 0);
+  await expect(
+    panel.getByRole("heading", { name: "Agent run in progress", exact: true }),
+  ).toBeVisible();
   await expect(
     panel.getByText("Checking baseline before implementation", { exact: true }),
   ).toBeVisible();

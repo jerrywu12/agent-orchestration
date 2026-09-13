@@ -406,9 +406,19 @@ export class RunCoordinator {
               ? "Resolving blockers and dependencies."
               : "Agent started.";
         } catch (e) {
-          row.status = e.code === "CAPACITY_FULL" ? "queued" : "failed";
+          // Start may claim, persist its binding and then fail during local
+          // preparation. Retain that exact execution when recording the error.
+          const bound = this.service.store
+            .get("run-batch", batch.id)
+            ?.results.find((item) => item.ticketId === row.ticketId);
+          if (bound?.executionId) row.executionId = bound.executionId;
+          row.status =
+            e.code === "CAPACITY_FULL" && !row.executionId
+              ? "queued"
+              : "failed";
           row.code = e.status ? e.code : "DISPATCH_FAILED";
-          if (e.code === "CAPACITY_FULL") row.queueReason = "capacity";
+          if (row.status === "queued") row.queueReason = "capacity";
+          else delete row.queueReason;
           row.message = e.status
             ? e.message
             : "Dispatch failed; inspect the retained execution.";
