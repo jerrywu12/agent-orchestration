@@ -1,4 +1,11 @@
-import { useEffect, useMemo, useRef, useState, type RefObject } from "react";
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type RefObject,
+  type DragEvent,
+} from "react";
 import {
   AlertTriangle,
   Archive,
@@ -15,7 +22,14 @@ import {
   SlidersHorizontal,
   X,
 } from "lucide-react";
-import type { DeskState, Priority, Stage, Ticket } from "../types";
+import type {
+  DeskState,
+  Integrations,
+  Priority,
+  Stage,
+  Ticket,
+} from "../types";
+import { BulkPlanningTransition } from "./BulkPlanningTransition";
 import type { ArchiveResult, BulkRun } from "../bulk-types";
 import { api, ApiError, errorMessage, pathId } from "../api";
 import {
@@ -42,6 +56,8 @@ import {
 
 interface Props {
   state: DeskState;
+  integrations: Integrations | null;
+  boardError?: string;
   projectId: string;
   onOpen: (id: string) => void;
   onCreate: (stageId?: string) => void;
@@ -51,6 +67,7 @@ interface Props {
   searchRef: RefObject<HTMLInputElement | null>;
 }
 const lastRunKey = "agent-desk:last-bulk-run:v1";
+const planningDragType = "application/x-agent-desk-planning";
 interface RunRequest {
   ticketIds: string[];
   concurrency: number;
@@ -110,6 +127,8 @@ function rememberRun(run: BulkRun | null) {
 }
 export function WorkView({
   state,
+  integrations,
+  boardError,
   projectId,
   onOpen,
   onCreate,
@@ -133,6 +152,12 @@ export function WorkView({
   const [bulkBusy, setBulkBusy] = useState("");
   const [bulkError, setBulkError] = useState("");
   const [confirmArchive, setConfirmArchive] = useState(false);
+  const [planningTickets, setPlanningTickets] = useState<Ticket[] | null>(null);
+  const [dragCount, setDragCount] = useState(0);
+  const [dropTarget, setDropTarget] = useState<string | null>(null);
+  const planningGesture = useRef<{ tickets: Ticket[]; token: string } | null>(
+    null,
+  );
   const [savedRun] = useState(restoreSavedRun);
   const [run, setRun] = useState<BulkRun | null>(() =>
     savedRun ? restoringRun(savedRun) : null,
@@ -221,6 +246,65 @@ export function WorkView({
     visibleIds,
   ]);
   const selectedIds = visibleIds.filter((id) => selected.has(id));
+  const planningLocked =
+    !!bulkBusy ||
+    !!pending ||
+    !!takeover ||
+    takeoverPending ||
+    !!planningTickets;
+  function clearPlanningDrag() {
+    planningGesture.current = null;
+    setDragCount(0);
+    setDropTarget(null);
+  }
+  useEffect(() => {
+    planningGesture.current = null;
+    setDragCount(0);
+    setDropTarget(null);
+  }, [projectId, view]);
+  function openPlanning(tickets: Ticket[]) {
+    if (planningLocked || archived || !tickets.length) return;
+    setConfirmArchive(false);
+    setPlanningTickets(structuredClone(tickets.slice(0, 100)));
+  }
+  function beginPlanningDrag(event: DragEvent<HTMLElement>, ticket: Ticket) {
+    if (
+      planningLocked ||
+      ticket.archived ||
+      state.stages.find((s) => s.id === ticket.stageId)?.role !== "backlog"
+    ) {
+      event.preventDefault();
+      return;
+    }
+    const tickets = selected.has(ticket.id)
+      ? filtered.filter((t) => selected.has(t.id)).slice(0, 100)
+      : [ticket];
+    const token = crypto.randomUUID();
+    planningGesture.current = { tickets: structuredClone(tickets), token };
+    event.dataTransfer.setData(planningDragType, token);
+    event.dataTransfer.effectAllowed = "move";
+    setDragCount(tickets.length);
+  }
+  function acceptsPlanningDrag(event: DragEvent<HTMLElement>) {
+    return (
+      !planningLocked &&
+      !archived &&
+      !!planningGesture.current &&
+      event.dataTransfer.types.includes(planningDragType)
+    );
+  }
+  function dropPlanning(event: DragEvent<HTMLElement>) {
+    if (
+      !acceptsPlanningDrag(event) ||
+      event.dataTransfer.getData(planningDragType) !==
+        planningGesture.current?.token
+    )
+      return;
+    event.preventDefault();
+    const tickets = planningGesture.current!.tickets;
+    clearPlanningDrag();
+    openPlanning(tickets);
+  }
   useEffect(() => {
     const visible = new Set(visibleIds);
     setSelected(
@@ -264,6 +348,7 @@ export function WorkView({
   }, [run?.id, run?.state, pollRetry, refresh, bulkBusy]);
   const runActive = run?.state === "running";
   function selectTicket(id: string, checked: boolean) {
+    if (planningLocked) return;
     setSelected((current) => {
       const next = new Set(current);
       if (checked && next.size < 100) next.add(id);
@@ -286,6 +371,7 @@ export function WorkView({
     if (recoveredTicketId && !recovered) return;
     if (
       bulkBusy ||
+      planningTickets ||
       takeoverPending ||
       (retryOriginal
         ? !runMissing || !runRequest.current
@@ -341,7 +427,8 @@ export function WorkView({
     }
   }
   async function archiveSelected() {
-    if (bulkBusy || !confirmArchive || !selectedIds.length) return;
+    if (bulkBusy || planningTickets || !confirmArchive || !selectedIds.length)
+      return;
     setBulkBusy("archive");
     setBulkError("");
     try {
@@ -455,6 +542,7 @@ export function WorkView({
       ]
     : groups;
   async function update(ticket: Ticket, fields: Partial<Ticket>) {
+    if (planningLocked) return;
     setPending(ticket.id);
     try {
       await onUpdate(ticket, fields);
@@ -475,6 +563,23 @@ export function WorkView({
   ).length;
   return (
     <>
+      {planningTickets && (
+        <BulkPlanningTransition
+          tickets={planningTickets}
+          state={state}
+          integrations={integrations}
+          boardError={boardError}
+          onClose={() => setPlanningTickets(null)}
+          onComplete={async (admittedIds) => {
+            const admitted = new Set(admittedIds);
+            setSelected(
+              (current) =>
+                new Set([...current].filter((id) => !admitted.has(id))),
+            );
+            await refresh?.();
+          }}
+        />
+      )}
       {takeover && (
         <Modal
           title={`Take over ${
@@ -676,7 +781,7 @@ export function WorkView({
                 !!visibleIds.length &&
                 selectedIds.length === Math.min(visibleIds.length, 100)
               }
-              disabled={!visibleIds.length || !!bulkBusy}
+              disabled={!visibleIds.length || planningLocked}
               ref={(node) => {
                 if (node)
                   node.indeterminate =
@@ -698,7 +803,7 @@ export function WorkView({
           {selectedIds.length > 0 && (
             <button
               className="text-button"
-              disabled={!!bulkBusy}
+              disabled={planningLocked}
               onClick={() => {
                 setSelected(new Set());
                 setConfirmArchive(false);
@@ -712,7 +817,7 @@ export function WorkView({
             <select
               aria-label="Bulk run concurrency"
               value={concurrency}
-              disabled={!!bulkBusy || runActive}
+              disabled={!!bulkBusy || !!planningTickets || runActive}
               onChange={(event) => {
                 setConcurrency(Number(event.target.value));
               }}
@@ -726,7 +831,12 @@ export function WorkView({
           </label>
           <button
             className="button primary small-button"
-            disabled={!selectedIds.length || !!bulkBusy || runActive}
+            disabled={
+              !selectedIds.length ||
+              !!bulkBusy ||
+              !!planningTickets ||
+              runActive
+            }
             onClick={() => void runSelected()}
           >
             <Play size={13} />
@@ -734,8 +844,19 @@ export function WorkView({
           </button>
           <button
             className="button small-button"
+            disabled={!selectedIds.length || planningLocked || archived}
+            onClick={() =>
+              openPlanning(filtered.filter((ticket) => selected.has(ticket.id)))
+            }
+          >
+            Move to Planning
+          </button>
+          <button
+            className="button small-button"
             aria-label="Archive selected tickets"
-            disabled={!selectedIds.length || !!bulkBusy || archived}
+            disabled={
+              !selectedIds.length || !!bulkBusy || !!planningTickets || archived
+            }
             onClick={() => setConfirmArchive(true)}
           >
             <Archive size={13} />
@@ -1032,19 +1153,20 @@ export function WorkView({
           Create a project, add tickets, and give each agent a clear place to
           contribute.
         </EmptyState>
-      ) : filtering && !filtered.length ? (
-        <EmptyState
-          title="No tickets match these filters"
-          action={
-            <button className="button" onClick={clearFilters}>
-              Clear filters
-            </button>
-          }
-        >
-          Try another search, agent, or priority to find your work.
-        </EmptyState>
       ) : (
         <div className={view === "list" ? "work-list" : "work-board"}>
+          {filtering && !filtered.length && (
+            <EmptyState
+              title="No tickets match these filters"
+              action={
+                <button className="button" onClick={clearFilters}>
+                  Clear filters
+                </button>
+              }
+            >
+              Try another search, agent, or priority to find your work.
+            </EmptyState>
+          )}
           {view === "list" && (
             <div className="list-columns">
               <span>Ticket</span>
@@ -1061,12 +1183,37 @@ export function WorkView({
                 ? !state.stages.some((stage) => stage.id === ticket.stageId)
                 : ids.has(ticket.stageId),
             );
-            if (filtering && !tickets.length) return null;
+            const planning = group.stage?.role === "planning";
+            if (filtering && !tickets.length && !planning) return null;
             const folded = collapsed.has(group.id) && view === "list";
             return (
               <section
-                className={`stage-group ${view === "board" ? "board-column" : ""}`}
+                className={`stage-group ${view === "board" ? "board-column" : ""} ${planning ? "planning-drop-target" : ""} ${dropTarget === group.id ? "planning-drop-active" : ""}`}
                 key={group.id}
+                aria-label={planning ? "Planning tickets" : undefined}
+                onDragOver={
+                  planning
+                    ? (event) => {
+                        if (acceptsPlanningDrag(event)) {
+                          event.preventDefault();
+                          event.dataTransfer.dropEffect = "move";
+                          setDropTarget(group.id);
+                        }
+                      }
+                    : undefined
+                }
+                onDragLeave={
+                  planning
+                    ? (event) => {
+                        if (
+                          !(event.relatedTarget instanceof Node) ||
+                          !event.currentTarget.contains(event.relatedTarget)
+                        )
+                          setDropTarget(null);
+                      }
+                    : undefined
+                }
+                onDrop={planning ? dropPlanning : undefined}
               >
                 <div className="stage-heading">
                   <button
@@ -1102,6 +1249,12 @@ export function WorkView({
                     <Plus size={15} />
                   </button>
                 </div>
+                {planning && dragCount > 0 && (
+                  <p className="planning-drop-hint" role="status">
+                    Drop {dragCount} {dragCount === 1 ? "ticket" : "tickets"} to
+                    review Planning
+                  </p>
+                )}
                 {!folded && (
                   <div className="stage-tickets">
                     {tickets.map((ticket) => {
@@ -1114,7 +1267,20 @@ export function WorkView({
                       const running = isActive(ticket.execution);
                       const stale = isStale(ticket.execution);
                       return view === "board" ? (
-                        <article className="board-ticket" key={ticket.id}>
+                        <article
+                          className="board-ticket"
+                          key={ticket.id}
+                          aria-label={`${ticketKey(ticket, state.projects)} ${ticket.title}`}
+                          draggable={
+                            !planningLocked &&
+                            !ticket.archived &&
+                            stage?.role === "backlog"
+                          }
+                          onDragStart={(event) =>
+                            beginPlanningDrag(event, ticket)
+                          }
+                          onDragEnd={clearPlanningDrag}
+                        >
                           <div className="board-ticket-meta">
                             <input
                               className="bulk-ticket-checkbox"
@@ -1122,7 +1288,7 @@ export function WorkView({
                               aria-label={`Select ticket ${ticketKey(ticket, state.projects)}`}
                               checked={selected.has(ticket.id)}
                               disabled={
-                                !!bulkBusy ||
+                                planningLocked ||
                                 (!selected.has(ticket.id) &&
                                   selectedIds.length >= 100)
                               }
@@ -1191,6 +1357,15 @@ export function WorkView({
                           className="ticket-row"
                           key={ticket.id}
                           aria-label={`${ticketKey(ticket, state.projects)} ${ticket.title}`}
+                          draggable={
+                            !planningLocked &&
+                            !ticket.archived &&
+                            stage?.role === "backlog"
+                          }
+                          onDragStart={(event) =>
+                            beginPlanningDrag(event, ticket)
+                          }
+                          onDragEnd={clearPlanningDrag}
                         >
                           <div className="ticket-main">
                             <input
@@ -1199,7 +1374,7 @@ export function WorkView({
                               aria-label={`Select ticket ${ticketKey(ticket, state.projects)}`}
                               checked={selected.has(ticket.id)}
                               disabled={
-                                !!bulkBusy ||
+                                planningLocked ||
                                 (!selected.has(ticket.id) &&
                                   selectedIds.length >= 100)
                               }
@@ -1296,7 +1471,11 @@ export function WorkView({
                             <StageIcon stage={stage} />
                             <select
                               aria-label={`Stage for ${ticketKey(ticket, state.projects)}`}
-                              disabled={pending === ticket.id}
+                              disabled={
+                                pending === ticket.id ||
+                                !!planningTickets ||
+                                !!bulkBusy
+                              }
                               value={ticket.stageId}
                               onChange={(event) =>
                                 void update(ticket, {
@@ -1320,7 +1499,11 @@ export function WorkView({
                             <PriorityIcon priority={ticket.priority} />
                             <select
                               aria-label={`Priority for ${ticketKey(ticket, state.projects)}`}
-                              disabled={pending === ticket.id}
+                              disabled={
+                                pending === ticket.id ||
+                                !!planningTickets ||
+                                !!bulkBusy
+                              }
                               value={ticket.priority || "none"}
                               onChange={(event) =>
                                 void update(ticket, {
@@ -1337,7 +1520,11 @@ export function WorkView({
                             <AgentAvatar agent={agent} small />
                             <select
                               aria-label={`Owner for ${ticketKey(ticket, state.projects)}`}
-                              disabled={pending === ticket.id}
+                              disabled={
+                                pending === ticket.id ||
+                                !!planningTickets ||
+                                !!bulkBusy
+                              }
                               value={ticket.ownerId || ""}
                               onChange={(event) =>
                                 void update(ticket, {

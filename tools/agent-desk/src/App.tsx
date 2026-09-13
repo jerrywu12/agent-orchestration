@@ -356,6 +356,8 @@ export default function App() {
         ) : page === "work" ? (
           <WorkView
             state={state}
+            integrations={desk.integrations}
+            boardError={desk.error}
             projectId={projectId}
             onOpen={setSelectedId}
             onCreate={newTicket}
