@@ -38,3 +38,7 @@ Explicit Start can launch scoped blocker resolution while preserving other claim
 delivery with evidence. Process completion is not merge or delivery; independent
 review remains required. Imported active/suspended sessions stay externally owned
 until reconciled. A source update is separate from verified global cutover.
+
+## Agent Desk verification preference
+
+For Agent Desk, use code, scripts, API checks and automated DOM tests. Do not use computer control or capture screenshots. This user preference also applies to managed Agent Desk task executions and takes precedence over generic browser-evidence instructions.

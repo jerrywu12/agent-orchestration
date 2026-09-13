@@ -143,7 +143,8 @@ export class Store {
           releasedAt: row.released_at,
           stale:
             !row.released_at &&
-            Date.now() - Date.parse(row.heartbeat_at) > 90000,
+            (!Number.isFinite(Date.parse(row.heartbeat_at)) ||
+              Date.now() - Date.parse(row.heartbeat_at) > 90000),
         }
       : null;
   }

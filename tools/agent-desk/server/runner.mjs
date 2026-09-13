@@ -1,3 +1,7 @@
+import { createManagedBridge } from "./managed-bridge.mjs";
+import { captureProcessIdentity } from "./session-trace.mjs";
+import { RunCoordinator } from "./run-coordinator.mjs";
+import { fileURLToPath } from "node:url";
 import { buildTaskPacket } from "./task-packet.mjs";
 import { spawn, execFileSync } from "node:child_process";
 import {
@@ -34,11 +38,10 @@ export function executable(name) {
   return null;
 }
 export class Runner {
-  constructor(service, { dataDir, url, agentTokens = {} }) {
+  constructor(service, { dataDir, url }) {
     this.service = service;
     this.dataDir = dataDir;
     this.url = url;
-    this.agentTokens = agentTokens;
     this.children = new Map();
     for (const ticket of service.store.list("ticket")) {
       const execution = service.store.active(ticket.id);
@@ -52,6 +55,7 @@ export class Runner {
         });
       }
     }
+    this.coordinator = new RunCoordinator(service, this);
     service.on("autostart", (ticketId) =>
       setImmediate(() => {
         try {
@@ -77,6 +81,16 @@ export class Runner {
   }
   start(ticketId, { automatic = false } = {}) {
     const ticket = this.service.require("ticket", ticketId);
+    if (
+      [...this.children.keys()].some(
+        (key) => this.service.store.execution(key)?.ticketId === ticketId,
+      )
+    )
+      fail(
+        409,
+        "ALREADY_RUNNING",
+        "This ticket still has a managed background process; wait for it to stop.",
+      );
     const agent = this.service.require("agent", ticket.ownerId);
     const adapter = adapters[agent.adapter];
     if (!adapter)
@@ -114,7 +128,10 @@ export class Runner {
         "Project needs a fetched origin/main before isolated execution.",
       );
     }
-    const resolveBlockers = !automatic && this.service.resolutionNeeded(ticket);
+    const prior = this.service.store.latest(ticketId);
+    const resolveBlockers =
+      !automatic &&
+      (this.service.resolutionNeeded(ticket) || prior?.state === "revoked");
     const run = this.service.claim(
       ticketId,
       {
@@ -123,11 +140,11 @@ export class Runner {
       },
       { resolveBlockers },
     );
-    let child, heartbeat;
+    let child, heartbeat, bridge;
     const send = (type, summary, extra = {}) => {
       const current = this.service.store.execution(run.id);
       if (current?.releasedAt) return;
-      this.service.event(run.id, {
+      return this.service.event(run.id, {
         agentId: agent.id,
         sessionId: run.sessionId,
         eventId: id(),
@@ -164,11 +181,34 @@ export class Runner {
           version: currentTicket.version,
           stageId: activeStage.id,
         });
+      bridge = createManagedBridge({
+        service: this.service,
+        execution: run,
+        worktree,
+        sendEvent: send,
+      });
       const prompt = buildTaskPacket({
         ticket: this.service.getTicket(ticket.id),
         project,
         execution: run,
         worktree,
+        managedClient: {
+          node: process.execPath,
+          path: fileURLToPath(
+            new URL("../bin/managed-client.mjs", import.meta.url),
+          ),
+          directory: bridge.directory,
+        },
+        recoveryContext:
+          prior?.state === "revoked"
+            ? {
+                executionId: prior.id,
+                sessionId: prior.sessionId,
+                worktreePath: prior.worktreePath,
+                branch: prior.branch,
+                summary: prior.summary,
+              }
+            : null,
         resolutionContext: resolveBlockers
           ? this.service.resolutionContext(ticketId, {
               agentId: agent.id,
@@ -182,7 +222,7 @@ export class Runner {
         env: agentEnvironment(process.env, {
           AGENT_DESK_WRAPPED: "1",
           AGENT_DESK_URL: this.url,
-          AGENT_DESK_TOKEN: this.agentTokens[agent.id] ?? "",
+          AGENT_DESK_BRIDGE_DIR: bridge.directory,
           AGENT_DESK_TICKET_ID: ticket.id,
           AGENT_DESK_EXECUTION_ID: run.id,
           AGENT_DESK_SESSION_ID: run.sessionId,
@@ -197,6 +237,13 @@ export class Runner {
         pid: child.pid ?? null,
       });
       this.children.set(run.id, child);
+      captureProcessIdentity(child.pid)
+        .then((processIdentity) => {
+          const current = this.service.store.execution(run.id);
+          if (processIdentity && current && !current.releasedAt)
+            this.service.store.saveExecution({ ...current, processIdentity });
+        })
+        .catch(() => {});
       let buffered = "";
       child.stdout.on("data", (chunk) => {
         buffered += chunk.toString();
@@ -207,6 +254,20 @@ export class Runner {
           try {
             const event = JSON.parse(line);
             const kind = String(event.type ?? "");
+            if (
+              agent.adapter === "codex" &&
+              kind === "thread.started" &&
+              /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
+                event.thread_id ?? "",
+              )
+            ) {
+              const current = this.service.store.execution(run.id);
+              this.service.store.saveExecution({
+                ...current,
+                nativeSessionId: event.thread_id,
+                nativeSessionSource: "runner",
+              });
+            }
             if (["turn.started", "thread.started"].includes(kind))
               send("progress", `Agent ${kind.replaceAll(".", " ")}`);
             if (
@@ -237,6 +298,7 @@ export class Runner {
       );
       heartbeat.unref();
       child.once("error", () => {
+        bridge.close();
         clearInterval(heartbeat);
         this.children.delete(run.id);
         send(
@@ -244,20 +306,31 @@ export class Runner {
           "Agent could not be started. Check local CLI installation and authentication.",
         );
       });
-      child.once("exit", (code, signal) => {
+      child.once("close", async (code, signal) => {
         clearInterval(heartbeat);
-        this.children.delete(run.id);
-        send(
-          code === 0 ? "complete" : signal ? "stopped" : "failed",
-          code === 0
-            ? "Agent process completed; verification and review remain."
-            : signal
-              ? "Agent process stopped; worktree retained."
-              : `Agent exited with code ${code}; worktree retained.`,
-        );
+        try {
+          await bridge.flush();
+          this.children.delete(run.id);
+          const current = this.service.store.execution(run.id);
+          if (current && !current.releasedAt) {
+            const last = current.summary || "No agent progress was reported.";
+            send(
+              code === 0 ? "checkpoint" : signal ? "stopped" : "failed",
+              `${code === 0 ? "Agent exited without a terminal task report; checkpoint retained." : signal ? "Agent process stopped; worktree retained." : `Agent exited with code ${code}; worktree retained.`} ${last}`.slice(
+                0,
+                4000,
+              ),
+            );
+          }
+        } finally {
+          bridge.close();
+          this.children.delete(run.id);
+          this.service.changed();
+        }
       });
       return this.service.store.execution(run.id);
     } catch (e) {
+      bridge?.close();
       send(
         "failed",
         "Dispatch failed; any created worktree is retained for inspection.",

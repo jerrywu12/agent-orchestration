@@ -735,12 +735,6 @@ for (const width of [320, 1440, 1920]) {
     expect(
       await page.evaluate(() => document.documentElement.scrollWidth),
     ).toBeLessThanOrEqual(width);
-    if (width !== 1920)
-      await page.screenshot({
-        path: test.info().outputPath("intake-list.png"),
-        fullPage: true,
-        animations: "disabled",
-      });
     await page.getByRole("button", { name: "Board view", exact: true }).click();
     for (const size of await page
       .locator(".board-ticket .ticket-id")
@@ -775,10 +769,5 @@ for (const width of [320, 1440, 1920]) {
           .evaluate((element) => element.clientWidth),
         "Document instructions retain a readable mobile text column",
       ).toBeGreaterThanOrEqual(150);
-    if (width !== 1920)
-      await page.screenshot({
-        path: test.info().outputPath("intake-create.png"),
-        animations: "disabled",
-      });
   });
 }

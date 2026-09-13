@@ -30,6 +30,33 @@ Ollama and ArkCLI report through their own clients using the connector; Ollama/A
 advisory providers. Assignment and stage changes never launch work automatically. Ordinary client claims still
 require readiness; the explicit Start action alone grants a bounded blocker-resolution pass.
 
+## Run several tickets and recover missing sessions
+
+Select visible tickets on **All work**, then choose **Run Agent** or **Archive**.
+Run Agent queues up to100 selected tickets with1–4 concurrent managed agents
+(default2). Blocked tickets receive a resolution pass; active claims stay reserved.
+Each ticket has its own outcome. Pending runs are retained as interrupted results
+if the service restarts; they are never silently replayed. Archive skips already
+archived tickets and reports reservations that prevent archiving.
+
+Ticket details show **Execution tracking**: native Codex links when an exact
+session is found, managed background process evidence, branch/worktree and prior
+execution history. CLI sessions may have no visible desktop conversation; the
+background record remains in Agent Desk. **Trace session** reads bounded local
+metadata, without transcripts or process arguments. Missing records do not prove
+that a process stopped.
+
+For an untraceable stale claim, the operator can **Take over claim** after reviewing
+the trace, entering a reason and acknowledging the old process may still exist.
+This revokes only the old board reservation, fences its late reports and preserves
+its worktree/history. It does not kill unknown processes or automatically run a
+replacement. Tracked live or freshly reporting executions refuse takeover.
+
+Managed agents receive a local, credential-free reporting helper in their task
+packet. It supports only their exact claimed ticket and works without sandbox
+networking or MCP approval. Process exit alone is checkpointed; unresolved work
+cannot be promoted to review merely because the CLI exited successfully.
+
 ## Chrome app and readable lists
 
 Open Agent Desk in Chrome and choose **Install app**, or use Chrome's install control.

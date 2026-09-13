@@ -707,10 +707,24 @@ export class Service extends EventEmitter {
           !Number.isFinite(input.progress))
       )
         fail(422, "VALIDATION", "Progress must be between 0 and 100.");
-      const summary =
+      let summary =
         input.type === "heartbeat" && input.summary === undefined
           ? execution.summary
           : text(input.summary, "Progress summary", 4000);
+      // Every transport shares this invariant. Keep the original event input for
+      // idempotent replay while recording the truthful effective outcome.
+      const eventType =
+        input.type === "complete" &&
+        execution.managedBy === "agent-desk" &&
+        this.resolutionNeeded(this.require("ticket", execution.ticketId))
+          ? "checkpoint"
+          : input.type;
+      if (eventType !== input.type)
+        summary =
+          `Unresolved blockers or dependencies remain. ${summary}`.slice(
+            0,
+            4000,
+          );
       const terminal = ["checkpoint", "complete", "failed", "stopped"].includes(
         input.type,
       );
@@ -736,7 +750,7 @@ export class Service extends EventEmitter {
             checkpoint: "checkpointed",
             failed: "failed",
             stopped: "stopped",
-          }[input.type] ?? "running",
+          }[eventType] ?? "running",
         releasedAt: terminal ? now() : null,
       };
       for (const field of ["prUrl", "headSha"])
@@ -761,7 +775,7 @@ export class Service extends EventEmitter {
       if (input.type !== "heartbeat")
         this.store.activity(
           execution.ticketId,
-          input.type,
+          eventType,
           summary,
           execution.agentId,
         );

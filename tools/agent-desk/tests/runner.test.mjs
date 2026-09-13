@@ -51,7 +51,7 @@ function fixture(t) {
   const fake = join(bin, "codex");
   writeFileSync(
     fake,
-    `#!${process.execPath}\nimport fs from 'node:fs';\nfs.writeFileSync(${JSON.stringify(record)},JSON.stringify({args:process.argv.slice(2),cwd:process.cwd(),env:Object.fromEntries(['AGENT_DESK_URL','AGENT_DESK_TICKET_ID','AGENT_DESK_EXECUTION_ID','AGENT_DESK_SESSION_ID','AGENT_DESK_AGENT_ID','AGENT_DESK_ADMIN_TOKEN','AGENT_DESK_TOKEN'].map(k=>[k,process.env[k]]))}));\nprocess.stdout.write(JSON.stringify({type:'thread.started'})+'\\n');\nprocess.stdout.write(JSON.stringify({type:'item.completed',item:{type:'agent_message',text:'Fixture progress observed'}})+'\\n');\nsetTimeout(()=>process.exit(0),80);\n`,
+    `#!${process.execPath}\nimport fs from 'node:fs';\nfs.writeFileSync(${JSON.stringify(record)},JSON.stringify({args:process.argv.slice(2),cwd:process.cwd(),env:Object.fromEntries(['AGENT_DESK_URL','AGENT_DESK_TICKET_ID','AGENT_DESK_EXECUTION_ID','AGENT_DESK_SESSION_ID','AGENT_DESK_AGENT_ID','AGENT_DESK_ADMIN_TOKEN','AGENT_DESK_TOKEN','AGENT_DESK_BRIDGE_DIR'].map(k=>[k,process.env[k]]))}));\nprocess.stdout.write(JSON.stringify({type:'thread.started'})+'\\n');\nprocess.stdout.write(JSON.stringify({type:'item.completed',item:{type:'agent_message',text:'Fixture progress observed'}})+'\\n');\nsetTimeout(()=>process.exit(0),80);\n`,
     { mode: 0o700 },
   );
   const originalPath = process.env.PATH;
@@ -69,9 +69,10 @@ function fixture(t) {
     agentTokens: { codex: "scoped-fixture-token" },
   });
   t.after(async () => {
+    runner.coordinator.close();
     for (const child of runner.children.values()) {
       await new Promise((resolve) => {
-        child.once("exit", resolve);
+        child.once("close", resolve);
         child.kill("SIGTERM");
       });
     }
@@ -165,7 +166,7 @@ test("fixed executable argv runs only in an isolated base worktree and streams p
   const ticket = f.ticket();
   const result = f.runner.start(ticket.id);
   const end = await completed(f.service, ticket.id);
-  assert.equal(end.state, "awaiting_review");
+  assert.equal(end.state, "checkpointed");
   assert.equal(end.external, false);
   assert.ok(end.releasedAt);
   assert.equal(f.store.active(ticket.id), null);
@@ -197,8 +198,13 @@ test("fixed executable argv runs only in an isolated base worktree and streams p
     AGENT_DESK_EXECUTION_ID: result.id,
     AGENT_DESK_SESSION_ID: result.sessionId,
     AGENT_DESK_AGENT_ID: "codex",
-    AGENT_DESK_TOKEN: "scoped-fixture-token",
+    AGENT_DESK_BRIDGE_DIR: call.env.AGENT_DESK_BRIDGE_DIR,
   });
+  assert.ok(
+    call.env.AGENT_DESK_BRIDGE_DIR.startsWith(
+      join(result.worktreePath, `.agent-desk-${result.id}-`),
+    ),
+  );
   const activity = f.store.activities().filter((a) => a.ticketId === ticket.id);
   assert.ok(
     activity.some(
@@ -208,8 +214,8 @@ test("fixed executable argv runs only in an isolated base worktree and streams p
   assert.ok(
     activity.some(
       (a) =>
-        a.kind === "complete" &&
-        /verification and review remain/.test(a.summary),
+        a.kind === "checkpoint" &&
+        /without a terminal task report/.test(a.summary),
     ),
   );
   assert.equal(
@@ -267,7 +273,8 @@ test("server administrator authority is absent from agent child environment", as
   await completed(f.service, ticket.id);
   const { env } = JSON.parse(readFileSync(f.record, "utf8"));
   assert.equal(env.AGENT_DESK_ADMIN_TOKEN, undefined);
-  assert.equal(env.AGENT_DESK_TOKEN, "scoped-fixture-token");
+  assert.equal(env.AGENT_DESK_TOKEN, undefined);
+  assert.ok(env.AGENT_DESK_BRIDGE_DIR);
 });
 
 test("explicit Start launches a blocked Backlog ticket as a resolution pass", async (t) => {
@@ -300,3 +307,43 @@ test("explicit Start launches a blocked Backlog ticket as a resolution pass", as
     "active",
   );
 });
+
+test("a blocked resolver exiting zero without a terminal report is checkpointed with its last useful summary", async (t) => {
+  const f = fixture(t);
+  const ticket = f.ticket({
+    blockedReason: "Original source session must be reconciled",
+  });
+  f.runner.start(ticket.id);
+  const end = await completed(f.service, ticket.id);
+  assert.equal(end.state, "checkpointed");
+  assert.match(end.summary, /Fixture progress observed/);
+  assert.match(end.summary, /checkpoint|report|block/i);
+  assert.equal(
+    f.service.getTicket(ticket.id).blockedReason,
+    ticket.blockedReason,
+  );
+});
+
+for (const clear of [false, true]) {
+  test(`managed helper terminal report is preserved with blocker cleared=${clear}`, async (t) => {
+    const f = fixture(t),
+      ticket = f.ticket({ blockedReason: "Synthetic dependency" });
+    const client = new URL("../bin/managed-client.mjs", import.meta.url).href;
+    writeFileSync(
+      join(f.bin, "codex"),
+      `#!${process.execPath}\nimport {managedRequest} from ${JSON.stringify(client)};\nconst directory=process.env.AGENT_DESK_BRIDGE_DIR;\nprocess.stdout.write(JSON.stringify({type:'thread.started',thread_id:'01234567-89ab-cdef-0123-456789abcdef'})+'\\n');\nconst ticket=await managedRequest(directory,'get_task');\n${clear ? "await managedRequest(directory,'update_task',{version:ticket.version,reason:'Fixture dependency proven resolved',changes:{blockedReason:''}});" : ""}\nawait managedRequest(directory,'report_progress',{type:'complete',summary:'Exact verified fixture result',eventId:'fixture-terminal'});\nprocess.stdout.write(JSON.stringify({type:'item.completed',item:{type:'agent_message',text:'Post-report prose must not overwrite the terminal result'}})+'\\n');\n`,
+      { mode: 0o700 },
+    );
+    f.runner.start(ticket.id);
+    const end = await completed(f.service, ticket.id);
+    assert.equal(end.state, clear ? "awaiting_review" : "checkpointed");
+    assert.match(end.summary, /Exact verified fixture result/);
+    if (!clear) assert.match(end.summary, /Unresolved blockers/);
+    assert.ok(end.reportingReadyAt);
+    assert.equal(end.nativeSessionId, "01234567-89ab-cdef-0123-456789abcdef");
+    assert.equal(end.nativeSessionSource, "runner");
+    const child = f.runner.children.get(end.id);
+    if (child) await new Promise((r) => child.once("close", r));
+    assert.equal(f.store.execution(end.id).summary, end.summary);
+  });
+}

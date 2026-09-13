@@ -1,6 +1,7 @@
-import { useMemo, useState, type RefObject } from "react";
+import { useEffect, useMemo, useRef, useState, type RefObject } from "react";
 import {
   AlertTriangle,
+  Archive,
   ChevronDown,
   ChevronRight,
   CircleDot,
@@ -9,15 +10,19 @@ import {
   LayoutGrid,
   List,
   Plus,
+  Play,
   Search,
   SlidersHorizontal,
   X,
 } from "lucide-react";
 import type { DeskState, Priority, Stage, Ticket } from "../types";
+import type { ArchiveResult, BulkRun } from "../bulk-types";
+import { api, ApiError, errorMessage, pathId } from "../api";
 import {
   AgentAvatar,
   capitalize,
   EmptyState,
+  ErrorNotice,
   isActive,
   isStale,
   priorities,
@@ -35,7 +40,65 @@ interface Props {
   onCreate: (stageId?: string) => void;
   onCreateProject: () => void;
   onUpdate: (ticket: Ticket, fields: Partial<Ticket>) => Promise<void>;
+  refresh?: () => Promise<void>;
   searchRef: RefObject<HTMLInputElement | null>;
+}
+const lastRunKey = "agent-desk:last-bulk-run:v1";
+interface RunRequest {
+  ticketIds: string[];
+  concurrency: number;
+  requestId: string;
+}
+interface SavedRun {
+  id: string;
+  concurrency: number;
+  ticketIds?: string[];
+}
+function restoreSavedRun(): SavedRun | null {
+  try {
+    const saved = JSON.parse(sessionStorage.getItem(lastRunKey) || "null");
+    if (
+      !saved ||
+      typeof saved.id !== "string" ||
+      saved.id.length > 200 ||
+      ![1, 2, 4].includes(saved.concurrency)
+    )
+      return null;
+    if (
+      saved.ticketIds !== undefined &&
+      (!Array.isArray(saved.ticketIds) ||
+        !saved.ticketIds.length ||
+        saved.ticketIds.length > 100 ||
+        saved.ticketIds.some(
+          (id: unknown) => typeof id !== "string" || !id || id.length > 300,
+        ))
+    )
+      return null;
+    return saved;
+  } catch {
+    return null;
+  }
+}
+function restoringRun(saved: SavedRun): BulkRun {
+  return {
+    id: saved.id,
+    concurrency: saved.concurrency,
+    state: "running",
+    results: [],
+    createdAt: "",
+  };
+}
+function rememberRun(run: BulkRun | null) {
+  try {
+    if (run)
+      sessionStorage.setItem(
+        lastRunKey,
+        JSON.stringify({ id: run.id, concurrency: run.concurrency }),
+      );
+    else sessionStorage.removeItem(lastRunKey);
+  } catch {
+    // Restricted browser storage still allows tracking in this mounted view.
+  }
 }
 export function WorkView({
   state,
@@ -45,6 +108,7 @@ export function WorkView({
   onCreateProject,
   onUpdate,
   searchRef,
+  refresh,
 }: Props) {
   const [search, setSearch] = useState("");
   const [owner, setOwner] = useState("");
@@ -56,6 +120,35 @@ export function WorkView({
   const [label, setLabel] = useState("");
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
   const [pending, setPending] = useState<string | null>(null);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [concurrency, setConcurrency] = useState(2);
+  const [bulkBusy, setBulkBusy] = useState("");
+  const [bulkError, setBulkError] = useState("");
+  const [confirmArchive, setConfirmArchive] = useState(false);
+  const [archiveResults, setArchiveResults] = useState<ArchiveResult[]>([]);
+  const [savedRun] = useState(restoreSavedRun);
+  const [run, setRun] = useState<BulkRun | null>(() =>
+    savedRun ? restoringRun(savedRun) : null,
+  );
+  const [runMissing, setRunMissing] = useState(false);
+  const [pollError, setPollError] = useState("");
+  const [pollRetry, setPollRetry] = useState(0);
+  const runRequest = useRef<RunRequest | null>(
+    savedRun?.ticketIds
+      ? {
+          requestId: savedRun.id,
+          concurrency: savedRun.concurrency,
+          ticketIds: savedRun.ticketIds,
+        }
+      : null,
+  );
+  const mounted = useRef(true);
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
   const relevant = useMemo(
     () =>
       state.tickets.filter(
@@ -84,6 +177,152 @@ export function WorkView({
         .includes(needle)
     );
   });
+  const visibleIds = filtered.map((ticket) => ticket.id);
+  const selectionScope = JSON.stringify([
+    projectId,
+    search,
+    owner,
+    priority,
+    label,
+    blocked,
+    archived,
+    visibleIds,
+  ]);
+  const selectedIds = visibleIds.filter((id) => selected.has(id));
+  useEffect(() => {
+    const visible = new Set(visibleIds);
+    setSelected(
+      (current) => new Set([...current].filter((id) => visible.has(id))),
+    );
+    setConfirmArchive(false);
+  }, [selectionScope]);
+  useEffect(() => {
+    if (!run || run.state !== "running" || bulkBusy === "run") return;
+    let cancelled = false;
+    let timer: number | undefined;
+    const runId = run.id;
+    async function poll() {
+      try {
+        const next = await api<BulkRun>(`/runs/${pathId(runId)}`);
+        if (cancelled) return;
+        rememberRun(next);
+        runRequest.current = null;
+        setRun(next);
+        setRunMissing(false);
+        setBulkError("");
+        setPollError("");
+        if (next.state === "running")
+          timer = window.setTimeout(() => void poll(), 2000);
+        else await refresh?.();
+      } catch (failure) {
+        if (!cancelled) {
+          setRunMissing(failure instanceof ApiError && failure.status === 404);
+          setPollError(errorMessage(failure));
+        }
+      }
+    }
+    timer = window.setTimeout(
+      () => void poll(),
+      pollRetry || !run.results.length ? 0 : 2000,
+    );
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [run?.id, run?.state, pollRetry, refresh, bulkBusy]);
+  const runActive = run?.state === "running";
+  function selectTicket(id: string, checked: boolean) {
+    setSelected((current) => {
+      const next = new Set(current);
+      if (checked && next.size < 100) next.add(id);
+      else if (!checked) next.delete(id);
+      return next;
+    });
+    setConfirmArchive(false);
+  }
+  async function runSelected(retryOriginal = false) {
+    if (
+      bulkBusy ||
+      (retryOriginal
+        ? !runMissing || !runRequest.current
+        : runActive || !!runRequest.current || !selectedIds.length)
+    )
+      return;
+    const request =
+      retryOriginal && runRequest.current
+        ? runRequest.current
+        : {
+            ticketIds: selectedIds,
+            concurrency,
+            requestId: crypto.randomUUID(),
+          };
+    runRequest.current = request;
+    try {
+      sessionStorage.setItem(
+        lastRunKey,
+        JSON.stringify({
+          id: request.requestId,
+          concurrency: request.concurrency,
+          ticketIds: request.ticketIds,
+        }),
+      );
+    } catch {
+      runRequest.current = null;
+      setBulkError(
+        "The run was not sent because browser session storage is unavailable. Enable session storage before starting a batch.",
+      );
+      return;
+    }
+    setRun(
+      restoringRun({ id: request.requestId, concurrency: request.concurrency }),
+    );
+    setRunMissing(false);
+    setBulkBusy("run");
+    setBulkError("");
+    setPollError("");
+    setArchiveResults([]);
+    try {
+      const next = await api<BulkRun>("/runs", "POST", request);
+      if (!mounted.current || restoreSavedRun()?.id !== request.requestId)
+        return;
+      rememberRun(next);
+      setRun(next);
+      runRequest.current = null;
+      await refresh?.();
+    } catch (failure) {
+      if (mounted.current) setBulkError(errorMessage(failure));
+    } finally {
+      if (mounted.current) setBulkBusy("");
+    }
+  }
+  async function archiveSelected() {
+    if (bulkBusy || runActive || !confirmArchive || !selectedIds.length) return;
+    setBulkBusy("archive");
+    setBulkError("");
+    setArchiveResults([]);
+    try {
+      const result = await api<{ results: ArchiveResult[] }>(
+        "/tickets/bulk-archive",
+        "POST",
+        { ticketIds: selectedIds },
+      );
+      if (!mounted.current) return;
+      setArchiveResults(result.results);
+      setSelected((current) => {
+        const next = new Set(current);
+        result.results
+          .filter((item) => item.status === "archived")
+          .forEach((item) => next.delete(item.ticketId));
+        return next;
+      });
+      setConfirmArchive(false);
+      await refresh?.();
+    } catch (failure) {
+      if (mounted.current) setBulkError(errorMessage(failure));
+    } finally {
+      if (mounted.current) setBulkBusy("");
+    }
+  }
   const groups = useMemo(() => {
     const result = new Map<
       string,
@@ -298,6 +537,277 @@ export function WorkView({
           )}
         </div>
       )}
+      {!!state.projects.length && (
+        <div className="bulk-actions" aria-label="Bulk ticket actions">
+          <label className="checkbox-label">
+            <input
+              type="checkbox"
+              aria-label="Select all visible tickets"
+              checked={
+                !!visibleIds.length &&
+                selectedIds.length === Math.min(visibleIds.length, 100)
+              }
+              disabled={!visibleIds.length || !!bulkBusy}
+              ref={(node) => {
+                if (node)
+                  node.indeterminate =
+                    selectedIds.length > 0 &&
+                    selectedIds.length < Math.min(visibleIds.length, 100);
+              }}
+              onChange={(event) => {
+                setSelected(
+                  new Set(event.target.checked ? visibleIds.slice(0, 100) : []),
+                );
+                setConfirmArchive(false);
+              }}
+            />
+            Select visible
+          </label>
+          <span className="bulk-selection-count">
+            {selectedIds.length} selected
+          </span>
+          {selectedIds.length > 0 && (
+            <button
+              className="text-button"
+              disabled={!!bulkBusy}
+              onClick={() => {
+                setSelected(new Set());
+                setConfirmArchive(false);
+              }}
+            >
+              Clear selection
+            </button>
+          )}
+          <label className="bulk-concurrency">
+            Concurrent agents
+            <select
+              aria-label="Bulk run concurrency"
+              value={concurrency}
+              disabled={!!bulkBusy || runActive}
+              onChange={(event) => {
+                setConcurrency(Number(event.target.value));
+              }}
+            >
+              {[1, 2, 4].map((value) => (
+                <option key={value} value={value}>
+                  {value}
+                </option>
+              ))}
+            </select>
+          </label>
+          <button
+            className="button primary small-button"
+            disabled={!selectedIds.length || !!bulkBusy || runActive}
+            onClick={() => void runSelected()}
+          >
+            <Play size={13} />
+            {bulkBusy === "run" ? "Starting run…" : "Run Agent"}
+          </button>
+          <button
+            className="button small-button"
+            aria-label="Archive selected tickets"
+            disabled={
+              !selectedIds.length || !!bulkBusy || runActive || archived
+            }
+            onClick={() => setConfirmArchive(true)}
+          >
+            <Archive size={13} />
+            Archive
+          </button>
+          {visibleIds.length > 100 && (
+            <p className="bulk-action-hint">
+              Select up to 100 tickets per operation. Select visible chooses the
+              first 100 matching tickets.
+            </p>
+          )}
+          {confirmArchive && (
+            <div className="bulk-archive-confirmation">
+              <p>
+                Archive {selectedIds.length} selected tickets? Active
+                reservations will be retained and reported individually.
+              </p>
+              <button
+                className="button danger small-button"
+                disabled={!!bulkBusy}
+                onClick={() => void archiveSelected()}
+              >
+                {bulkBusy === "archive"
+                  ? "Archiving…"
+                  : `Archive ${selectedIds.length} ${selectedIds.length === 1 ? "ticket" : "tickets"}`}
+              </button>
+              <button
+                className="button small-button"
+                disabled={!!bulkBusy}
+                onClick={() => setConfirmArchive(false)}
+              >
+                Cancel archive
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+      {bulkError && (
+        <div className="bulk-feedback">
+          <ErrorNotice>{bulkError}</ErrorNotice>
+        </div>
+      )}
+      {run && (
+        <section className="bulk-results" aria-label="Bulk run results">
+          <div className="bulk-results-heading">
+            <h2>
+              {!run.results.length
+                ? "Restoring agent run"
+                : run.state === "running"
+                  ? "Agent run in progress"
+                  : "Agent run finished"}
+            </h2>
+            <span>
+              {run.concurrency} concurrent · {run.results.length} tickets
+            </span>
+            {run.state === "complete" && (
+              <button
+                className="text-button"
+                onClick={() => {
+                  rememberRun(null);
+                  setRun(null);
+                  setPollError("");
+                }}
+              >
+                Dismiss finished run
+              </button>
+            )}
+          </div>
+          {!run.results.length && !pollError && (
+            <p role="status">
+              Loading the recorded run and its ticket results…
+            </p>
+          )}
+          {pollError && (
+            <>
+              <ErrorNotice>{pollError}</ErrorNotice>
+              <p>
+                {runMissing
+                  ? "No accepted run was found for this request ID."
+                  : "Tracking is paused. The run may still be active; retry tracking before starting more work."}
+              </p>
+              {runMissing && runRequest.current && (
+                <>
+                  <p>
+                    Original selection:{" "}
+                    {runRequest.current.ticketIds
+                      .map((id) => {
+                        const ticket = state.tickets.find(
+                          (item) => item.id === id,
+                        );
+                        return ticket ? ticketKey(ticket, state.projects) : id;
+                      })
+                      .join(", ")}
+                    . Concurrency: {runRequest.current.concurrency}.
+                  </p>
+                  <button
+                    className="button small-button"
+                    disabled={!!bulkBusy}
+                    onClick={() => void runSelected(true)}
+                  >
+                    Retry same run request
+                  </button>
+                </>
+              )}
+              {runMissing && (
+                <button
+                  className="button small-button"
+                  disabled={!!bulkBusy}
+                  onClick={() => {
+                    rememberRun(null);
+                    runRequest.current = null;
+                    setRun(null);
+                    setRunMissing(false);
+                    setPollError("");
+                    setBulkError("");
+                  }}
+                >
+                  Discard unaccepted request
+                </button>
+              )}
+              <button
+                className="button small-button"
+                onClick={() => {
+                  setPollError("");
+                  setPollRetry((value) => value + 1);
+                }}
+              >
+                Retry run tracking
+              </button>
+            </>
+          )}
+          <ul>
+            {run.results.map((result) => {
+              const ticket = state.tickets.find(
+                (item) => item.id === result.ticketId,
+              );
+              const key = ticket
+                ? ticketKey(ticket, state.projects)
+                : result.ticketId;
+              return (
+                <li key={result.ticketId}>
+                  <button
+                    className="text-button"
+                    onClick={() => onOpen(result.ticketId)}
+                    aria-label={
+                      result.status === "needs_takeover"
+                        ? `Inspect takeover for ${key}`
+                        : `Open ticket ${key}`
+                    }
+                  >
+                    {key}
+                    {result.status === "needs_takeover"
+                      ? " · Inspect takeover"
+                      : ""}
+                  </button>
+                  <span
+                    className={`status-chip ${["failed", "needs_takeover"].includes(result.status) ? "warning" : ""}`}
+                  >
+                    {result.status.replaceAll("_", " ")}
+                  </span>
+                  <p>{result.message}</p>
+                </li>
+              );
+            })}
+          </ul>
+        </section>
+      )}
+      {!!archiveResults.length && (
+        <section className="bulk-results" aria-label="Bulk archive results">
+          <div className="bulk-results-heading">
+            <h2>Archive results</h2>
+          </div>
+          <ul>
+            {archiveResults.map((result) => {
+              const ticket = state.tickets.find(
+                (item) => item.id === result.ticketId,
+              );
+              return (
+                <li key={result.ticketId}>
+                  <button
+                    className="text-button"
+                    onClick={() => onOpen(result.ticketId)}
+                  >
+                    {ticket
+                      ? ticketKey(ticket, state.projects)
+                      : result.ticketId}
+                  </button>
+                  <span
+                    className={`status-chip ${result.status !== "archived" ? "warning" : ""}`}
+                  >
+                    {result.status}
+                  </span>
+                  <p>{result.message}</p>
+                </li>
+              );
+            })}
+          </ul>
+        </section>
+      )}
       {!state.projects.length ? (
         <EmptyState
           title="A fresh workspace, ready for your work"
@@ -395,6 +905,20 @@ export function WorkView({
                       return view === "board" ? (
                         <article className="board-ticket" key={ticket.id}>
                           <div className="board-ticket-meta">
+                            <input
+                              className="bulk-ticket-checkbox"
+                              type="checkbox"
+                              aria-label={`Select ticket ${ticketKey(ticket, state.projects)}`}
+                              checked={selected.has(ticket.id)}
+                              disabled={
+                                !!bulkBusy ||
+                                (!selected.has(ticket.id) &&
+                                  selectedIds.length >= 100)
+                              }
+                              onChange={(event) =>
+                                selectTicket(ticket.id, event.target.checked)
+                              }
+                            />
                             <span
                               className="ticket-id"
                               title={ticketKey(ticket, state.projects)}
@@ -450,6 +974,20 @@ export function WorkView({
                           aria-label={`${ticketKey(ticket, state.projects)} ${ticket.title}`}
                         >
                           <div className="ticket-main">
+                            <input
+                              className="bulk-ticket-checkbox"
+                              type="checkbox"
+                              aria-label={`Select ticket ${ticketKey(ticket, state.projects)}`}
+                              checked={selected.has(ticket.id)}
+                              disabled={
+                                !!bulkBusy ||
+                                (!selected.has(ticket.id) &&
+                                  selectedIds.length >= 100)
+                              }
+                              onChange={(event) =>
+                                selectTicket(ticket.id, event.target.checked)
+                              }
+                            />
                             <span
                               className="ticket-id"
                               title={ticketKey(ticket, state.projects)}
