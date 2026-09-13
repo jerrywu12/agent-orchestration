@@ -84,11 +84,25 @@ function fixture(t) {
     service.createTicket({
       projectId: project.id,
       title: "Fixture work",
+      brief: {
+        specification: "Fixture specification",
+        acceptanceCriteria: "Verify the behavior under test",
+        scope: "Isolated fixture implementation",
+        verification: "Run the focused fixture assertions",
+        allowedPaths: `fixtures/${crypto.randomUUID()}/**`,
+        conflictKeys: "none",
+      },
       ownerId: "codex",
       stageId: service
         .state()
-        .stages.find((s) => s.projectId === project.id && s.role === "ready")
-        .id,
+        .stages.find(
+          (s) =>
+            s.projectId === project.id &&
+            s.role ===
+              (extra.blockedReason || extra.dependsOn?.length
+                ? "active"
+                : "ready"),
+        ).id,
       ...extra,
     });
   return {
@@ -142,9 +156,9 @@ test("automatic blocked, backlog, dependency-held and already-claimed tickets ne
     sessionId: "original-executor",
   });
   for (const [ticket, code] of [
-    [blocked, "BLOCKED"],
+    [blocked, "NOT_READY"],
     [backlog, "STAGE_HOLD"],
-    [dependent, "DEPENDENCY_HOLD"],
+    [dependent, "NOT_READY"],
     [claimed, "ALREADY_CLAIMED"],
   ])
     assert.throws(
@@ -304,7 +318,7 @@ test("explicit Start launches a blocked Backlog ticket as a resolution pass", as
   assert.equal(f.store.active(dependency.id).id, foreign.id);
   assert.equal(
     f.store.get("stage", f.service.getTicket(ticket.id).stageId).role,
-    "active",
+    "backlog",
   );
 });
 

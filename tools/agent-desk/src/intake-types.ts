@@ -1,4 +1,7 @@
 export interface TaskBrief {
+  specification?: string;
+  allowedPaths?: string;
+  conflictKeys?: string;
   acceptanceCriteria: string;
   scope: string;
   verification: string;

@@ -9,7 +9,10 @@ import { createAppServer } from "../server/http.mjs";
 async function fixture(t) {
   const store = new Store(":memory:"),
     service = new Service(store);
-  const project = service.createProject({ name: "Resolution" });
+  const project = service.createProject({
+    name: "Resolution",
+    repo: "fixture/resolution",
+  });
   const stages = Object.fromEntries(
     store.list("stage", project.id).map((s) => [s.role, s.id]),
   );
@@ -17,8 +20,19 @@ async function fixture(t) {
     service.createTicket({
       projectId: project.id,
       title: "Assigned work",
+      brief: {
+        specification: "Fixture specification",
+        acceptanceCriteria: "Verify the behavior under test",
+        scope: "Isolated fixture implementation",
+        verification: "Run the focused fixture assertions",
+        allowedPaths: `fixtures/${crypto.randomUUID()}/**`,
+        conflictKeys: "none",
+      },
       ownerId: "codex",
-      stageId: stages.ready,
+      stageId:
+        extra.blockedReason || extra.dependsOn?.length
+          ? stages.active
+          : stages.ready,
       ...extra,
     });
   const foreign = make({
@@ -96,7 +110,7 @@ test("resolver organization retains ownership, audit evidence, and blocker until
   });
   assert.equal(child.ownerId, "codex");
   assert.equal(child.parentId, f.ticket.id);
-  assert.equal(child.stageId, f.stages.ready);
+  assert.equal(child.stageId, f.stages.planning);
   assert.equal(f.store.active(child.id), null);
   assert.equal(f.service.getTicket(f.ticket.id).blockedReason, "dependency");
   const current = f.service.getTicket(f.ticket.id);
@@ -256,7 +270,8 @@ test("HTTP derives scoped identity and never accepts resolution overrides in ord
     purpose: "resolve_blockers",
   });
   assert.equal(r.status, 409);
-  assert.equal(r.data.error.code, "BLOCKED");
+  assert.equal(r.data.error.code, "NOT_READY");
+  assert.match(r.data.error.message, /blocked/i);
   assert.equal(f.store.active(blocked.id), null);
   r = await f.req("/api/agents/status");
   assert.equal(r.status, 403);

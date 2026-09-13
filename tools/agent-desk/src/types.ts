@@ -1,6 +1,7 @@
 import type { Attachment, TaskBrief } from "./intake-types";
 export type Priority = "urgent" | "high" | "medium" | "low" | "none";
-export type StageRole = "backlog" | "ready" | "active" | "review" | "done";
+export type StageRole =
+  "backlog" | "planning" | "ready" | "active" | "review" | "done";
 export interface Project {
   id: string;
   name: string;
@@ -33,7 +34,7 @@ export interface Execution {
   nativeSessionId?: string | null;
   nativeSessionSource?: string | null;
   reportingReadyAt?: string | null;
-  purpose?: "implementation" | "resolve_blockers";
+  purpose?: "implementation" | "resolve_blockers" | "planning";
   id: string;
   ticketId: string;
   agentId: string;
@@ -68,6 +69,12 @@ export interface GitHubLink {
   conflict?: unknown;
 }
 export interface Ticket {
+  launchIntent?: {
+    status: "queued" | "started" | "failed";
+    purpose: "planning" | "implementation";
+    reason?: string;
+    ownerId: string;
+  } | null;
   brief?: TaskBrief;
   attachments?: Attachment[];
   attachmentContext?: Attachment[];

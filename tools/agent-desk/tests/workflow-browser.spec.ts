@@ -2,7 +2,7 @@ import { expect, test, type Page } from "@playwright/test";
 import type { DeskState } from "../src/types";
 
 const now = "2026-09-13T12:00:00.000Z";
-const names = ["Backlog", "Ready", "In progress", "In review", "Done"];
+const names = ["Backlog", "Planning", "Ready", "In progress", "In review", "Done"];
 function workspace(): DeskState {
   return {
     projects: [
@@ -20,7 +20,7 @@ function workspace(): DeskState {
       id: `stage-${i}`,
       name,
       projectId: "project",
-      role: ["backlog", "ready", "active", "review", "done"][
+      role: ["backlog", "planning", "ready", "active", "review", "done"][
         i
       ] as DeskState["stages"][number]["role"],
       position: i,
@@ -50,7 +50,7 @@ function workspace(): DeskState {
         projectId: "project",
         number: 21,
         title: "Decide the dependency",
-        stageId: "stage-1",
+        stageId: "stage-2",
         ownerId: "claude",
         priority: "none",
         version: 1,
@@ -230,7 +230,7 @@ test("workflow settings are fixed and GitHub status discovery is read-only", asy
     page.getByRole("heading", { name: "Stage mapping" }),
   ).toHaveCount(0);
   const workflow = page.getByRole("list", { name: "Fixed workflow stages" });
-  await expect(workflow.getByRole("listitem")).toHaveCount(5);
+  await expect(workflow.getByRole("listitem")).toHaveCount(6);
   await expect(workflow.locator("strong")).toHaveText(names);
   await expect(
     page.getByRole("region", { name: "Discovered GitHub statuses" }),
@@ -294,7 +294,7 @@ test("an assigned blocked Backlog ticket can explicitly start a resolver without
     "desk_get_resolution_context, desk_update_task and desk_create_subtask",
   );
   await expect(dialog.locator(".workflow-checklist pre")).toContainText(
-    "Starting does not clear blockers or dependencies",
+    "Explicit blocker resolution does not grant implementation admission or clear holds",
   );
 });
 
@@ -413,7 +413,7 @@ for (const reason of ["backlog", "dependency", "implementation"]) {
     const fixture = await mockWorkflow(page);
     fixture.state.tickets[0].blockedReason = null;
     fixture.state.tickets[0].stageId =
-      reason === "backlog" ? "stage-0" : "stage-1";
+      reason === "backlog" ? "stage-0" : "stage-2";
     fixture.state.tickets[0].dependsOn =
       reason === "dependency" ? ["dependency"] : [];
     await page.goto("/");
@@ -481,7 +481,7 @@ for (const hold of [
     if (hold === "disabled") fixture.state.agents[0].enabled = false;
     if (hold === "unassigned") fixture.state.tickets[0].ownerId = null;
     if (hold === "archived") fixture.state.tickets[0].archived = true;
-    if (hold === "done") fixture.state.tickets[0].stageId = "stage-4";
+    if (hold === "done") fixture.state.tickets[0].stageId = "stage-5";
     if (hold === "launcher") fixture.disableLauncher();
     await page.goto("/");
     if (hold === "archived") {

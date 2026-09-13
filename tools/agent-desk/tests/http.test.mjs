@@ -94,13 +94,21 @@ test("admin auth required with remote mode, agent credentials cannot mutate arbi
     ).status,
     403,
   );
-  const p = service.createProject({ name: "Owned" });
+  const p = service.createProject({ name: "Owned", repo: "fixture/owned" });
   const stage = service
     .state()
     .stages.find((s) => s.projectId === p.id && s.role === "ready");
   const a = service.createTicket({
     projectId: p.id,
     title: "Owned ticket",
+    brief: {
+      specification: "Fixture specification",
+      acceptanceCriteria: "Verify the behavior under test",
+      scope: "Isolated fixture implementation",
+      verification: "Run the focused fixture assertions",
+      allowedPaths: `fixtures/${crypto.randomUUID()}/**`,
+      conflictKeys: "none",
+    },
     stageId: stage.id,
     ownerId: "claude",
   });
@@ -132,13 +140,24 @@ test("bad payloads have consistent errors and health exposes verified app identi
 
 test("independent API claims remain recoverable after their client disappears", async (t) => {
   const { url, service } = await app(t);
-  const project = service.createProject({ name: "Recovery" });
+  const project = service.createProject({
+    name: "Recovery",
+    repo: "fixture/recovery",
+  });
   const stage = service
     .state()
     .stages.find((s) => s.projectId === project.id && s.role === "ready");
   const ticket = service.createTicket({
     projectId: project.id,
     title: "External runner",
+    brief: {
+      specification: "Fixture specification",
+      acceptanceCriteria: "Verify the behavior under test",
+      scope: "Isolated fixture implementation",
+      verification: "Run the focused fixture assertions",
+      allowedPaths: `fixtures/${crypto.randomUUID()}/**`,
+      conflictKeys: "none",
+    },
     ownerId: "codex",
     stageId: stage.id,
   });

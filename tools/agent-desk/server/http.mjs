@@ -101,6 +101,7 @@ export function createAppServer({
     (await import("./document-processor.mjs")).processDocument(input, options),
   folderOptions = {},
 }) {
+  service.runner ??= runner;
   const documentJobs = new Set();
   const sessions = new Map();
   const clients = new Set();
@@ -600,6 +601,20 @@ export function createAppServer({
           return json(service.updateStage(key, input));
         if (resource === "stages" && key && method === "DELETE")
           return json(service.deleteStage(key));
+        if (
+          resource === "tickets" &&
+          key &&
+          action === "readiness" &&
+          method === "GET"
+        )
+          return json(service.readiness(key));
+        if (
+          resource === "tickets" &&
+          key &&
+          action === "transition" &&
+          method === "POST"
+        )
+          return json(service.transition(key, input));
         if (resource === "tickets" && !key && method === "POST")
           return json(service.createTicket(input), 201);
         if (resource === "tickets" && key && !action && method === "PATCH")

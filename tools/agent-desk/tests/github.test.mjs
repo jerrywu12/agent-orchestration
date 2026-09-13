@@ -40,6 +40,7 @@ test("workflow discovery associates unique normalized exact names and refuses al
     statusFieldId: "FIELD",
     statusOptions: [
       { id: "B", name: " Backlog " },
+      { id: "P", name: " Planning " },
       { id: "R", name: "READY" },
       { id: "A", name: "In   progress" },
       { id: "V", name: "In review" },
@@ -49,6 +50,7 @@ test("workflow discovery associates unique normalized exact names and refuses al
   };
   assert.deepEqual(discoverWorkflowStatus(project), {
     backlog: "B",
+    planning: "P",
     ready: "R",
     active: "A",
     review: "V",
@@ -77,7 +79,7 @@ test("workflow discovery associates unique normalized exact names and refuses al
       discoverWorkflowStatus({
         ...project,
         statusOptions: project.statusOptions.map((o) =>
-          o.id === "R" ? { ...o, name: "Planning" } : o,
+          o.id === "R" ? { ...o, name: "Prepared" } : o,
         ),
       }),
     "STATUS_OPTIONS_MISSING",

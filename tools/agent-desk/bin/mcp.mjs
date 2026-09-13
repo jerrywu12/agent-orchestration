@@ -66,6 +66,9 @@ export const definitions = [
           title: str,
           description: str,
           brief: object({
+            specification: str,
+            allowedPaths: str,
+            conflictKeys: str,
             acceptanceCriteria: str,
             scope: str,
             verification: str,
@@ -82,7 +85,7 @@ export const definitions = [
   {
     name: "desk_create_subtask",
     description:
-      "Create a Ready subtask inheriting your actively claimed ticket's project and owner. Claim the new child separately before its execution; creating it does not steal any existing reservation.",
+      "Create a Planning subtask inheriting your actively claimed ticket's project and owner. Prepare the child then obtain confirmed Ready admission before implementation; creation grants no implementation authority.",
     inputSchema: object(
       {
         ticketId: str,
@@ -91,7 +94,11 @@ export const definitions = [
         reason: str,
         title: str,
         description: str,
+        dependsOn: { type: "array", items: str, maxItems: 100 },
         brief: object({
+          specification: str,
+          allowedPaths: str,
+          conflictKeys: str,
           acceptanceCriteria: str,
           scope: str,
           verification: str,

@@ -22,7 +22,7 @@ const fields = {
   get_task: [],
   get_resolution_context: [],
   update_task: ["version", "reason", "changes"],
-  create_subtask: ["reason", "title", "description", "brief"],
+  create_subtask: ["reason", "title", "description", "brief", "dependsOn"],
   report_progress: [
     "type",
     "summary",
