@@ -79,6 +79,10 @@ export class Service extends EventEmitter {
   decorate(ticket) {
     return {
       ...ticket,
+      // Old Done records can retain checkpoint metadata; it is history, not work to resume.
+      ...(this.store.get("stage", ticket.stageId)?.role === "done"
+        ? { resumeReason: "" }
+        : {}),
       attachments: this.attachments.list(ticket.id),
       execution: this.store.latest(ticket.id),
       launchIntent: this.store.get("launch-intent", ticket.id) ?? null,
@@ -368,6 +372,13 @@ export class Service extends EventEmitter {
         next.brief = this.normalizeBrief(input.brief);
       this.validateTicket(next);
       const role = this.require("stage", next.stageId).role;
+      // Completion supersedes the old resume request, including on legacy records
+      // being reopened. The execution and checkpoint history remain untouched.
+      if (
+        role === "done" ||
+        this.require("stage", previous.stageId).role === "done"
+      )
+        next.resumeReason = "";
       if (
         next.stageId !== previous.stageId &&
         ["planning", "ready"].includes(role) &&
@@ -399,13 +410,14 @@ export class Service extends EventEmitter {
         "ownerId",
         "priority",
         "blockedReason",
+        "resumeReason",
         "archived",
       ].filter((k) => next[k] !== previous[k]);
       this.store.activity(
         key,
         "updated",
         changes.length
-          ? `Updated ${changes.map((k) => ({ stageId: "stage", ownerId: "owner", blockedReason: "blocker" })[k] ?? k).join(", ")}`
+          ? `Updated ${changes.map((k) => ({ stageId: "stage", ownerId: "owner", blockedReason: "blocker", resumeReason: "resume request" })[k] ?? k).join(", ")}`
           : "Ticket details updated",
       );
       this.changed();

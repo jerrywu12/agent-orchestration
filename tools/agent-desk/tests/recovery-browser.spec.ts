@@ -1,5 +1,125 @@
 import { expect, test, type Page } from "@playwright/test";
 import type { DeskState } from "../src/types";
+import { randomUUID } from "node:crypto";
+
+test("Done clears checkpoint resume affordances in list board and details while preserving history", async ({
+  page,
+  request,
+}) => {
+  const projectResponse = await request.post("/api/projects", {
+    data: {
+      name: "Synthetic Done resume",
+      key: `R${randomUUID().slice(0, 7)}`,
+      repo: `fixture/${randomUUID()}`,
+    },
+  });
+  expect(projectResponse.status()).toBe(201);
+  const project = await projectResponse.json();
+  const snapshot = await (await request.get("/api/state")).json();
+  const stages = snapshot.stages.filter(
+    (stage: any) => stage.projectId === project.id,
+  );
+  const response = await request.post("/api/tickets", {
+    data: {
+      projectId: project.id,
+      stageId: stages.find((stage: any) => stage.role === "ready").id,
+      ownerId: "codex",
+      title: `Synthetic checkpoint ${randomUUID()}`,
+      brief: {
+        specification: "Synthetic spec",
+        acceptanceCriteria: "No resume after Done",
+        scope: "Synthetic module",
+        verification: "Browser assertions",
+        allowedPaths: `fixtures/${randomUUID()}.ts`,
+        conflictKeys: "none",
+      },
+    },
+  });
+  expect(response.status(), await response.text()).toBe(201);
+  const ticket = await response.json();
+  const claim = await request.post(`/api/tickets/${ticket.id}/claim`, {
+    data: { agentId: "codex", sessionId: `synthetic-${randomUUID()}` },
+  });
+  expect(claim.status(), await claim.text()).toBe(201);
+  const execution = await claim.json();
+  const summary = "Synthetic saved checkpoint retained after completion";
+  const checkpoint = await request.post(
+    `/api/executions/${execution.id}/events`,
+    {
+      data: {
+        agentId: "codex",
+        sessionId: execution.sessionId,
+        eventId: randomUUID(),
+        seq: 1,
+        type: "checkpoint",
+        summary,
+      },
+    },
+  );
+  expect(checkpoint.ok(), await checkpoint.text()).toBeTruthy();
+  const before = await (await request.get(`/api/tickets/${ticket.id}`)).json();
+  expect(before.resumeReason).toBeTruthy();
+  await page.route("**/api/integrations", (route) =>
+    route.fulfill({
+      json: {
+        github: { available: false },
+        agents: [{ id: "codex", available: true }],
+      },
+    }),
+  );
+  const starts: string[] = [];
+  page.on("request", (req) => {
+    if (
+      req.method() === "POST" &&
+      /\/(start|transition|runs)$/.test(new URL(req.url()).pathname)
+    )
+      starts.push(req.url());
+  });
+  await page.goto("/");
+  const rowName = `${project.key}-${ticket.number} ${ticket.title}`;
+  const row = page.getByRole("article", { name: rowName, exact: true });
+  await expect(row.getByText("Resume needed", { exact: true })).toBeVisible();
+  await row.getByRole("button", { name: ticket.title, exact: true }).click();
+  let dialog = page.getByRole("dialog");
+  await expect(
+    dialog.getByRole("button", { name: "Start agent", exact: true }),
+  ).toBeEnabled();
+  await dialog
+    .getByRole("button", { name: "Close dialog", exact: true })
+    .click();
+  const done = await request.patch(`/api/tickets/${ticket.id}`, {
+    data: {
+      version: before.version,
+      stageId: stages.find((stage: any) => stage.role === "done").id,
+    },
+  });
+  expect(done.ok(), await done.text()).toBeTruthy();
+  await page.reload();
+  await expect(row.getByText("Resume needed", { exact: true })).toHaveCount(0);
+  await page.getByRole("button", { name: "Board view", exact: true }).click();
+  await expect(
+    page
+      .getByRole("article", { name: rowName, exact: true })
+      .getByText("Resume needed", { exact: true }),
+  ).toHaveCount(0);
+  await page.getByRole("button", { name: ticket.title, exact: true }).click();
+  dialog = page.getByRole("dialog");
+  await expect(
+    dialog.getByRole("button", { name: "Start agent", exact: true }),
+  ).toBeDisabled();
+  await expect(
+    dialog.getByText(before.resumeReason, { exact: true }),
+  ).toHaveCount(0);
+  const after = await (await request.get(`/api/tickets/${ticket.id}`)).json();
+  expect(after.execution.id).toBe(execution.id);
+  expect(after.execution.summary).toBe(summary);
+  expect(after.execution.state).toBe("checkpointed");
+  expect(after.stageHistory.slice(0, before.stageHistory.length)).toEqual(
+    before.stageHistory,
+  );
+  expect(after.stageHistory.at(-1).toStageName).toBe("Done");
+  expect(starts).toEqual([]);
+});
 
 const now = "2026-09-13T12:00:00.000Z";
 const nativeSessionId = "019c7714-3b77-74d1-9866-e1f484aae2ab";
@@ -661,8 +781,12 @@ test("archive confirmation reports each outcome and selections follow filters", 
     .click();
   await expect(page.getByText("Archive storage unavailable")).toBeVisible();
   await expect(page.getByText("Active reservation retained")).toBeVisible();
-  await expect(page.getByRole("region", { name: "Archive results", exact: true })).toHaveCount(0);
-  await expect(page.getByRole("heading", { name: "Archive results", exact: true })).toHaveCount(0);
+  await expect(
+    page.getByRole("region", { name: "Archive results", exact: true }),
+  ).toHaveCount(0);
+  await expect(
+    page.getByRole("heading", { name: "Archive results", exact: true }),
+  ).toHaveCount(0);
   await page.getByLabel("Search tickets").fill("Invisible");
   await expect(page.getByText("1 selected", { exact: true })).toBeVisible();
   await page.getByLabel("Search tickets").fill("Blocked");
@@ -1480,16 +1604,23 @@ test("bulk takeover can confirm with an empty reason and no acknowledgement", as
   expect(app.writes.some(item => item.path.endsWith("/start"))).toBe(false);
 });
 
-test("stopped work shows a resume badge and preserves the full reason in details", async ({ page }) => {
+test("stopped work shows a resume badge and preserves the full reason in details", async ({
+  page,
+}) => {
   const app = await mockRecovery(page);
   const reason = "Agent stopped; saved work retained. Run Agent to resume.";
   app.state.tickets[0].resumeReason = reason;
   app.state.tickets[0].execution = null;
   await page.goto("/");
   const row = page.getByRole("article", { name: "SMARTSTO-100 Normal work" });
-  await expect(row.getByText("Resume needed", { exact: true })).toHaveAttribute("title", reason);
+  await expect(row.getByText("Resume needed", { exact: true })).toHaveAttribute(
+    "title",
+    reason,
+  );
   await row.getByRole("button", { name: "Normal work", exact: true }).click();
-  await expect(page.getByRole("dialog").getByText(reason, { exact: true })).toBeVisible();
+  await expect(
+    page.getByRole("dialog").getByText(reason, { exact: true }),
+  ).toBeVisible();
   expect(app.writes).toHaveLength(0);
 });
 
