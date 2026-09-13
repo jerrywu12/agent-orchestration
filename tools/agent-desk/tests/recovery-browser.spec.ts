@@ -83,7 +83,8 @@ test("Done clears checkpoint resume affordances in list board and details while 
   let dialog = page.getByRole("dialog");
   await expect(
     dialog.getByRole("button", { name: "Start agent", exact: true }),
-  ).toBeEnabled();
+  ).toHaveCount(0);
+  await expect(dialog.getByText(before.resumeReason, { exact: true })).toBeVisible();
   await dialog
     .getByRole("button", { name: "Close dialog", exact: true })
     .click();
@@ -106,7 +107,7 @@ test("Done clears checkpoint resume affordances in list board and details while 
   dialog = page.getByRole("dialog");
   await expect(
     dialog.getByRole("button", { name: "Start agent", exact: true }),
-  ).toBeDisabled();
+  ).toHaveCount(0);
   await expect(
     dialog.getByText(before.resumeReason, { exact: true }),
   ).toHaveCount(0);
@@ -832,7 +833,7 @@ test("untraceable session confirms without a checkbox and accepts an optional re
     reason: "I verified the prior client cannot be found.",
     confirmed: true,
   });
-  await expect(page.getByText("Claim released; saved work retained.", { exact: true })).toBeVisible();
+  await expect(page.getByRole("status").filter({ hasText: "Takeover complete" })).toBeVisible();
   expect(app.writes.some((item) => item.path.endsWith("/start"))).toBe(false);
   await expect(
     page.getByRole("button", { name: "Run Agent for SMARTSTO-102", exact: true }),
