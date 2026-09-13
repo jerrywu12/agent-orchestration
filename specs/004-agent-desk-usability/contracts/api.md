@@ -16,10 +16,10 @@ Attachment: {id,name,mediaType,size,sha256,createdAt,ticketId:string|null,text?:
 
 ## Folder selection
 - GET /project-folders?path=ABS: admin direct-directory listing {path,parentPath:string|null,directories:{name,path}[],truncated:boolean,nativePicker:boolean}. Empty path defaults server home. Bounded200 entries; skip hidden dirs and symlinks. Safe errors for invalid/inaccessible paths.
-- POST /project-folder/pick {}: loopback admin on darwin only; opens server Mac's chooser. Returns {cancelled:true} or FolderInspection. Single active picker; deadline/cancel are explicit. Remote/non-Mac gets 409 PICKER_UNAVAILABLE so UI offers server browse.
+- POST /project-folder/pick {}: retired compatibility endpoint; returns immediate 409 PICKER_UNAVAILABLE directing clients to the in-app Choose folder control. Authentication and origin protections remain; no native chooser executes. Folder listings report nativePicker:false on every platform.
 - POST /projects/inspect {path}: FolderInspection {path,name,key,repo,git:{isRepository:boolean,root:string|null,branch:string|null,hasHead:boolean,dirty:boolean},existingProjectId:string|null,warnings:string[]}.
 - POST /projects with nonempty path: inspect canonical path/Git root again; auto-detect repo if input omitted/empty. Reuse existing project for canonical path, status200; create new status201. Preserve explicit user name/key and valid repo override. No repository writes.
-- Frontend Browse opens server folder navigation; on Mac offer native Choose folder. Inspect result fills untouched name/key/repo and resolved path, shows branch/dirty/no-HEAD/non-Git warnings; existingProjectId permits Open existing project via onCreated.
+- Frontend Choose folder opens server folder navigation on every platform. Inspect result fills untouched name/key/repo and resolved path, shows branch/dirty/no-HEAD/non-Git warnings; existingProjectId permits Open existing project via onCreated. Closing cancels pending selection and fences late responses without modifying the form.
 
 ## UI, workflow and PWA
 Readability: exact +3px on current CSS sizes, identifiers fully visible including suffix at all widths; narrow rows may stack ID/title. New brief fields labelled Acceptance criteria, Scope, Verification plan. Details show context, original downloads, bounded previews, and checklist for ownership/holds/spec brief, execution, recorded checks/review/PR/SHA (unverified is explicit). Copy task packet works with clipboard fallback.

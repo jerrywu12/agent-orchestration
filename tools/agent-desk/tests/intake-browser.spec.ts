@@ -558,6 +558,11 @@ test("server folder browsing fills untouched metadata and preserves an explicit 
   page,
 }) => {
   const mocked = await mockIntake(page);
+  const nativeCalls: string[] = [];
+  page.on("request", (request) => {
+    if (request.url().endsWith("/api/project-folder/pick"))
+      nativeCalls.push(request.url());
+  });
   await page.goto("/");
   await page
     .getByRole("button", { name: "Create project", exact: true })
@@ -569,20 +574,12 @@ test("server folder browsing fills untouched metadata and preserves an explicit 
   await dialog
     .getByRole("button", { name: "Choose folder", exact: true })
     .click();
-  await expect(dialog.getByText(/Folder selection cancelled/)).toBeVisible();
+  await expect(
+    dialog.getByRole("region", { name: "Server folder browser" }),
+  ).toBeVisible();
   await expect(dialog.getByLabel("Project name", { exact: true })).toHaveValue(
     "My explicit project name",
   );
-  mocked.setNative("unavailable");
-  await dialog
-    .getByRole("button", { name: "Choose folder", exact: true })
-    .click();
-  await expect(dialog.getByRole("alert")).toContainText(
-    "Native picker unavailable",
-  );
-  await dialog
-    .getByRole("button", { name: "Browse server", exact: true })
-    .click();
   await dialog.getByRole("button", { name: "repository", exact: true }).click();
   await dialog
     .getByRole("button", { name: "Use this folder", exact: true })
@@ -613,20 +610,27 @@ test("server folder browsing fills untouched metadata and preserves an explicit 
     path: "/fixture/repository",
     repo: "example/fixture",
   });
+  expect(nativeCalls).toEqual([]);
 });
 
 test("an already registered canonical folder opens the existing project without another create", async ({
   page,
 }) => {
   const mocked = await mockIntake(page);
-  mocked.setNative("existing");
   await page.goto("/");
   await page
     .getByRole("button", { name: "Create project", exact: true })
     .click();
   await page
     .getByRole("dialog")
+    .getByLabel(/Working directory/)
+    .fill("/fixture/existing");
+  await page
+    .getByRole("dialog")
     .getByRole("button", { name: "Choose folder", exact: true })
+    .click();
+  await page
+    .getByRole("button", { name: "Use this folder", exact: true })
     .click();
   await page
     .getByRole("button", { name: "Open existing project", exact: true })
@@ -635,6 +639,159 @@ test("an already registered canonical folder opens the existing project without 
     "Readable workspace",
   );
   expect(mocked.created).toHaveLength(0);
+});
+
+for (const pending of ["browse", "inspect"] as const) {
+  test(`closing folder browser cancels pending ${pending}, preserves draft and ignores late response`, async ({
+    page,
+  }) => {
+    await mockIntake(page);
+    const nativeCalls: string[] = [];
+    page.on("request", (request) => {
+      if (request.url().endsWith("/api/project-folder/pick"))
+        nativeCalls.push(request.url());
+    });
+    let release: (() => void) | undefined;
+    let held = false;
+    let lateCompleted = false;
+    let intercept = true;
+    const pattern =
+      pending === "browse"
+        ? "**/api/project-folders**"
+        : "**/api/projects/inspect";
+    await page.route(pattern, async (route) => {
+      if (!intercept) return route.fallback();
+      intercept = false;
+      held = true;
+      await new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      try {
+        await route.fulfill({
+          json:
+            pending === "browse"
+              ? {
+                  path: "/late-result",
+                  parentPath: null,
+                  directories: [],
+                  nativePicker: true,
+                  truncated: false,
+                }
+              : {
+                  path: "/late-result",
+                  name: "Late result must not replace draft",
+                  key: "LATE",
+                  repo: "example/late",
+                  git: { isRepository: false },
+                  warnings: [],
+                },
+        });
+      } catch {
+        /* The browser may abort the cancelled network request. */
+      } finally {
+        lateCompleted = true;
+      }
+    });
+    await page.goto("/");
+    await page
+      .getByRole("button", { name: "Create project", exact: true })
+      .click();
+    const dialog = page.getByRole("dialog");
+    await dialog
+      .getByLabel("Project name", { exact: true })
+      .fill("Preserved project draft");
+    await dialog.getByLabel(/Working directory/).fill("/fixture/original");
+    await dialog
+      .getByRole("button", { name: "Choose folder", exact: true })
+      .click();
+    if (pending === "inspect")
+      await dialog
+        .getByRole("button", { name: "Use this folder", exact: true })
+        .click();
+    await expect.poll(() => held).toBe(true);
+    await dialog
+      .getByRole("button", { name: "Close browser", exact: true })
+      .click();
+    await expect(
+      dialog.getByRole("region", { name: "Server folder browser" }),
+    ).toHaveCount(0);
+    await expect(
+      dialog.getByRole("button", { name: "Choose folder", exact: true }),
+    ).toBeEnabled();
+    await expect(
+      dialog.getByLabel("Project name", { exact: true }),
+    ).toBeEnabled();
+    await expect(dialog.getByLabel(/Working directory/)).toHaveValue(
+      "/fixture/original",
+    );
+    await dialog
+      .getByRole("button", { name: "Choose folder", exact: true })
+      .click();
+    await expect(
+      dialog.getByRole("region", { name: "Server folder browser" }),
+    ).toContainText("/fixture/original");
+    release?.();
+    await expect.poll(() => lateCompleted).toBe(true);
+    await expect(
+      dialog.getByLabel("Project name", { exact: true }),
+    ).toHaveValue("Preserved project draft");
+    await expect(dialog.getByLabel(/Working directory/)).toHaveValue(
+      "/fixture/original",
+    );
+    await expect(dialog).not.toContainText("/late-result");
+    await dialog
+      .getByRole("button", { name: "Use this folder", exact: true })
+      .click();
+    await expect(
+      dialog.getByRole("region", { name: "Folder inspection" }),
+    ).toContainText("/fixture/repository");
+    expect(nativeCalls).toEqual([]);
+  });
+}
+
+test("folder listing error can retry through Choose folder and cancel without applying metadata", async ({
+  page,
+}) => {
+  await mockIntake(page);
+  let fail = true;
+  await page.route("**/api/project-folders**", (route) => {
+    if (!fail) return route.fallback();
+    fail = false;
+    return route.fulfill({
+      status: 503,
+      json: { error: { message: "Synthetic folder listing unavailable" } },
+    });
+  });
+  await page.goto("/");
+  await page
+    .getByRole("button", { name: "Create project", exact: true })
+    .click();
+  const dialog = page.getByRole("dialog");
+  await dialog
+    .getByLabel("Project name", { exact: true })
+    .fill("Original draft");
+  await dialog
+    .getByRole("button", { name: "Choose folder", exact: true })
+    .click();
+  await expect(dialog.getByRole("alert")).toContainText(
+    "Synthetic folder listing unavailable",
+  );
+  await dialog
+    .getByRole("button", { name: "Close browser", exact: true })
+    .click();
+  await dialog
+    .getByRole("button", { name: "Choose folder", exact: true })
+    .click();
+  await expect(
+    dialog.getByRole("button", { name: "repository", exact: true }),
+  ).toBeVisible();
+  await dialog
+    .getByRole("button", { name: "Close browser", exact: true })
+    .click();
+  await expect(dialog.getByLabel("Project name", { exact: true })).toHaveValue(
+    "Original draft",
+  );
+  await expect(dialog.getByLabel(/Working directory/)).toHaveValue("");
 });
 
 test("a successfully created ticket locks its original packet while opening is pending", async ({
@@ -658,9 +815,7 @@ test("a successfully created ticket locks its original packet while opening is p
   await expect(
     dialog.getByRole("textbox", { name: "Scope", exact: true }),
   ).toBeDisabled();
-  await expect(
-    dialog.getByRole("combobox", { name: /^Owner/ }),
-  ).toBeDisabled();
+  await expect(dialog.getByRole("combobox", { name: /^Owner/ })).toBeDisabled();
   await expect(dialog.getByText(/Your ticket was created/)).toBeVisible();
   mocked.resumeRefresh();
   await expect(

@@ -93,11 +93,14 @@ writes. Chrome may show its installation menu when an automatic prompt is unavai
 
 ## Projects, documents and task briefs
 
-**Create project → Choose folder** opens the native picker on a local Mac. The folder browser
-is also available and browses the server's filesystem. Inspection resolves an existing Git
+**Create project → Choose folder** opens the in-app browser of the server's filesystem on
+every platform; no OS dialog or unlocked server desktop is required. Close browser cancels
+selection without changing the form, including while a request is pending. Inspection resolves an existing Git
 root/worktree, suggests the project name/key and GitHub repository, and reports a dirty tree,
 missing HEAD or unfetched `origin/main`. Registering the same repository reopens its existing
 project. Selecting a folder never initializes, clones, fetches, switches or edits the repo.
+The legacy native-picker endpoint returns an immediate unavailable response directing old
+clients to the in-app chooser; it never invokes a native dialog.
 
 Drop TXT, DOC, DOCX or PDF files into **New ticket**, or choose files. Agent Desk extracts text
 locally, shows a preview and warnings, and saves the original and extracted context with the

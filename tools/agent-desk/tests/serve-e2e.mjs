@@ -9,7 +9,6 @@ process.env.AGENT_DESK_ADMIN_TOKEN = "";
 const { startServer } = await import("../server/http.mjs");
 const { server, service, syncManager } = await startServer({
   agentStatusOptions: { collectors: {} },
-  folderOptions: { platform: "darwin", choose: async () => null },
   machineOptions: {
     auto: false,
     discover: async () => ({
