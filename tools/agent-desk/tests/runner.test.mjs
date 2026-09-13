@@ -300,3 +300,15 @@ test("explicit Start launches a blocked Backlog ticket as a resolution pass", as
     "active",
   );
 });
+
+
+test("a blocked resolver exiting zero without a terminal report is checkpointed with its last useful summary", async (t) => {
+  const f = fixture(t);
+  const ticket = f.ticket({ blockedReason: "Original source session must be reconciled" });
+  f.runner.start(ticket.id);
+  const end = await completed(f.service, ticket.id);
+  assert.equal(end.state, "checkpointed");
+  assert.match(end.summary, /Fixture progress observed/);
+  assert.match(end.summary, /checkpoint|report|block/i);
+  assert.equal(f.service.getTicket(ticket.id).blockedReason, ticket.blockedReason);
+});
