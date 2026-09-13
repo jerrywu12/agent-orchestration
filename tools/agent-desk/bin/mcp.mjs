@@ -13,6 +13,7 @@ const object = (properties, required = []) => ({
   additionalProperties: false,
 });
 const str = { type: "string" };
+const effort = { type: ["string", "null"], enum: [null, "XS", "S", "M", "L", "XL"], description: "Development effort including tests, verification and review: XS <2h, S 2–4h, M 1–2d, L 3–5d, XL >5d; null clears." };
 export const definitions = [
   {
     name: "desk_list_tasks",
@@ -65,6 +66,7 @@ export const definitions = [
         changes: object({
           title: str,
           description: str,
+          effort,
           brief: object({
             specification: str,
             allowedPaths: str,
@@ -94,6 +96,7 @@ export const definitions = [
         reason: str,
         title: str,
         description: str,
+        effort,
         dependsOn: { type: "array", items: str, maxItems: 100 },
         brief: object({
           specification: str,

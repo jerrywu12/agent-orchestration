@@ -29,6 +29,9 @@ import type {
   Stage,
   Ticket,
 } from "../types";
+import { ticketComparator, ticketSortOptions } from "../ticket-sort";
+import { efforts, effortHelp } from "../effort";
+import { EffortSelect } from "./EffortSelect";
 import { BulkPlanningTransition } from "./BulkPlanningTransition";
 import { PlanningProgress, planningIsWorking } from "./PlanningProgress";
 import type { ArchiveResult, BulkRun } from "../bulk-types";
@@ -141,6 +144,8 @@ export function WorkView({
   const [search, setSearch] = useState("");
   const [owner, setOwner] = useState("");
   const [priority, setPriority] = useState("");
+  const [effort, setEffort] = useState("");
+  const [sort, setSort] = useState("");
   const [view, setView] = useState<"list" | "board">("list");
   const [extraFilters, setExtraFilters] = useState(false);
   const [blocked, setBlocked] = useState(false);
@@ -231,6 +236,7 @@ export function WorkView({
     )
       return false;
     if (priority && ticket.priority !== priority) return false;
+    if (effort && (effort === "unset" ? ticket.effort != null : ticket.effort !== effort)) return false;
     if (label && !ticket.labels?.includes(label)) return false;
     const needle = search.toLowerCase().trim();
     return (
@@ -240,16 +246,18 @@ export function WorkView({
         .includes(needle)
     );
   });
+  if (sort) filtered.sort(ticketComparator(sort, state.agents));
   const visibleIds = filtered.map((ticket) => ticket.id);
   const selectionScope = JSON.stringify([
     projectId,
     search,
     owner,
     priority,
+    effort,
     label,
     blocked,
     archived,
-    visibleIds,
+    [...visibleIds].sort(),
   ]);
   const selectedIds = visibleIds.filter((id) => selected.has(id));
   const planningLocked =
@@ -532,6 +540,7 @@ export function WorkView({
     search ||
     owner ||
     priority ||
+    effort ||
     label ||
     blocked ||
     archived
@@ -558,6 +567,7 @@ export function WorkView({
     setSearch("");
     setOwner("");
     setPriority("");
+    setEffort("");
     setLabel("");
     setBlocked(false);
     setArchived(false);
@@ -699,7 +709,7 @@ export function WorkView({
           >
             <SlidersHorizontal size={14} />
             <span className="desktop-label">Filters</span>
-            {(label || blocked || archived) && <span className="filter-dot" />}
+            {(label || effort || blocked || archived) && <span className="filter-dot" />}
           </button>
         </div>
         <div className="view-toggle" aria-label="View layout">
@@ -721,9 +731,26 @@ export function WorkView({
           </button>
         </div>
       </div>
+      {sort && (
+        <div className="active-sort" aria-label="Active sort">
+          <span>{ticketSortOptions.find(([value]) => value === sort)?.[1]}</span>
+          <button className="text-button" onClick={() => setSort("")}>
+            <X size={13} />Clear sort
+          </button>
+        </div>
+      )}
       {extraFilters && (
         <div className="extra-filters">
           <Filter size={14} />
+          <select aria-label="Filter by effort" title={effortHelp} value={effort} onChange={event => setEffort(event.target.value)}>
+            <option value="">Any effort</option>
+            <option value="unset">Unset</option>
+            {efforts.map(value => <option key={value} value={value}>{value}</option>)}
+          </select>
+          <select aria-label="Sort tickets" value={sort} onChange={event => setSort(event.target.value)}>
+            <option value="">Default order</option>
+            {ticketSortOptions.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+          </select>
           <select
             aria-label="Filter by label"
             value={label}
@@ -1184,6 +1211,7 @@ export function WorkView({
               <span>Ticket</span>
               <span>Stage</span>
               <span>Priority</span>
+              <span>Effort</span>
               <span>Owner</span>
               <span>Stage changed</span>
             </div>
@@ -1353,6 +1381,7 @@ export function WorkView({
                                 : ""}
                             </span>
                           )}
+                          <span className="effort-value" title={effortHelp}>Effort: {ticket.effort ?? "Unset"}</span>
                           <div className="board-ticket-footer">
                             <span className="label-list">
                               {ticket.labels?.slice(0, 2).map((value) => (
@@ -1533,6 +1562,10 @@ export function WorkView({
                                 <option key={value}>{value}</option>
                               ))}
                             </select>
+                          </div>
+                          <div className="inline-select effort-cell">
+                            <EffortSelect value={ticket.effort} label={`Effort for ${ticketKey(ticket, state.projects)}`}
+                              disabled={planningLocked} onChange={value => void update(ticket, { effort: value })} />
                           </div>
                           <div className="inline-select owner-cell">
                             <AgentAvatar agent={agent} small />

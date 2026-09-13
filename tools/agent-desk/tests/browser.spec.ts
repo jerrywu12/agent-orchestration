@@ -805,3 +805,157 @@ test("simple ticket drawer hides agent sections and preserves their data when sa
   await page.getByRole("button", { name: ticket.title, exact: true }).click();
   await expect(page.getByRole("dialog").getByRole("textbox", { name: "Description", exact: true })).toHaveValue(after.description!);
 });
+
+test("Effort create edit clear and reload stays separate from labels", async ({ page, request }) => {
+  const { project } = await projectFixture(request, "Effort editing");
+  const title = unique("Effort field");
+  await page.goto("/");
+  await openProject(page, project);
+  await page.getByRole("button", { name: /^New ticket/ }).click();
+  let dialog = page.getByRole("dialog");
+  await dialog.getByLabel("Title", { exact: true }).fill(title);
+  await dialog.getByRole("combobox", { name: "Effort", exact: true }).selectOption("XS");
+  await expect(dialog.getByText(/Development effort including tests, verification and review/)).toBeVisible();
+  await dialog.getByRole("button", { name: "Create ticket", exact: true }).click();
+  dialog = page.getByRole("dialog");
+  await expect(dialog.getByRole("button", { name: "Save changes", exact: true })).toBeVisible();
+  await expect(dialog.getByRole("combobox", { name: "Effort", exact: true })).toHaveValue("XS");
+  const created = (await state(request)).tickets.find(t => t.title === title)!;
+  expect((created as Ticket & { effort: string }).effort).toBe("XS");
+  await dialog.getByLabel("Labels", { exact: true }).fill("effort:M, keep");
+  await dialog.getByRole("combobox", { name: "Effort", exact: true }).selectOption("XL");
+  await dialog.getByRole("button", { name: "Save changes", exact: true }).click();
+  await expect(dialog.getByText("Changes saved.", { exact: true })).toBeVisible();
+  await page.reload();
+  await page.getByRole("button", { name: title, exact: true }).click();
+  dialog = page.getByRole("dialog");
+  await expect(dialog.getByRole("combobox", { name: "Effort", exact: true })).toHaveValue("XL");
+  await expect(dialog.getByLabel("Labels", { exact: true })).toHaveValue("effort:M, keep");
+  await dialog.getByRole("combobox", { name: "Effort", exact: true }).selectOption("");
+  await dialog.getByRole("button", { name: "Save changes", exact: true }).click();
+  await expect(dialog.getByText("Changes saved.", { exact: true })).toBeVisible();
+  await page.reload();
+  await page.getByRole("button", { name: title, exact: true }).click();
+  dialog = page.getByRole("dialog");
+  await expect(dialog.getByRole("combobox", { name: "Effort", exact: true })).toHaveValue("");
+  await expect(dialog.getByLabel("Labels", { exact: true })).toHaveValue("effort:M, keep");
+});
+
+test("Effort list and board filter and order estimates with unset last", async ({ page, request }) => {
+  const { project, stages } = await projectFixture(request, "Effort ordering");
+  for (const effort of ["XL", null, "M", "XS", "L", "S"]) {
+    const response = await request.post("/api/tickets", { data: { projectId: project.id, stageId: stages[0].id, title: `Estimate ${effort || "Unset"}`, effort } });
+    expect(response.status()).toBe(201);
+  }
+  await page.goto("/");
+  await openProject(page, project);
+  await expect(page.locator(".list-columns").getByText("Effort", { exact: true })).toBeVisible();
+  await expect(page.locator(".effort-cell select")).toHaveCount(6);
+  const titles = () => page.locator("article .ticket-title").allTextContents();
+  await page.getByRole("button", { name: "Filters", exact: true }).click();
+  await page.getByRole("combobox", { name: "Sort tickets", exact: true }).selectOption("effort-asc");
+  await expect.poll(titles).toEqual(["Estimate XS", "Estimate S", "Estimate M", "Estimate L", "Estimate XL", "Estimate Unset"]);
+  await page.getByRole("combobox", { name: "Sort tickets", exact: true }).selectOption("effort-desc");
+  await expect.poll(titles).toEqual(["Estimate XL", "Estimate L", "Estimate M", "Estimate S", "Estimate XS", "Estimate Unset"]);
+  await page.getByRole("combobox", { name: "Filter by effort", exact: true }).selectOption("M");
+  await expect.poll(titles).toEqual(["Estimate M"]);
+  await page.getByRole("button", { name: "Board view", exact: true }).click();
+  await expect(page.locator(".board-ticket").getByText("Effort: M", { exact: true })).toBeVisible();
+  await page.getByRole("combobox", { name: "Filter by effort", exact: true }).selectOption("unset");
+  await expect.poll(titles).toEqual(["Estimate Unset"]);
+  await expect(page.locator(".board-ticket").getByText("Effort: Unset", { exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Clear filters", exact: true }).click();
+  await page.getByRole("combobox", { name: "Sort tickets", exact: true }).selectOption("effort-asc");
+  await expect.poll(titles).toEqual(["Estimate XS", "Estimate S", "Estimate M", "Estimate L", "Estimate XL", "Estimate Unset"]);
+  await page.getByRole("button", { name: "List view", exact: true }).click();
+  const row = page.getByRole("article").filter({ has: page.getByRole("button", { name: "Estimate XS", exact: true }) });
+  await row.locator(".effort-cell select").selectOption("XL");
+  await expect(row.locator(".effort-cell select")).toHaveValue("XL");
+  await page.reload();
+  await expect(row.locator(".effort-cell select")).toHaveValue("XL");
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expect(row.locator(".effort-cell select")).toBeVisible();
+});
+
+test("Work attribute sorts use semantic values, missing last, stable ties and clear sorting", async ({ page, request }) => {
+  const { project, stages } = await projectFixture(request, "Work sorting");
+  const snapshot = await state(request);
+  snapshot.tickets = [
+    { id: "sort-a", title: "Zulu", priority: "low", ownerId: "codex", stageChangedAt: "2026-09-10T00:00:00Z", updatedAt: "2026-09-20T00:00:00Z" },
+    { id: "sort-b", title: "Alpha", priority: "urgent", ownerId: "claude", stageChangedAt: "2026-09-12T00:00:00Z", updatedAt: "2026-09-01T00:00:00Z" },
+    { id: "sort-c", title: "Beta", priority: "none", ownerId: null, stageChangedAt: null },
+    { id: "sort-d", title: "Charlie", priority: "low", ownerId: "codex", stageChangedAt: "2026-09-10T00:00:00Z" },
+  ].map((fields, index) => ({ projectId: project.id, stageId: stages[0].id, number: index + 1, version: 1, createdAt: "2026-09-01T00:00:00Z", updatedAt: "2026-09-01T00:00:00Z", ...fields })) as Ticket[];
+  // Display names, not IDs, own the owner order.
+  snapshot.agents = snapshot.agents.map(a => a.id === "codex" ? { ...a, name: "A displayed owner" } : a.id === "claude" ? { ...a, name: "Z displayed owner" } : a);
+  await page.route("**/api/state", route => route.fulfill({ json: snapshot }));
+  await page.goto("/");
+  await openProject(page, project);
+  await page.getByRole("button", { name: "Filters", exact: true }).click();
+  await page.getByLabel(`Select ticket ${project.key}-1`, { exact: true }).check();
+  const titles = () => page.locator("article .ticket-title").allTextContents();
+  const orders: Record<string, string[]> = {
+    "priority-asc": ["Alpha", "Zulu", "Charlie", "Beta"],
+    "priority-desc": ["Zulu", "Charlie", "Alpha", "Beta"],
+    "owner-asc": ["Zulu", "Charlie", "Alpha", "Beta"],
+    "owner-desc": ["Alpha", "Zulu", "Charlie", "Beta"],
+    "stageChanged-asc": ["Zulu", "Charlie", "Alpha", "Beta"],
+    "stageChanged-desc": ["Alpha", "Zulu", "Charlie", "Beta"],
+    "name-asc": ["Alpha", "Beta", "Charlie", "Zulu"],
+    "name-desc": ["Zulu", "Charlie", "Beta", "Alpha"],
+  };
+  for (const view of ["List view", "Board view"]) {
+    await page.getByRole("button", { name: view, exact: true }).click();
+    for (const [sort, expected] of Object.entries(orders)) {
+      await page.getByRole("combobox", { name: "Sort tickets", exact: true }).selectOption(sort);
+      await expect.poll(titles).toEqual(expected);
+      await expect(page.getByLabel(`Select ticket ${project.key}-1`, { exact: true })).toBeChecked();
+    }
+    await page.getByRole("button", { name: "Filters", exact: true }).click();
+    await expect(page.getByText("Name: Z–A", { exact: true })).toBeVisible();
+    await page.getByRole("button", { name: "Clear sort", exact: true }).click();
+    await page.getByRole("button", { name: "Filters", exact: true }).click();
+    await expect(page.getByRole("combobox", { name: "Sort tickets", exact: true })).toHaveValue("");
+    await expect.poll(titles).toEqual(["Zulu", "Alpha", "Beta", "Charlie"]);
+  }
+});
+
+test("All Work sorting preserves cross-project stage groups with combined effort priority and search filters", async ({ page, request }) => {
+  const first = await projectFixture(request, "Sorting project one");
+  const second = await projectFixture(request, "Sorting project two");
+  const snapshot = await state(request);
+  const fields = [
+    { project: first, role: "backlog", title: "Match Zulu", effort: "M", priority: "high" },
+    { project: second, role: "backlog", title: "Match Alpha", effort: "M", priority: "high" },
+    { project: first, role: "active", title: "Match Echo", effort: "M", priority: "high" },
+    { project: second, role: "active", title: "Match Bravo", effort: "M", priority: "high" },
+    { project: first, role: "backlog", title: "Match excluded effort", effort: "L", priority: "high" },
+    { project: second, role: "backlog", title: "Match excluded priority", effort: "M", priority: "low" },
+    { project: first, role: "active", title: "Excluded search", effort: "M", priority: "high" },
+  ];
+  snapshot.tickets = fields.map(({ project, role, ...ticket }, index) => ({
+    ...ticket, id: `all-sort-${index}`, number: index + 1, projectId: project.project.id,
+    stageId: project.stages.find(s => s.role === role)!.id, version: 1,
+    createdAt: "2026-09-01T00:00:00Z", updatedAt: "2026-09-01T00:00:00Z",
+  })) as Ticket[];
+  await page.route("**/api/state", route => route.fulfill({ json: snapshot }));
+  await page.goto("/");
+  await expect(page.getByRole("heading", { level: 1 })).toContainText("All work");
+  await page.getByRole("button", { name: "Filters", exact: true }).click();
+  await page.getByRole("combobox", { name: "Filter by effort", exact: true }).selectOption("M");
+  await page.getByRole("combobox", { name: "Filter by priority", exact: true }).selectOption("high");
+  await page.getByRole("textbox", { name: "Search tickets", exact: true }).fill("Match");
+  await page.getByLabel(`Select ticket ${first.project.key}-1`, { exact: true }).check();
+  for (const view of ["List view", "Board view"]) {
+    await page.getByRole("button", { name: view, exact: true }).click();
+    for (const direction of ["asc", "desc"]) {
+      await page.getByRole("combobox", { name: "Sort tickets", exact: true }).selectOption(`name-${direction}`);
+      const backlog = page.locator(".stage-group").filter({ has: page.getByRole("heading", { name: "Backlog", exact: true }) });
+      const active = page.locator(".stage-group").filter({ has: page.getByRole("heading", { name: "In progress", exact: true }) });
+      await expect(backlog.locator("article .ticket-title")).toHaveText(direction === "asc" ? ["Match Alpha", "Match Zulu"] : ["Match Zulu", "Match Alpha"]);
+      await expect(active.locator("article .ticket-title")).toHaveText(direction === "asc" ? ["Match Bravo", "Match Echo"] : ["Match Echo", "Match Bravo"]);
+      await expect(page.locator("article")).toHaveCount(4);
+      await expect(page.getByLabel(`Select ticket ${first.project.key}-1`, { exact: true })).toBeChecked();
+    }
+  }
+});
