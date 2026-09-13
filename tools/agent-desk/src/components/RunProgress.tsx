@@ -34,7 +34,9 @@ export function runCounts(results: RunResult[], now: number) {
     (counts, row) => {
       if (row.status === "queued") counts.queued++;
       else if (
-        ["needs_takeover", "failed", "skipped"].includes(row.status) ||
+        ["needs_takeover", "claim_released", "failed", "skipped"].includes(
+          row.status,
+        ) ||
         heartbeatStale(row, now)
       )
         counts.attention++;

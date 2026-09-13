@@ -255,6 +255,29 @@ test("stale recovery retains old work and fences old execution events with exact
   assert.equal(f.store.active(ticket.id).id, replacement.id);
   assert.ok(f.store.activities().some((a) => a.kind === "claim_revoked"));
 });
+test("bulk takeover outcome becomes claim released and never adopts a replacement claim", async (t) => {
+  const f = fixture(t),
+    ticket = f.ticket(),
+    old = f.oldClaim(ticket);
+  const batch = f.coord.submit({
+    ticketIds: [ticket.id],
+    requestId: "takeover-result-test",
+    concurrency: 1,
+  });
+  await tick();
+  assert.equal(f.coord.get(batch.id).results[0].status, "needs_takeover");
+  await f.coord.takeover(ticket.id, confirm(old));
+  const saved = f.store.get("run-batch", batch.id);
+  const result = f.coord.get(batch.id);
+  assert.equal(result.results[0].status, "claim_released");
+  assert.match(result.results[0].message, /Run Agent/);
+  assert.equal(result.results[0].executionId, old.id);
+  assert.equal(result.state, "complete");
+  assert.deepEqual(f.store.get("run-batch", batch.id), saved);
+  const replacement = f.runner.start(ticket.id);
+  assert.equal(f.coord.get(batch.id).results[0].executionId, old.id);
+  assert.equal(f.store.active(ticket.id).id, replacement.id);
+});
 test("verified live or recently reporting sessions cannot be taken over", async (t) => {
   const f = fixture(t, async () => ({
     tracking: "process",
@@ -276,6 +299,37 @@ test("verified live or recently reporting sessions cannot be taken over", async 
     () => g.coord.takeover(fresh.ticketId, confirm(fresh)),
     (e) => e.code === "SESSION_TRACKED",
   );
+});
+test("a stale observed execution finishing independently is not offered as a revoked claim", async (t) => {
+  for (const [type, status] of [
+    ["complete", "awaiting_review"],
+    ["checkpoint", "checkpointed"],
+    ["failed", "failed"],
+  ]) {
+    const f = fixture(t),
+      ticket = f.ticket(),
+      old = f.oldClaim(ticket);
+    const batch = f.coord.submit({
+      ticketIds: [ticket.id],
+      requestId: `self-finished-${type}`,
+      concurrency: 1,
+    });
+    await tick();
+    assert.equal(f.coord.get(batch.id).results[0].status, "needs_takeover");
+    f.service.event(old.id, {
+      agentId: old.agentId,
+      sessionId: old.sessionId,
+      eventId: `final-${type}`,
+      seq: 1,
+      type,
+      summary: `Original executor reported ${type}`,
+    });
+    const row = f.coord.get(batch.id).results[0];
+    assert.equal(row.status, status);
+    assert.equal(row.message, `Original executor reported ${type}`);
+    assert.equal(row.executionId, old.id);
+    assert.equal(f.coord.get(batch.id).state, "complete");
+  }
 });
 test("heartbeat changing while trace awaits refuses takeover", async (t) => {
   let release;
@@ -428,11 +482,28 @@ test("HTTP exposes recovery and batch contracts only to administrators", async (
   const status = await call(`/api/tickets/${ticket.id}/execution-status`);
   assert.equal(status.status, 200);
   assert.equal((await status.json()).canTakeOver, true);
+  const observed = await call("/api/runs", "POST", {
+    ticketIds: [ticket.id],
+    requestId: "http-observed-stale",
+  });
+  assert.equal(observed.status, 202);
+  const observedBatch = await observed.json();
+  await tick();
+  assert.equal(
+    (await (await call(`/api/runs/${observedBatch.id}`)).json()).results[0]
+      .status,
+    "needs_takeover",
+  );
   assert.equal(
     (await call(`/api/tickets/${ticket.id}/takeover`, "POST", confirm(old)))
       .status,
     200,
   );
+  const recovered = await (await call(`/api/runs/${observedBatch.id}`)).json();
+  assert.equal(recovered.results[0].status, "claim_released");
+  assert.equal(recovered.results[0].executionId, old.id);
+  assert.equal(f.store.active(ticket.id), null);
+  assert.equal(f.runner.children.size, 0);
   const batch = await call("/api/runs", "POST", {
     ticketIds: [ticket.id],
     requestId: "http-request",

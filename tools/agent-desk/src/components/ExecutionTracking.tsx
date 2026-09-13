@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { ExternalLink, RefreshCw } from "lucide-react";
 import { api, errorMessage, pathId } from "../api";
 import type { ExecutionStatus } from "../bulk-types";
@@ -16,21 +16,82 @@ export function ExecutionTracking({
   executionId,
   disabled,
   refresh,
+  expectedExecutionId,
+  autoConfirm = false,
+  onReleased,
+  onPendingChange,
 }: {
   ticketId: string;
   executionId?: string | null;
   disabled: boolean;
   refresh: () => Promise<void>;
+  expectedExecutionId?: string;
+  autoConfirm?: boolean;
+  onReleased?: (status: ExecutionStatus) => Promise<void> | void;
+  onPendingChange?: (pending: boolean) => void;
 }) {
   const [status, setStatus] = useState<ExecutionStatus | null>(null);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
   const [revision, setRevision] = useState(0);
-  const [confirming, setConfirming] = useState(false);
+  const [confirming, setConfirming] = useState(autoConfirm);
   const [reason, setReason] = useState("");
   const [acknowledged, setAcknowledged] = useState(false);
   const [takingOver, setTakingOver] = useState(false);
   const [notice, setNotice] = useState("");
+  const [released, setReleased] = useState(false);
+  const mounted = useRef(true);
+  const releaseNotified = useRef(false);
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
+  function releaseRecorded(
+    next: ExecutionStatus,
+    id: string | null | undefined,
+  ) {
+    return (
+      !!id &&
+      next.ticketId === ticketId &&
+      ((next.executionId === id && next.state === "revoked") ||
+        next.history?.some(
+          (item) =>
+            item.id === id && item.state === "revoked" && !!item.releasedAt,
+        ))
+    );
+  }
+  async function showReleased(next: ExecutionStatus) {
+    if (!mounted.current) return;
+    setStatus(next);
+    setReleased(true);
+    setConfirming(false);
+    setReason("");
+    setAcknowledged(false);
+    setError("");
+    setNotice(
+      "Prior claim released. Existing work is preserved. You can now start an agent.",
+    );
+    if (releaseNotified.current) return;
+    releaseNotified.current = true;
+    try {
+      await refresh();
+    } catch (failure) {
+      if (mounted.current)
+        setError(
+          `The claim was released, but the ticket refresh failed. ${errorMessage(failure)}`,
+        );
+    }
+    if (mounted.current) {
+      try {
+        await onReleased?.(next);
+      } catch (failure) {
+        if (mounted.current)
+          setError(`The claim was released. ${errorMessage(failure)}`);
+      }
+    }
+  }
   useEffect(() => {
     if (takingOver) return;
     let cancelled = false;
@@ -48,6 +109,10 @@ export function ExecutionTracking({
           );
         setStatus(next);
         setLoading(false);
+        if (expectedExecutionId && releaseRecorded(next, expectedExecutionId)) {
+          await showReleased(next);
+          return;
+        }
         if (executionId) timer = window.setTimeout(() => void trace(), 4000);
       } catch (failure) {
         if (!cancelled) {
@@ -61,12 +126,21 @@ export function ExecutionTracking({
       cancelled = true;
       window.clearTimeout(timer);
     };
-  }, [ticketId, executionId, revision, takingOver]);
+  }, [ticketId, executionId, expectedExecutionId, revision, takingOver]);
   useEffect(() => {
     setAcknowledged(false);
   }, [status?.executionId, status?.sessionId, status?.lastHeartbeatAt]);
+  const changedClaim =
+    !!expectedExecutionId &&
+    !!status &&
+    status.executionId !== expectedExecutionId;
   const canTakeOver =
-    !!status?.canTakeOver && status.processAlive !== true && !error && !loading;
+    !!status?.canTakeOver &&
+    status.processAlive !== true &&
+    !changedClaim &&
+    !released &&
+    !error &&
+    !loading;
   const nativeUrl =
     status?.nativeThreadUrl &&
     /^codex:\/\/threads\/[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/i.test(
@@ -85,32 +159,47 @@ export function ExecutionTracking({
     )
       return;
     setTakingOver(true);
+    onPendingChange?.(true);
     setError("");
     setNotice("");
     try {
-      const next = await api<ExecutionStatus>(
-        `/tickets/${pathId(ticketId)}/takeover`,
-        "POST",
-        {
-          executionId: status.executionId,
-          sessionId: status.sessionId,
-          expectedHeartbeatAt: status.lastHeartbeatAt,
-          reason: reason.trim(),
-          confirmed: true,
-        },
-      );
-      setStatus(next);
-      setConfirming(false);
-      setReason("");
-      setAcknowledged(false);
-      setNotice(
-        "Prior claim released. Existing work is preserved. You can now start an agent.",
-      );
-      await refresh();
+      let next: ExecutionStatus;
+      try {
+        next = await api<ExecutionStatus>(
+          `/tickets/${pathId(ticketId)}/takeover`,
+          "POST",
+          {
+            executionId: status.executionId,
+            sessionId: status.sessionId,
+            expectedHeartbeatAt: status.lastHeartbeatAt,
+            reason: reason.trim(),
+            confirmed: true,
+          },
+        );
+      } catch (failure) {
+        if (!mounted.current) return;
+        setAcknowledged(false);
+        next = await api<ExecutionStatus>(
+          `/tickets/${pathId(ticketId)}/execution-status`,
+        );
+        if (!mounted.current) return;
+        setStatus(next);
+        if (!releaseRecorded(next, expectedExecutionId || status.executionId))
+          throw failure;
+      }
+      if (!mounted.current) return;
+      if (!releaseRecorded(next, expectedExecutionId || status.executionId))
+        throw new Error(
+          "Release was not confirmed. Refresh the execution trace before retrying.",
+        );
+      await showReleased(next);
     } catch (failure) {
-      setError(errorMessage(failure));
+      if (mounted.current) setError(errorMessage(failure));
     } finally {
-      setTakingOver(false);
+      if (mounted.current) {
+        setTakingOver(false);
+        onPendingChange?.(false);
+      }
     }
   }
   return (
@@ -150,6 +239,12 @@ export function ExecutionTracking({
             {status.stale ? " · heartbeat stale" : ""}
           </p>
           <p>{status.reason}</p>
+          {changedClaim && (
+            <p className="warning-text">
+              The claim changed since this batch. This action cannot take over a
+              different execution.
+            </p>
+          )}
           {nativeUrl && (
             <a className="text-button" href={nativeUrl}>
               <ExternalLink size={13} /> Open in Codex

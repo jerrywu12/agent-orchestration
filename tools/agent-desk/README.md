@@ -56,6 +56,11 @@ the trace, entering a reason and acknowledging the old process may still exist.
 This revokes only the old board reservation, fences its late reports and preserves
 its worktree/history. It does not kill unknown processes or automatically run a
 replacement. Tracked live or freshly reporting executions refuse takeover.
+The bulk results panel exposes **Take over** directly for each needs-takeover row.
+Its confirmation is pinned to that exact old execution. After release, **Run Agent**
+starts only that ticket; it waits if the remaining batch still has active work.
+An awaiting-review result states whether no agent is running, another execution is
+active, or the ticket is already Done. Review does not start automatically.
 
 Managed agents receive a local, credential-free reporting helper in their task
 packet. It supports only their exact claimed ticket and works without sandbox

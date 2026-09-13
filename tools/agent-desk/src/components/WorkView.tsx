@@ -19,6 +19,7 @@ import type { DeskState, Priority, Stage, Ticket } from "../types";
 import type { ArchiveResult, BulkRun } from "../bulk-types";
 import { api, ApiError, errorMessage, pathId } from "../api";
 import { RunProgress, runCounts, timestamp } from "./RunProgress";
+import { ExecutionTracking } from "./ExecutionTracking";
 import {
   AgentAvatar,
   capitalize,
@@ -26,6 +27,7 @@ import {
   ErrorNotice,
   isActive,
   isStale,
+  Modal,
   priorities,
   PriorityIcon,
   safeUrl,
@@ -133,6 +135,14 @@ export function WorkView({
     savedRun ? restoringRun(savedRun) : null,
   );
   const [runMissing, setRunMissing] = useState(false);
+  const [takeover, setTakeover] = useState<{
+    runId: string;
+    ticketId: string;
+    executionId: string;
+  } | null>(null);
+  const [takeoverPending, setTakeoverPending] = useState(false);
+  const currentRun = useRef(run);
+  currentRun.current = run;
   const [clockNow, setClockNow] = useState(Date.now);
   const observation = useMemo(
     () => ({
@@ -259,19 +269,33 @@ export function WorkView({
     });
     setConfirmArchive(false);
   }
-  async function runSelected(retryOriginal = false) {
+  async function runSelected(
+    retryOriginal = false,
+    recoveredTicketId?: string,
+  ) {
+    const recovered = recoveredTicketId
+      ? run?.results.find(
+          (row) =>
+            row.ticketId === recoveredTicketId &&
+            row.status === "claim_released",
+        )
+      : undefined;
+    if (recoveredTicketId && !recovered) return;
     if (
       bulkBusy ||
+      takeoverPending ||
       (retryOriginal
         ? !runMissing || !runRequest.current
-        : runActive || !!runRequest.current || !selectedIds.length)
+        : runActive ||
+          !!runRequest.current ||
+          (!recoveredTicketId && !selectedIds.length))
     )
       return;
     const request =
       retryOriginal && runRequest.current
         ? runRequest.current
         : {
-            ticketIds: selectedIds,
+            ticketIds: recoveredTicketId ? [recoveredTicketId] : selectedIds,
             concurrency,
             requestId: crypto.randomUUID(),
           };
@@ -315,7 +339,14 @@ export function WorkView({
     }
   }
   async function archiveSelected() {
-    if (bulkBusy || runActive || !confirmArchive || !selectedIds.length) return;
+    if (
+      bulkBusy ||
+      takeoverPending ||
+      runActive ||
+      !confirmArchive ||
+      !selectedIds.length
+    )
+      return;
     setBulkBusy("archive");
     setBulkError("");
     setArchiveResults([]);
@@ -340,6 +371,48 @@ export function WorkView({
       if (mounted.current) setBulkError(errorMessage(failure));
     } finally {
       if (mounted.current) setBulkBusy("");
+    }
+  }
+  async function afterTakeover(target: {
+    runId: string;
+    ticketId: string;
+    executionId: string;
+  }) {
+    const stillCurrent = () =>
+      mounted.current &&
+      currentRun.current?.id === target.runId &&
+      restoreSavedRun()?.id === target.runId;
+    if (!stillCurrent()) return;
+    setTakeoverPending(false);
+    setTakeover(null);
+    setRun((current) =>
+      current?.id === target.runId
+        ? {
+            ...current,
+            results: current.results.map((row) =>
+              row.ticketId === target.ticketId &&
+              row.executionId === target.executionId
+                ? {
+                    ...row,
+                    status: "claim_released",
+                    message:
+                      "Claim released; saved work retained. Run Agent to start this ticket.",
+                  }
+                : row,
+            ),
+          }
+        : current,
+    );
+    try {
+      const next = await api<BulkRun>(`/runs/${pathId(target.runId)}`);
+      if (!stillCurrent()) return;
+      rememberRun(next);
+      setRun(next);
+    } catch (failure) {
+      if (stillCurrent())
+        setBulkError(
+          `The claim was released, but run results could not refresh. ${errorMessage(failure)}`,
+        );
     }
   }
   const groups = useMemo(() => {
@@ -396,6 +469,37 @@ export function WorkView({
   ).length;
   return (
     <>
+      {takeover && (
+        <Modal
+          title={`Take over ${
+            state.tickets.find((ticket) => ticket.id === takeover.ticketId)
+              ? ticketKey(
+                  state.tickets.find(
+                    (ticket) => ticket.id === takeover.ticketId,
+                  )!,
+                  state.projects,
+                )
+              : takeover.ticketId
+          }`}
+          onClose={() => {
+            if (!takeoverPending) setTakeover(null);
+          }}
+        >
+          <div className="takeover-dialog-body">
+            <ExecutionTracking
+              key={`${takeover.runId}:${takeover.executionId}`}
+              ticketId={takeover.ticketId}
+              executionId={takeover.executionId}
+              expectedExecutionId={takeover.executionId}
+              autoConfirm
+              disabled={!!bulkBusy}
+              refresh={refresh || (async () => {})}
+              onPendingChange={setTakeoverPending}
+              onReleased={() => afterTakeover(takeover)}
+            />
+          </div>
+        </Modal>
+      )}
       <div className="work-heading">
         <div>
           <div className="page-kicker">
@@ -686,6 +790,7 @@ export function WorkView({
             {run.state === "complete" && (
               <button
                 className="text-button"
+                disabled={takeoverPending}
                 onClick={() => {
                   rememberRun(null);
                   setRun(null);
@@ -806,7 +911,68 @@ export function WorkView({
                   >
                     {result.status.replaceAll("_", " ")}
                   </span>
+                  {result.status === "needs_takeover" && (
+                    <button
+                      className="button small-button"
+                      aria-label={`Take over ${key}`}
+                      disabled={
+                        !result.executionId || !!bulkBusy || takeoverPending
+                      }
+                      title={
+                        !result.executionId
+                          ? "Refresh this run to obtain its execution reference."
+                          : undefined
+                      }
+                      onClick={() =>
+                        result.executionId &&
+                        setTakeover({
+                          runId: run.id,
+                          ticketId: result.ticketId,
+                          executionId: result.executionId,
+                        })
+                      }
+                    >
+                      Take over
+                    </button>
+                  )}
+                  {result.status === "claim_released" && (
+                    <button
+                      className="button primary small-button"
+                      aria-label={`Run Agent for ${key}`}
+                      disabled={
+                        !!bulkBusy ||
+                        takeoverPending ||
+                        runActive ||
+                        (isActive(ticket?.execution) &&
+                          ticket?.execution?.id !== result.executionId)
+                      }
+                      title={
+                        runActive
+                          ? "Wait for the remaining batch executions to finish."
+                          : undefined
+                      }
+                      onClick={() => void runSelected(false, result.ticketId)}
+                    >
+                      <Play size={13} />
+                      Run Agent
+                    </button>
+                  )}
                   <p>{result.message}</p>
+                  {result.status === "awaiting_review" && (
+                    <p className="review-activity-note">
+                      {!ticket
+                        ? "Current ticket status is unavailable; review is unverified"
+                        : state.stages.find(
+                              (stage) => stage.id === ticket.stageId,
+                            )?.role === "done"
+                          ? "Ticket is Done"
+                          : isActive(ticket.execution)
+                            ? ticket.execution?.id !== result.executionId
+                              ? "Another run is active; this result's review is unverified"
+                              : "An agent still owns this execution; review is unverified"
+                            : "No agent running; review does not start automatically"}
+                    </p>
+                  )}
                   <RunProgress
                     result={result}
                     ticketKey={key}

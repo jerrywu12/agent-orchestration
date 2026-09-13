@@ -5,6 +5,7 @@ export interface RunResult {
     | "running"
     | "already_running"
     | "needs_takeover"
+    | "claim_released"
     | "skipped"
     | "failed"
     | "checkpointed"
