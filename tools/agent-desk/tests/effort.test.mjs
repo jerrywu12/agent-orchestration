@@ -79,3 +79,44 @@ test("effort agent updates and subtasks retain exact ownership, session and stag
   assert.equal(child.parentId, ticket.id);
   assert.equal(child.stageId, planning.id);
 });
+
+test("changing only effort preserves a confirmed launch fingerprint", t => {
+  const f = fixture(t), ticket = f.create({ effort: "S" });
+  const before = f.app.launchFingerprint(ticket);
+  const updated = f.app.updateTicket(ticket.id, { version: ticket.version, effort: "XL" });
+  assert.equal(f.app.launchFingerprint(updated), before);
+});
+
+for (const change of ["none", "effort", "title", "scope"]) {
+  test(`pre-Effort queued Planning intent survives restart with ${change} change using the original fingerprint contract`, t => {
+    const f = fixture(t);
+    const stage = f.app.state().stages.find(s => s.projectId === f.project.id && s.role === "planning");
+    const ticket = f.create({ ownerId: "codex", stageId: stage.id });
+    const legacy = f.store.get("ticket", ticket.id);
+    delete legacy.effort;
+    f.store.db.prepare("UPDATE records SET data=? WHERE kind='ticket' AND id=?").run(JSON.stringify(legacy), ticket.id);
+    // This exact key sequence is the deployed pre-Effort confirmation contract.
+    const fingerprint = JSON.stringify(["title", "description", "brief", "dependsOn", "blockedReason", "archived", "parentId", "stageId", "ownerId"].map(key => legacy[key]));
+    f.store.put("launch-intent", { id: ticket.id, ticketId: ticket.id, status: "queued", confirmed: true, ownerId: "codex", stageId: stage.id, purpose: "planning", fingerprint, createdAt: legacy.createdAt });
+    f.restart();
+    assert.equal(f.app.getTicket(ticket.id).effort, null);
+    let launches = 0;
+    f.app.runner = { children: new Map(), start(key) { launches++; return f.app.claim(key, { agentId: "codex", sessionId: `legacy-${change}` }); } };
+    if (change !== "none") {
+      const fields = change === "effort" ? { effort: "M" } : change === "title" ? { title: "Changed content" } : { brief: { ...legacy.brief, allowedPaths: "changed/scope/**" } };
+      f.app.updateTicket(ticket.id, { version: f.app.getTicket(ticket.id).version, ...fields });
+    }
+    f.app.dispatchConfirmed();
+    f.app.dispatchConfirmed();
+    const retained = f.store.get("launch-intent", ticket.id);
+    if (["none", "effort"].includes(change)) {
+      assert.equal(launches, 1);
+      assert.equal(retained.status, "started");
+      assert.equal(f.app.getTicket(ticket.id).execution.purpose, "planning");
+    } else {
+      assert.equal(launches, 0);
+      assert.equal(retained.status, "failed");
+      assert.match(retained.reason, /content changed/);
+    }
+  });
+}

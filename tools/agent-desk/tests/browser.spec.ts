@@ -911,8 +911,51 @@ test("Work attribute sorts use semantic values, missing last, stable ties and cl
       await expect.poll(titles).toEqual(expected);
       await expect(page.getByLabel(`Select ticket ${project.key}-1`, { exact: true })).toBeChecked();
     }
+    await page.getByRole("button", { name: "Filters", exact: true }).click();
+    await expect(page.getByText("Name: Z–A", { exact: true })).toBeVisible();
     await page.getByRole("button", { name: "Clear sort", exact: true }).click();
+    await page.getByRole("button", { name: "Filters", exact: true }).click();
     await expect(page.getByRole("combobox", { name: "Sort tickets", exact: true })).toHaveValue("");
     await expect.poll(titles).toEqual(["Zulu", "Alpha", "Beta", "Charlie"]);
+  }
+});
+
+test("All Work sorting preserves cross-project stage groups with combined effort priority and search filters", async ({ page, request }) => {
+  const first = await projectFixture(request, "Sorting project one");
+  const second = await projectFixture(request, "Sorting project two");
+  const snapshot = await state(request);
+  const fields = [
+    { project: first, role: "backlog", title: "Match Zulu", effort: "M", priority: "high" },
+    { project: second, role: "backlog", title: "Match Alpha", effort: "M", priority: "high" },
+    { project: first, role: "active", title: "Match Echo", effort: "M", priority: "high" },
+    { project: second, role: "active", title: "Match Bravo", effort: "M", priority: "high" },
+    { project: first, role: "backlog", title: "Match excluded effort", effort: "L", priority: "high" },
+    { project: second, role: "backlog", title: "Match excluded priority", effort: "M", priority: "low" },
+    { project: first, role: "active", title: "Excluded search", effort: "M", priority: "high" },
+  ];
+  snapshot.tickets = fields.map(({ project, role, ...ticket }, index) => ({
+    ...ticket, id: `all-sort-${index}`, number: index + 1, projectId: project.project.id,
+    stageId: project.stages.find(s => s.role === role)!.id, version: 1,
+    createdAt: "2026-09-01T00:00:00Z", updatedAt: "2026-09-01T00:00:00Z",
+  })) as Ticket[];
+  await page.route("**/api/state", route => route.fulfill({ json: snapshot }));
+  await page.goto("/");
+  await expect(page.getByRole("heading", { level: 1 })).toContainText("All work");
+  await page.getByRole("button", { name: "Filters", exact: true }).click();
+  await page.getByRole("combobox", { name: "Filter by effort", exact: true }).selectOption("M");
+  await page.getByRole("combobox", { name: "Filter by priority", exact: true }).selectOption("high");
+  await page.getByRole("textbox", { name: "Search tickets", exact: true }).fill("Match");
+  await page.getByLabel(`Select ticket ${first.project.key}-1`, { exact: true }).check();
+  for (const view of ["List view", "Board view"]) {
+    await page.getByRole("button", { name: view, exact: true }).click();
+    for (const direction of ["asc", "desc"]) {
+      await page.getByRole("combobox", { name: "Sort tickets", exact: true }).selectOption(`name-${direction}`);
+      const backlog = page.locator(".stage-group").filter({ has: page.getByRole("heading", { name: "Backlog", exact: true }) });
+      const active = page.locator(".stage-group").filter({ has: page.getByRole("heading", { name: "In progress", exact: true }) });
+      await expect(backlog.locator("article .ticket-title")).toHaveText(direction === "asc" ? ["Match Alpha", "Match Zulu"] : ["Match Zulu", "Match Alpha"]);
+      await expect(active.locator("article .ticket-title")).toHaveText(direction === "asc" ? ["Match Bravo", "Match Echo"] : ["Match Echo", "Match Bravo"]);
+      await expect(page.locator("article")).toHaveCount(4);
+      await expect(page.getByLabel(`Select ticket ${first.project.key}-1`, { exact: true })).toBeChecked();
+    }
   }
 });

@@ -455,7 +455,6 @@ export class Service extends EventEmitter {
         "title",
         "description",
         "brief",
-        "effort",
         "dependsOn",
         "blockedReason",
         "archived",

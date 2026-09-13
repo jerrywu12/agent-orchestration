@@ -731,6 +731,14 @@ export function WorkView({
           </button>
         </div>
       </div>
+      {sort && (
+        <div className="active-sort" aria-label="Active sort">
+          <span>{ticketSortOptions.find(([value]) => value === sort)?.[1]}</span>
+          <button className="text-button" onClick={() => setSort("")}>
+            <X size={13} />Clear sort
+          </button>
+        </div>
+      )}
       {extraFilters && (
         <div className="extra-filters">
           <Filter size={14} />
@@ -743,7 +751,6 @@ export function WorkView({
             <option value="">Default order</option>
             {ticketSortOptions.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
           </select>
-          {sort && <button className="text-button" onClick={() => setSort("")}><X size={13} />Clear sort</button>}
           <select
             aria-label="Filter by label"
             value={label}
