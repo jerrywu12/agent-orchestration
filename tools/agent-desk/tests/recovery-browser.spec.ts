@@ -416,7 +416,7 @@ test("archive confirmation reports each outcome and selections follow filters", 
   await expect(page.getByText("0 selected", { exact: true })).toBeVisible();
 });
 
-test("untraceable session exposes native reference and requires an explicit takeover reason", async ({
+test("untraceable session confirms without a checkbox and accepts an optional reason", async ({
   page,
 }) => {
   const app = await mockRecovery(page);
@@ -442,16 +442,14 @@ test("untraceable session exposes native reference and requires an explicit take
     name: "Confirm takeover",
     exact: true,
   });
-  await expect(takeover).toBeDisabled();
+  await expect(takeover).toBeEnabled();
+  await expect(
+    page.locator(".takeover-confirmation").getByRole("checkbox"),
+  ).toHaveCount(0);
   await page
     .getByLabel("Takeover reason")
     .fill("I verified the prior client cannot be found.");
-  await expect(takeover).toBeDisabled();
-  await page
-    .getByLabel(
-      "I understand the prior process may still exist and will preserve its work.",
-    )
-    .check();
+  await expect(takeover).toBeEnabled();
   await takeover.click();
   expect(
     app.writes.find((item) => item.path.endsWith("/takeover"))?.body,
@@ -590,11 +588,6 @@ test("takeover conflict keeps the reason visible and requires refreshed trace be
   await page
     .getByLabel("Takeover reason")
     .fill("Prior session cannot be located.");
-  await page
-    .getByLabel(
-      "I understand the prior process may still exist and will preserve its work.",
-    )
-    .check();
   await page
     .getByRole("button", { name: "Confirm takeover", exact: true })
     .click();
@@ -950,11 +943,6 @@ async function confirmRowTakeover(page: Page) {
     .getByLabel("Takeover reason")
     .fill("The old client cannot be traced; preserve its work.");
   await page
-    .getByLabel(
-      "I understand the prior process may still exist and will preserve its work.",
-    )
-    .check();
-  await page
     .getByRole("button", { name: "Confirm takeover", exact: true })
     .click();
 }
@@ -1218,11 +1206,6 @@ async function confirmDrawerTakeover(page: Page) {
     .getByLabel("Takeover reason")
     .fill("Preserve this execution's work; its client cannot be found.");
   await page
-    .getByLabel(
-      "I understand the prior process may still exist and will preserve its work.",
-    )
-    .check();
-  await page
     .getByRole("button", { name: "Confirm takeover", exact: true })
     .click();
 }
@@ -1309,3 +1292,50 @@ test("open drawer ignores a pending old release after execution scope changes", 
     app.writes.filter((item) => item.path.endsWith("/takeover")),
   ).toHaveLength(1);
 });
+
+for (const entry of ["bulk", "drawer"]) {
+  test(`${entry} takeover can confirm with an empty reason and no acknowledgement`, async ({
+    page,
+  }) => {
+    const app =
+      entry === "bulk" ? await takeoverBatch(page) : await mockRecovery(page);
+    if (entry === "bulk") {
+      await page
+        .getByRole("button", { name: "Take over SMARTSTO-102", exact: true })
+        .click();
+    } else {
+      await page.goto("/");
+      await page
+        .getByRole("button", { name: "Invisible session", exact: true })
+        .click();
+      await page
+        .getByRole("button", { name: "Take over prior claim", exact: true })
+        .click();
+    }
+    const confirm = page.getByRole("button", {
+      name: "Confirm takeover",
+      exact: true,
+    });
+    await expect(confirm).toBeEnabled();
+    await expect(page.getByLabel("Takeover reason")).toHaveValue("");
+    await expect(
+      page.locator(".takeover-confirmation").getByRole("checkbox"),
+    ).toHaveCount(0);
+    await confirm.click();
+    await expect
+      .poll(
+        () =>
+          app.writes.filter((item) => item.path.endsWith("/takeover")).length,
+      )
+      .toBe(1);
+    expect(
+      app.writes.find((item) => item.path.endsWith("/takeover"))?.body,
+    ).toMatchObject({
+      executionId: "old-execution",
+      sessionId: "recorded-session",
+      confirmed: true,
+      reason: "",
+    });
+    expect(app.writes.some((item) => item.path.endsWith("/start"))).toBe(false);
+  });
+}

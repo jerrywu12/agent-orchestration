@@ -185,7 +185,9 @@ Codex thread IDs, background process fingerprints and prior execution history ar
 tracked separately from lease IDs. A native record is not proof of a live process.
 
 An administrator can trace an old session and explicitly revoke an untraceable
-stale claim with an audit reason and uncertainty acknowledgement. A fresh heartbeat
+stale claim with one Confirm takeover action. A note is optional; an omitted or
+blank note records a default confirmation in the audit log. No separate uncertainty
+checkbox is required. A fresh heartbeat
 or verified live process refuses takeover. Revocation fences future board updates
 from the old execution; it does not stop an unknown process. Preserve its saved
 work and inspect the recovery context before starting a new writer. This is a

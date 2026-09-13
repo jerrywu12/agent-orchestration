@@ -16,10 +16,17 @@ const ids = (value) => {
     fail(422, "VALIDATION", "Select between 1 and 100 tickets.");
   return [...new Set(value)];
 };
-const boundedReason = (value) => {
-  if (typeof value !== "string" || !value.trim() || value.length > 2000)
-    fail(422, "VALIDATION", "Give a reason for taking over this session.");
-  return value.trim();
+const boundedReason = (value = "") => {
+  if (typeof value !== "string" || value.length > 2000)
+    fail(
+      422,
+      "VALIDATION",
+      "The optional takeover reason must be text of at most 2000 characters.",
+    );
+  return (
+    value.trim() ||
+    "Explicit takeover confirmed; no additional reason provided."
+  );
 };
 export class RunCoordinator {
   constructor(service, runner, { trace = traceExecution } = {}) {
@@ -122,7 +129,7 @@ export class RunCoordinator {
       fail(
         422,
         "CONFIRM_REQUIRED",
-        "Confirm that the old process may still exist and its saved work must be preserved.",
+        "Explicitly confirm takeover of this session.",
       );
     const reason = boundedReason(input.reason);
     const snapshot = await this.status(ticketId);

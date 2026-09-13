@@ -51,8 +51,9 @@ background record remains in Agent Desk. **Trace session** reads bounded local
 metadata, without transcripts or process arguments. Missing records do not prove
 that a process stopped.
 
-For an untraceable stale claim, the operator can **Take over claim** after reviewing
-the trace, entering a reason and acknowledging the old process may still exist.
+For an untraceable stale claim, the operator can review the trace and click
+**Confirm takeover**. There is no additional checkbox. The note is optional; an
+empty note records a default confirmation in the activity log.
 This revokes only the old board reservation, fences its late reports and preserves
 its worktree/history. It does not kill unknown processes or automatically run a
 replacement. Tracked live or freshly reporting executions refuse takeover.
