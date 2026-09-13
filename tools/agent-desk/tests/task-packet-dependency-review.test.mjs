@@ -17,6 +17,9 @@ for (const purpose of [undefined, "implementation", "planning", "resolve_blocker
     assert.match(text, /assignment or reassignment/);
     assert.match(text, /manual unassigned Backlog/);
     assert.match(text, /canonical ticket IDs/);
+    assert.match(text, /report_progress with type=progress/);
+    assert.match(text, /type=checkpoint releases the claim/);
+    assert.match(text, /never make a child depend on its own parent/);
     assert.match(text, /truncated or unavailable.*not a clean review/);
     assert.match(text, /do not turn shared scope into an invented dependency/);
     assert.match(text, /read back the saved child/);

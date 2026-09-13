@@ -119,6 +119,9 @@ The assigned agent must:
    boundaries/order; unresolved blocker, responsible owner and next action; result.
    A result may be clear within the inspected scope, conflicts found, or incomplete.
    Read the current version, preserve prior content and evidence, and re-read writes.
+   Report continuing review work with `report_progress` type `progress`, which keeps
+   the claim. Type `checkpoint` releases the claim and is reserved for deliberately
+   stopping unresolved work or handing off; it is not the routine review event.
 4. Add evidence-backed dependencies, narrow scope and name unresolved blockers only
    within the session's authority. Preserve owners, claims, saved work and source
    histories. Prefer the existing canonical item for duplicate work; request a
