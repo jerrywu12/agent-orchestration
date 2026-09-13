@@ -384,6 +384,8 @@ export function createAppServer({
           }
           if (key && !action && method === "GET")
             return json(service.attachments.get(key));
+          if (key && !action && method === "PATCH")
+            return json(service.updateMarkdown(key, input));
           if (key && !action && method === "DELETE")
             return json(service.attachments.removeDraft(key));
           if (key && action === "download" && method === "GET") {
@@ -609,6 +611,11 @@ export function createAppServer({
           method === "POST"
         )
           return json(service.transition(key, input));
+        if (
+          resource === "tickets" && key && action === "attachments" &&
+          parts.length === 4 && method === "POST"
+        )
+          return json(service.attachDocuments(key, input));
         if (resource === "tickets" && !key && method === "POST")
           return json(service.createTicket(input), 201);
         if (resource === "tickets" && key && !action && method === "PATCH")

@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import { fail, id } from "./store.mjs";
+import { DOCUMENT_LIMITS, validateMarkdownText } from "./document-processor.mjs";
 const DAY = 24 * 60 * 60 * 1000;
 export class Attachments {
   constructor(
@@ -64,12 +65,15 @@ export class Attachments {
       !result ||
       typeof result.text !== "string" ||
       !result.text.trim() ||
-      result.text.length > 100000
+      result.text.length >
+        (result.mediaType === "text/markdown"
+          ? DOCUMENT_LIMITS.maxMarkdownChars
+          : DOCUMENT_LIMITS.maxTextChars)
     )
       fail(
         422,
         "ATTACHMENT_TEXT",
-        "The document must contain at most 100,000 characters of readable text.",
+        "The document must contain readable text: at most 200,000 characters for Markdown or 100,000 for other formats.",
       );
     return this.store.transaction(() => {
       this.prune();
@@ -166,6 +170,105 @@ export class Attachments {
           "UPDATE attachments SET ticket_id=?, expires_at=NULL WHERE id=?",
         )
         .run(ticketId, key);
+  }
+  append(keys, ticketId) {
+    if (
+      !Array.isArray(keys) ||
+      !keys.length ||
+      keys.length > 5 ||
+      keys.some((key) => typeof key !== "string") ||
+      new Set(keys).size !== keys.length
+    )
+      fail(
+        422,
+        "ATTACHMENT_IDS",
+        "Choose one to five distinct document attachments.",
+      );
+    const rows = keys.map((key) => this.row(key));
+    if (rows.every((row) => row.ticket_id === ticketId)) return false;
+    if (rows.some((row) => row.ticket_id))
+      fail(
+        409,
+        "ATTACHMENT_BOUND",
+        "Choose only new draft attachments, or retry the original completed selection.",
+      );
+    const existing = this.list(ticketId);
+    if (existing.length + rows.length > 5)
+      fail(
+        422,
+        "ATTACHMENT_IDS",
+        "A ticket can have at most five document attachments.",
+      );
+    const hashes = new Set(existing.map((attachment) => attachment.sha256));
+    for (const row of rows) {
+      if (hashes.has(row.sha256))
+        fail(
+          409,
+          "ATTACHMENT_DUPLICATE",
+          "This document is already attached. Remove the duplicate selection.",
+        );
+      hashes.add(row.sha256);
+    }
+    this.bind(keys, ticketId);
+    return true;
+  }
+  updateMarkdown(key, input) {
+    const row = this.row(key);
+    if (!row.ticket_id || row.media_type !== "text/markdown")
+      fail(
+        422,
+        "ATTACHMENT_READ_ONLY",
+        "Only Markdown attached to a ticket can be edited.",
+      );
+    if (
+      typeof input?.expectedSha256 !== "string" ||
+      !/^[a-f0-9]{64}$/.test(input.expectedSha256)
+    )
+      fail(
+        422,
+        "ATTACHMENT_SHA_REQUIRED",
+        "Provide the document hash before saving.",
+      );
+    if (input.expectedSha256 !== row.sha256)
+      fail(
+        409,
+        "ATTACHMENT_CONFLICT",
+        "This document changed. Your draft is kept; reload the saved copy before editing again.",
+      );
+    let text;
+    try {
+      text = validateMarkdownText(input.text);
+    } catch (error) {
+      fail(422, "ATTACHMENT_TEXT", error.message);
+    }
+    const bytes = Buffer.from(text, "utf8");
+    if (bytes.length > DOCUMENT_LIMITS.maxFileBytes)
+      fail(413, "ATTACHMENT_SIZE", "Each document must be at most 10 MiB.");
+    this.prune();
+    const usage = this.store.db
+      .prepare(
+        "SELECT COALESCE(SUM(byte_size + length(CAST(extracted_text AS BLOB)) + length(CAST(warnings AS BLOB)) + length(CAST(name AS BLOB)) + 256),0) AS bytes FROM attachments",
+      )
+      .get();
+    const delta =
+      bytes.length +
+      Buffer.byteLength(text) -
+      row.byte_size -
+      Buffer.byteLength(row.extracted_text);
+    if (usage.bytes + delta > this.maxBytes)
+      fail(413, "STORAGE_LIMIT", "Attachment storage limit reached.");
+    this.store.db
+      .prepare(
+        "UPDATE attachments SET original=?,extracted_text=?,byte_size=?,sha256=? WHERE id=?",
+      )
+      .run(
+        bytes,
+        text,
+        bytes.length,
+        createHash("sha256").update(bytes).digest("hex"),
+        key,
+      );
+    return this.get(key);
   }
   removeDraft(key) {
     if (this.row(key).ticket_id)

@@ -334,6 +334,56 @@ export class Service extends EventEmitter {
       return this.decorate(result);
     });
   }
+  attachDocuments(key, input) {
+    return this.store.transaction(() => {
+      const ticket = this.require("ticket", key);
+      if (!Number.isSafeInteger(input?.version) || input.version < 1)
+        fail(422, "VERSION_REQUIRED", "Provide the ticket version.");
+      // An all-bound replay is safe after a lost response, even if the version advanced.
+      // Stale new bindings are rolled back with the surrounding transaction.
+      const changed = this.attachments.append(input.attachmentIds, key);
+      if (!changed) return this.getTicket(key);
+      if (input.version !== ticket.version)
+        fail(
+          409,
+          "VERSION_CONFLICT",
+          "This ticket changed. Reload before attaching documents.",
+        );
+      this.store.put(
+        "ticket",
+        { ...ticket, updatedAt: now() },
+        ticket.version,
+      );
+      this.store.activity(
+        key,
+        "documents-attached",
+        `Attached documents: ${input.attachmentIds
+          .map((id) => `${id} (${this.attachments.get(id).sha256})`)
+          .join(", ")}`,
+      );
+      this.changed();
+      return this.getTicket(key);
+    });
+  }
+  updateMarkdown(key, input) {
+    return this.store.transaction(() => {
+      const previous = this.attachments.get(key);
+      const attachment = this.attachments.updateMarkdown(key, input);
+      const ticket = this.require("ticket", attachment.ticketId);
+      this.store.put(
+        "ticket",
+        { ...ticket, updatedAt: now() },
+        ticket.version,
+      );
+      this.store.activity(
+        ticket.id,
+        "document-edited",
+        `Edited document ${key}: ${previous.sha256} -> ${attachment.sha256}`,
+      );
+      this.changed();
+      return attachment;
+    });
+  }
   updateTicket(key, input, { confirmedTransition = false, resumeReason } = {}) {
     return this.store.transaction(() => {
       const previous = this.require("ticket", key);

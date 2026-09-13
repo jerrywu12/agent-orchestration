@@ -12,4 +12,8 @@ Risk matrix: processor unit, BLOB quota/persistence, HTTP auth/contracts, optimi
 Pre-edit synthetic regression run: five tests fail as expected against f0b8e475 (unsupported_type, absent attachDocuments/updateMarkdown, Markdown HTTP422 instead of201). Full private log run-o1fuanl4.log. Six private operational tests pass: restore/edit/rerun, lost-response replay with an intervening edit, and description/history/same-length-text/truncated-extraction detection. The independent reviewer approved the revised restoration script.
 
 ## Implementation and delivery
-Pending shared scope release, source tests, independent review, merge, runtime cutover and eight verified reattachments.
+AGENT-17 scope released; basef4d1046758d7878665c22c15afc880b26cef2cc8. AGENT-18 exact claim32beb9f6-f233-4fb3-96ae-6b3515b27bc3, native01a09ba5-39f6-78a0-a2ac-6149d4a6267b. Spec checkpoint208ad72.
+
+Backend implementation:26 focused document tests pass; full initial suite330 passes. Independent review found expired-draft quota accounting and missing append audit hashes. Both reproduced RED (run-0s_bjbll.log), fixed with transactional pruning and bounded ID/SHA audit pairs. Full updated backend suite332/332 passes (run-9wk87h2f.log). UI and live restoration remain pending.
+
+Bounded separate delegation: native01a09bad-bf7b-7e92-a18b-27bbfd83c72b owns only AGENT_DESK_POLICY.md, server/task-packet.mjs and standalone task-packet dependency review test in its own worktree/PR; integration/cutover serialized after this delivery. It may audit live ticket metadata with current versions; document restoration requires a stable interval for the four target tickets.
