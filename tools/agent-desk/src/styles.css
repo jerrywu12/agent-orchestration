@@ -655,7 +655,7 @@ summary {
 .list-columns,
 .ticket-row {
   display: grid;
-  grid-template-columns: minmax(240px, 1fr) 128px 85px 115px 72px;
+  grid-template-columns: minmax(240px, 1fr) 128px 85px 115px 150px;
   gap: 12px;
   align-items: center;
   padding-left: 36px;
@@ -882,6 +882,16 @@ summary {
 }
 .updated-cell {
   color: #a0aa95;
+  font-size: 12px;
+}
+.stage-history {
+  padding-left: 20px;
+}
+.stage-history li {
+  margin-block: 12px;
+}
+.stage-history time {
+  display: block;
   font-size: 12px;
 }
 .list-footer {
@@ -2177,7 +2187,7 @@ progress::-moz-progress-bar {
   }
   .list-columns,
   .ticket-row {
-    grid-template-columns: minmax(320px, 1fr) 150px 95px 135px 80px;
+    grid-template-columns: minmax(320px, 1fr) 150px 95px 135px 155px;
   }
   .ticket-title {
     font-size: 15px;

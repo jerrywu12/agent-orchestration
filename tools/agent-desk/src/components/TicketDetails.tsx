@@ -429,6 +429,11 @@ export function TicketDetails({
           </details>
         </form>
         <TicketDocuments ticket={ticket} />
+        {ticket.resumeReason && (
+          <p className="notice" role="status">
+            {ticket.resumeReason}
+          </p>
+        )}
         <WorkflowBrief
           ticket={{ ...ticket, ...draft }}
           state={state}
@@ -897,6 +902,34 @@ export function TicketDetails({
             items={state.activity.filter((item) => item.ticketId === ticket.id)}
             state={state}
           />
+        </section>
+        <section className="detail-section" aria-label="Stage history">
+          <h3>Stage history</h3>
+          <p className="muted small">
+            Recorded by Agent Desk · times shown in your local timezone.
+          </p>
+          {ticket.stageHistory?.length ? (
+            <ol className="stage-history">
+              {ticket.stageHistory.map((move, index) => (
+                <li key={`${move.at}-${index}`}>
+                  <span>
+                    {move.fromStageId
+                      ? `${move.fromStageName || move.fromStageId} → `
+                      : "First recorded in "}
+                    {move.toStageName || move.toStageId}
+                  </span>
+                  <time dateTime={move.at} title={move.at}>
+                    {new Date(move.at).toLocaleString()}
+                  </time>
+                </li>
+              ))}
+            </ol>
+          ) : (
+            <p className="muted small">
+              Earlier stage timestamps are unknown. Future moves will be
+              recorded here.
+            </p>
+          )}
         </section>
         <p className="detail-timestamps">
           Created {timeAgo(ticket.createdAt)} · Updated{" "}

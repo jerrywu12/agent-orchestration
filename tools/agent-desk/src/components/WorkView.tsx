@@ -33,7 +33,6 @@ import {
   safeUrl,
   StageIcon,
   ticketKey,
-  timeAgo,
 } from "./shared";
 
 interface Props {
@@ -129,7 +128,6 @@ export function WorkView({
   const [bulkBusy, setBulkBusy] = useState("");
   const [bulkError, setBulkError] = useState("");
   const [confirmArchive, setConfirmArchive] = useState(false);
-  const [archiveResults, setArchiveResults] = useState<ArchiveResult[]>([]);
   const [savedRun] = useState(restoreSavedRun);
   const [run, setRun] = useState<BulkRun | null>(() =>
     savedRun ? restoringRun(savedRun) : null,
@@ -323,7 +321,6 @@ export function WorkView({
     setBulkBusy("run");
     setBulkError("");
     setPollError("");
-    setArchiveResults([]);
     try {
       const next = await api<BulkRun>("/runs", "POST", request);
       if (!mounted.current || restoreSavedRun()?.id !== request.requestId)
@@ -349,7 +346,6 @@ export function WorkView({
       return;
     setBulkBusy("archive");
     setBulkError("");
-    setArchiveResults([]);
     try {
       const result = await api<{ results: ArchiveResult[] }>(
         "/tickets/bulk-archive",
@@ -357,7 +353,19 @@ export function WorkView({
         { ticketIds: selectedIds },
       );
       if (!mounted.current) return;
-      setArchiveResults(result.results);
+      const failures = result.results.filter(
+        (item) => item.status !== "archived",
+      );
+      setBulkError(
+        failures
+          .map((item) => {
+            const ticket = state.tickets.find(
+              (ticket) => ticket.id === item.ticketId,
+            );
+            return `${ticket ? ticketKey(ticket, state.projects) : item.ticketId}: ${item.message}`;
+          })
+          .join(" · "),
+      );
       setSelected((current) => {
         const next = new Set(current);
         result.results
@@ -1004,38 +1012,6 @@ export function WorkView({
           </ul>
         </section>
       )}
-      {!!archiveResults.length && (
-        <section className="bulk-results" aria-label="Bulk archive results">
-          <div className="bulk-results-heading">
-            <h2>Archive results</h2>
-          </div>
-          <ul>
-            {archiveResults.map((result) => {
-              const ticket = state.tickets.find(
-                (item) => item.id === result.ticketId,
-              );
-              return (
-                <li key={result.ticketId}>
-                  <button
-                    className="text-button"
-                    onClick={() => onOpen(result.ticketId)}
-                  >
-                    {ticket
-                      ? ticketKey(ticket, state.projects)
-                      : result.ticketId}
-                  </button>
-                  <span
-                    className={`status-chip ${result.status !== "archived" ? "warning" : ""}`}
-                  >
-                    {result.status}
-                  </span>
-                  <p>{result.message}</p>
-                </li>
-              );
-            })}
-          </ul>
-        </section>
-      )}
       {!state.projects.length ? (
         <EmptyState
           title="A fresh workspace, ready for your work"
@@ -1068,7 +1044,7 @@ export function WorkView({
               <span>Stage</span>
               <span>Priority</span>
               <span>Owner</span>
-              <span>Updated</span>
+              <span>Stage changed</span>
             </div>
           )}
           {displayGroups.map((group) => {
@@ -1161,6 +1137,14 @@ export function WorkView({
                           >
                             {ticket.title}
                           </button>
+                          {ticket.resumeReason && (
+                            <span
+                              className="status-chip warning"
+                              title={ticket.resumeReason}
+                            >
+                              Resume needed
+                            </span>
+                          )}
                           {ticket.blockedReason && (
                             <span className="status-chip warning">
                               <AlertTriangle size={11} />
@@ -1243,6 +1227,14 @@ export function WorkView({
                                       : "Launch failed"}
                                   </span>
                                 )}
+                              {ticket.resumeReason && (
+                                <span
+                                  className="status-chip warning"
+                                  title={ticket.resumeReason}
+                                >
+                                  Resume needed
+                                </span>
+                              )}
                               {ticket.blockedReason && (
                                 <span
                                   className="status-chip warning"
@@ -1354,13 +1346,20 @@ export function WorkView({
                               ))}
                             </select>
                           </div>
-                          <time
-                            className="updated-cell"
-                            dateTime={ticket.updatedAt}
-                            title={ticket.updatedAt}
-                          >
-                            {timeAgo(ticket.updatedAt)}
-                          </time>
+                          <span className="updated-cell">
+                            {ticket.stageChangedAt ? (
+                              <time
+                                dateTime={ticket.stageChangedAt}
+                                title={ticket.stageChangedAt}
+                              >
+                                {new Date(
+                                  ticket.stageChangedAt,
+                                ).toLocaleString()}
+                              </time>
+                            ) : (
+                              "Unknown"
+                            )}
+                          </span>
                         </article>
                       );
                     })}
