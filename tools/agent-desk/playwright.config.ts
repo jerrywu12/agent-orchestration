@@ -5,6 +5,7 @@ export default defineConfig({
     "browser.spec.ts",
     "machine-browser.spec.ts",
     "intake-browser.spec.ts",
+    "markdown-browser.spec.ts",
     "workflow-browser.spec.ts",
     "recovery-browser.spec.ts",
     "planning-ready.spec.ts",

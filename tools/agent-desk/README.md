@@ -102,20 +102,29 @@ project. Selecting a folder never initializes, clones, fetches, switches or edit
 The legacy native-picker endpoint returns an immediate unavailable response directing old
 clients to the in-app chooser; it never invokes a native dialog.
 
-Drop TXT, DOC, DOCX or PDF files into **New ticket**, or choose files. Agent Desk extracts text
-locally, shows a preview and warnings, and saves the original and extracted context with the
-ticket. Remove a draft before creation if it is unwanted. Ticket details provide the text and
-an original-file download. Scanned PDFs need OCR elsewhere; empty, encrypted, unsupported or
-malformed documents show an error. Embedded macros are never executed; external hyperlinks
-are ignored with a warning and external document resources are rejected.
+Drop Markdown (`.md` or `.markdown`), TXT, DOC, DOCX or PDF files into **New ticket**, or use
+**Documents → Attach files** on an existing ticket. Agent Desk extracts text locally and keeps
+the uploaded bytes with the ticket. Remove an unwanted draft before attaching it. Save any
+pending ticket edits before attaching or editing a document. Scanned PDFs need OCR elsewhere;
+empty, encrypted, unsupported or malformed documents show an error. Embedded macros are never
+executed and remote document resources are rejected.
 
-Limits are five documents per ticket, 10 MiB per file, 100,000 extracted characters per file,
+**Read** opens the complete Markdown document with headings, lists, tables and code. **Edit**
+opens the source; **Preview** renders the current draft; **Save** updates the stored ticket copy,
+its download and agent context. Files on the source filesystem stay unchanged. Unsafe links and
+raw HTML are disabled, and images are never fetched automatically. Other document formats keep
+their read-only extracted preview and download. Unsaved edits are protected when closing or
+reloading. If another editor changed the document, your draft remains available; explicitly
+discard it before reloading the latest copy. Attachment changes also advance the ticket version.
+
+Limits are five combined documents per ticket, 10 MiB per file, 200,000 Markdown characters
+and 100,000 extracted characters per other file,
 200 PDF pages, 20 pending uploads, and 1 GiB total stored attachment data including text and
 metadata. Draft uploads expire after 24 hours. Parsing uses at most two workers with a
 20-second deadline and 128 MiB V8 heap limit per worker (not a total process-memory limit).
 Originals and text live in the private SQLite database and are included in its backups.
 
-The ticket details drawer focuses on title, stage, priority, owner, labels, description,
+The ticket details drawer focuses on title, stage, priority, effort, owner, labels, description,
 relationships, reference documents, child tickets and Save/Archive. Agent preparation,
 workflow checklists, execution controls/traces, GitHub operations, activity and stage history
 are omitted from this panel. Editing the visible details never submits the agent task brief.

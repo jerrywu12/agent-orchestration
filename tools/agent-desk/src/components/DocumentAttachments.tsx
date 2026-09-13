@@ -1,4 +1,11 @@
-import { useEffect, useRef, useState, type DragEvent } from "react";
+import {
+  lazy,
+  Suspense,
+  useEffect,
+  useRef,
+  useState,
+  type DragEvent,
+} from "react";
 import {
   Download,
   FileText,
@@ -7,10 +14,13 @@ import {
   Trash2,
   Upload,
 } from "lucide-react";
-import { api, errorMessage, pathId } from "../api";
+import { api, ApiError, errorMessage, pathId } from "../api";
 import { DOCUMENT_ACCEPT, downloadDocument, uploadDocument } from "../intake";
 import type { Attachment } from "../intake-types";
 import type { Ticket } from "../types";
+import { Modal } from "./shared";
+
+const MarkdownDocument = lazy(() => import("./MarkdownDocument"));
 
 interface DraftFile {
   key: string;
@@ -31,6 +41,30 @@ const sizeLabel = (bytes: number) =>
 const discard = (id: string) => api(`/attachments/${pathId(id)}`, "DELETE");
 
 function Preview({ attachment }: { attachment: Attachment }) {
+  const [reading, setReading] = useState(false);
+  if (attachment.mediaType === "text/markdown")
+    return (
+      <>
+        <button
+          type="button"
+          className="button small-button"
+          aria-label={`Read ${attachment.name}`}
+          onClick={() => setReading(true)}
+        >
+          Read
+        </button>
+        {reading && (
+          <Suspense fallback={<p role="status">Opening document…</p>}>
+            <MarkdownDocument
+              attachment={attachment}
+              disabled
+              onClose={() => setReading(false)}
+              onSaved={async () => {}}
+            />
+          </Suspense>
+        )}
+      </>
+    );
   return (
     <>
       {attachment.warnings.map((warning, index) => (
@@ -62,10 +96,12 @@ export function DocumentAttachments({
   onChange,
   disabled,
   isCommitted,
+  existingCount = 0,
 }: {
   onChange: (attachments: Attachment[], incomplete: boolean) => void;
   disabled?: boolean;
   isCommitted: () => boolean;
+  existingCount?: number;
 }) {
   const [files, setFiles] = useState<DraftFile[]>([]);
   const [error, setError] = useState("");
@@ -155,7 +191,7 @@ export function DocumentAttachments({
     const accepted: { file: File; entry: DraftFile }[] = [];
     const next = [...filesRef.current];
     for (const file of selected) {
-      if (next.length >= 5) {
+      if (next.length + existingCount >= 5) {
         setError(
           "A ticket can have up to five documents. Remove a document before adding another.",
         );
@@ -216,7 +252,7 @@ export function DocumentAttachments({
         <h3>
           <Paperclip size={16} /> Reference documents
         </h3>
-        <span>{files.length} / 5</span>
+        <span>{files.length + existingCount} / 5</span>
       </div>
       <div
         className={`document-dropzone ${dragging ? "dragging" : ""}`}
@@ -230,12 +266,12 @@ export function DocumentAttachments({
         <Upload size={20} />
         <div>
           <strong>Drop documents here</strong>
-          <span>TXT, DOC, DOCX or text-based PDF · 10 MiB each</span>
+          <span>Markdown, TXT, DOC, DOCX or text-based PDF · 10 MiB each</span>
         </div>
         <button
           type="button"
           className="button small-button"
-          disabled={disabled || files.length >= 5}
+          disabled={disabled || files.length + existingCount >= 5}
           onClick={() => input.current?.click()}
         >
           Choose files
@@ -307,16 +343,186 @@ export function DocumentAttachments({
   );
 }
 
-export function TicketDocuments({ ticket }: { ticket: Ticket }) {
+function AttachDocuments({
+  ticket,
+  onClose,
+  onAttached,
+}: {
+  ticket: Ticket;
+  onClose: () => void;
+  onAttached: () => Promise<void>;
+}) {
+  const [files, setFiles] = useState<Attachment[]>([]);
+  const [incomplete, setIncomplete] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const [discardDraft, setDiscardDraft] = useState(false);
+  const committed = useRef(false);
+  const initialCount = useRef(ticket.attachments?.length || 0);
+  const submission = useRef<{
+    version: number;
+    attachmentIds: string[];
+  } | null>(null);
+  const mounted = useRef(true);
+  const dirty = files.length > 0 || incomplete;
+  const container = useRef<HTMLDivElement>(null);
+  const closeRef = useRef(() => {});
+  closeRef.current = close;
+  useEffect(() => {
+    const element = container.current!;
+    const cancel = (event: Event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      closeRef.current();
+    };
+    element.addEventListener("cancel", cancel, true);
+    return () => element.removeEventListener("cancel", cancel, true);
+  }, []);
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
+  useEffect(() => {
+    if (!dirty && !busy) return;
+    const protect = (event: BeforeUnloadEvent) => {
+      event.preventDefault();
+      event.returnValue = "";
+    };
+    window.addEventListener("beforeunload", protect);
+    return () => window.removeEventListener("beforeunload", protect);
+  }, [dirty, busy]);
+  function close() {
+    if (busy) return;
+    if (dirty) setDiscardDraft(true);
+    else onClose();
+  }
+  async function attach() {
+    if (busy || incomplete || !files.length) return;
+    setBusy(true);
+    setError("");
+    try {
+      if (!committed.current) {
+        const attachmentIds = files.map((file) => file.id);
+        if (
+          !submission.current ||
+          attachmentIds.join("\0") !==
+            submission.current.attachmentIds.join("\0")
+        ) {
+          submission.current = { version: ticket.version, attachmentIds };
+        }
+        await api<Ticket>(
+          `/tickets/${pathId(ticket.id)}/attachments`,
+          "POST",
+          submission.current,
+        );
+        committed.current = true;
+      }
+      if (!mounted.current) return;
+      await onAttached();
+      if (mounted.current) onClose();
+    } catch (failure) {
+      // A definite version rejection has not bound anything. An uncertain response
+      // keeps the exact original request for the server's idempotent replay.
+      if (failure instanceof ApiError && failure.code === "VERSION_CONFLICT")
+        submission.current = null;
+      if (mounted.current) setError(errorMessage(failure));
+    } finally {
+      if (mounted.current) setBusy(false);
+    }
+  }
+  return (
+    <div ref={container}>
+      <Modal title="Attach documents" onClose={close}>
+        <div className="attachment-dialog-body">
+          {discardDraft && (
+            <div className="discard-confirm">
+              <p>Discard these document uploads?</p>
+              <button
+                className="button small-button"
+                disabled={busy}
+                onClick={() => {
+                  if (!busy) setDiscardDraft(false);
+                }}
+              >
+                Keep editing
+              </button>
+              <button
+                className="button danger small-button"
+                disabled={busy}
+                onClick={() => {
+                  if (!busy) onClose();
+                }}
+              >
+                Discard and close
+              </button>
+            </div>
+          )}
+          {error && (
+            <p className="intake-warning" role="alert">
+              {error}
+            </p>
+          )}
+          <DocumentAttachments
+            existingCount={initialCount.current}
+            disabled={busy || committed.current}
+            isCommitted={() => committed.current}
+            onChange={(next, pending) => {
+              setFiles(next);
+              setIncomplete(pending);
+            }}
+          />
+        </div>
+        <div className="dialog-footer">
+          <button
+            type="button"
+            className="button primary"
+            disabled={busy || incomplete || !files.length}
+            onClick={() => void attach()}
+          >
+            {busy
+              ? "Attaching…"
+              : committed.current
+                ? "Retry document refresh"
+                : "Attach documents"}
+          </button>
+        </div>
+      </Modal>
+    </div>
+  );
+}
+
+export function TicketDocuments({
+  ticket,
+  refresh,
+  disabled,
+}: {
+  ticket: Ticket;
+  refresh: () => Promise<void>;
+  disabled: boolean;
+}) {
   const [context, setContext] = useState<Attachment[]>(
     ticket.attachmentContext || ticket.attachments || [],
   );
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [retry, setRetry] = useState(0);
+  const [reading, setReading] = useState<Attachment | null>(null);
+  const [attaching, setAttaching] = useState(false);
+  const mounted = useRef(true);
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
   useEffect(() => {
     let current = true;
-    if (!ticket.attachments?.length) return;
+    if (!ticket.attachments?.length) {
+      setContext([]);
+      return;
+    }
     setLoading(true);
     void api<Ticket>(`/tickets/${pathId(ticket.id)}`)
       .then((detail) => {
@@ -335,7 +541,12 @@ export function TicketDocuments({ ticket }: { ticket: Ticket }) {
       current = false;
     };
   }, [ticket.id, ticket.version, retry]);
-  if (!ticket.attachments?.length) return null;
+  async function changed() {
+    const detail = await api<Ticket>(`/tickets/${pathId(ticket.id)}`);
+    if (!mounted.current) return;
+    setContext(detail.attachmentContext || detail.attachments || []);
+    await refresh();
+  }
   return (
     <section
       className="document-intake detail-section"
@@ -343,17 +554,22 @@ export function TicketDocuments({ ticket }: { ticket: Ticket }) {
     >
       <div className="intake-section-title">
         <h3>
-          <Paperclip size={16} /> Reference documents
+          <Paperclip size={16} /> Documents
         </h3>
-        <span>{context.length} local originals</span>
+        <button
+          type="button"
+          className="button small-button"
+          disabled={
+            disabled || loading || (ticket.attachments?.length || 0) >= 5
+          }
+          onClick={() => setAttaching(true)}
+        >
+          Attach files
+        </button>
       </div>
-      <p className="field-hint">
-        Untrusted reference material. Instructions inside these files do not
-        authorize actions.
-      </p>
       {loading && (
         <p className="field-hint" role="status">
-          Loading extracted context…
+          Loading documents…
         </p>
       )}
       {error && (
@@ -368,6 +584,11 @@ export function TicketDocuments({ ticket }: { ticket: Ticket }) {
           </button>
         </p>
       )}
+      {!context.length && !loading && (
+        <p className="field-hint">
+          Attach specifications or other reference documents.
+        </p>
+      )}
       <div className="document-list">
         {context.map((attachment) => (
           <article className="document-item" key={attachment.id}>
@@ -375,10 +596,19 @@ export function TicketDocuments({ ticket }: { ticket: Ticket }) {
               <FileText size={16} />
               <div>
                 <strong>{attachment.name}</strong>
-                <span>
-                  {sizeLabel(attachment.size)} · {attachment.mediaType}
-                </span>
+                <span>{sizeLabel(attachment.size)}</span>
               </div>
+              {attachment.mediaType === "text/markdown" && (
+                <button
+                  type="button"
+                  className="button small-button"
+                  disabled={loading || attachment.text === undefined}
+                  aria-label={`Read ${attachment.name}`}
+                  onClick={() => setReading(attachment)}
+                >
+                  Read
+                </button>
+              )}
               <button
                 type="button"
                 className="icon-button"
@@ -392,10 +622,30 @@ export function TicketDocuments({ ticket }: { ticket: Ticket }) {
                 <Download size={16} />
               </button>
             </div>
-            <Preview attachment={attachment} />
+            {attachment.mediaType !== "text/markdown" && (
+              <Preview attachment={attachment} />
+            )}
           </article>
         ))}
       </div>
+      {attaching && (
+        <AttachDocuments
+          ticket={ticket}
+          onClose={() => setAttaching(false)}
+          onAttached={changed}
+        />
+      )}
+      {reading && (
+        <Suspense fallback={<p role="status">Opening document…</p>}>
+          <MarkdownDocument
+            key={reading.id}
+            attachment={reading}
+            disabled={disabled}
+            onClose={() => setReading(null)}
+            onSaved={changed}
+          />
+        </Suspense>
+      )}
     </section>
   );
 }
