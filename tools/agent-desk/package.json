@@ -19,6 +19,8 @@
     "pdfjs-dist": "6.3.289",
     "react": "^19.1.0",
     "react-dom": "^19.1.0",
+    "react-markdown": "10.1.0",
+    "remark-gfm": "4.0.1",
     "word-extractor": "1.0.4",
     "yaml": "^2.9.1"
   },
