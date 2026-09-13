@@ -252,6 +252,7 @@ async function mockRecovery(page: Page) {
                   ...row,
                   status: "claim_released",
                   message: "Claim released; saved work retained.",
+                  ...(row.telemetry ? {telemetry:{...row.telemetry,state:"revoked",releasedAt:now}} : {}),
                 }
               : row,
           ),
@@ -1339,3 +1340,35 @@ for (const entry of ["bulk", "drawer"]) {
     expect(app.writes.some((item) => item.path.endsWith("/start"))).toBe(false);
   });
 }
+
+test("a recovery-only batch says action required instead of agent run finished", async ({page}) => {
+  await takeoverBatch(page);
+  await expect(page.getByRole("heading", {name:"Action required",exact:true})).toBeVisible();
+  await expect(page.getByText("Waiting for takeover",{exact:true})).toBeVisible();
+  await expect(page.getByRole("heading", {name:"Agent run finished",exact:true})).toHaveCount(0);
+});
+test("takeover completion shows current recovery state and separates old session timing", async ({page}) => {
+  const app=await takeoverBatch(page);
+  app.updateRun({state:"complete",results:[{ticketId:"ticket-2",executionId:"old-execution",status:"needs_takeover",message:"Inspect the prior claim",telemetry:{state:"suspended",progress:90,summary:"Old execution progress",startedAt:"2026-09-11T12:00:00.000Z",heartbeatAt:"2026-09-12T12:00:00.000Z",lastActivityAt:null,releasedAt:null,reportingReadyAt:null,stale:true}}]});
+  await page.reload();
+  await confirmRowTakeover(page);
+  await expect(page.getByText("Takeover complete",{exact:true})).toBeVisible();
+  await expect(page.getByText("Agent not started. Click Run Agent to begin.",{exact:true})).toBeVisible();
+  await expect(page.locator(`time[datetime="${now}"]`)).toBeVisible();
+  await expect(page.getByText("Elapsed",{exact:true})).not.toBeVisible();
+  await expect(page.getByRole("progressbar")).toHaveCount(0);
+  await expect(page.getByText("Previous session details",{exact:true})).toBeVisible();
+  expect(app.writes.filter(item=>item.path==="/api/runs")).toHaveLength(1);
+  await page.reload();
+  await expect(page.getByText("Takeover complete",{exact:true})).toBeVisible();
+  replaceDrawerExecution(app);
+  await page.clock.fastForward(4100);
+  await expect(page.getByText("Another session holds this ticket. Open the ticket to inspect its progress.",{exact:true})).toBeVisible();
+  await expect(page.getByText("Agent not started. Click Run Agent to begin.",{exact:true})).toHaveCount(0);
+  await expect(page.getByRole("button",{name:"Run Agent for SMARTSTO-102",exact:true})).toBeDisabled();
+  app.state.tickets[2].execution=null;
+  app.state.tickets[2].stageId="stage-2";
+  await page.clock.fastForward(4100);
+  await expect(page.getByText("Ticket is closed. Reopen it to start an agent.",{exact:true})).toBeVisible();
+  await expect(page.getByRole("button",{name:"Run Agent for SMARTSTO-102",exact:true})).toBeDisabled();
+});
