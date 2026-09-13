@@ -211,54 +211,13 @@ export async function listProjectFolders(
     parentPath: dirname(root) === root ? null : dirname(root),
     directories: found.slice(0, limit),
     truncated: truncated || found.length > limit,
-    nativePicker: process.platform === "darwin",
+    nativePicker: false,
   };
 }
-let pickerActive = false;
-async function nativeChoose() {
-  try {
-    const { stdout } = await execute(
-      "/usr/bin/osascript",
-      [
-        "-e",
-        'POSIX path of (choose folder with prompt "Choose an Agent Desk project folder")',
-      ],
-      { encoding: "utf8", timeout: 90000, maxBuffer: 8192 },
-    );
-    return stdout.trim();
-  } catch (error) {
-    if (String(error.stderr ?? "").includes("(-128)")) return null;
-    fail(
-      409,
-      "PICKER_UNAVAILABLE",
-      "The folder picker was unavailable or timed out. Use Browse server folders instead.",
-    );
-  }
-}
-export async function pickProjectFolder({
-  platform = process.platform,
-  choose = nativeChoose,
-  projects = [],
-} = {}) {
-  if (platform !== "darwin")
-    fail(
-      409,
-      "PICKER_UNAVAILABLE",
-      "Native folder picker is available only on the server Mac. Use Browse server folders.",
-    );
-  if (pickerActive)
-    fail(
-      409,
-      "PICKER_BUSY",
-      "A folder picker is already open on the server Mac.",
-    );
-  pickerActive = true;
-  try {
-    const path = await choose();
-    return path
-      ? await inspectProjectFolder(path, projects)
-      : { cancelled: true };
-  } finally {
-    pickerActive = false;
-  }
+export async function pickProjectFolder() {
+  fail(
+    409,
+    "PICKER_UNAVAILABLE",
+    "The native picker is retired. Refresh Agent Desk to use the in-app Choose folder, or use Browse server in older versions.",
+  );
 }

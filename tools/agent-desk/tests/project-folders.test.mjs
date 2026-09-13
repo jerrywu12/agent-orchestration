@@ -56,6 +56,7 @@ test("browse is bounded, skips hidden/symlink entries and handles non-Git", asyn
   for (const name of ["a", "b", ".hidden"]) mkdirSync(join(root, name));
   symlinkSync(join(root, "a"), join(root, "link"));
   const list = await listProjectFolders(root, { maxEntries: 1 });
+  assert.equal(list.nativePicker, false);
   assert.equal(list.directories.length, 1);
   assert.equal(list.truncated, true);
   assert.equal(list.directories[0].name, "a");
@@ -64,11 +65,26 @@ test("browse is bounded, skips hidden/symlink entries and handles non-Git", asyn
   assert.equal(inspection.repo, "");
   await assert.rejects(() => inspectProjectFolder("relative"), /absolute/i);
 });
-test("picker cancellation and safe remote parsing", async () => {
-  assert.deepEqual(
-    await pickProjectFolder({ platform: "darwin", choose: async () => null }),
-    { cancelled: true },
-  );
+test("retired picker never invokes native chooser and safe remote parsing", async () => {
+  let calls = 0;
+  for (const platform of ["darwin", "linux", "win32"])
+    await assert.rejects(
+      () =>
+        pickProjectFolder({
+          platform,
+          choose: async () => {
+            calls++;
+            return null;
+          },
+        }),
+      (error) =>
+        error.status === 409 &&
+        error.code === "PICKER_UNAVAILABLE" &&
+        /Choose folder/.test(error.message) &&
+        /Browse server/.test(error.message) &&
+        /Refresh Agent Desk/.test(error.message),
+    );
+  assert.equal(calls, 0);
   await assert.rejects(
     () => pickProjectFolder({ platform: "linux" }),
     /picker/i,

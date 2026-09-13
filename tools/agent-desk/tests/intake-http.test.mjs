@@ -141,11 +141,23 @@ test("invalid upload bodies are rejected before parser and foreign origin cannot
     403,
   );
   assert.equal(counts().picks, 0);
-  assert.deepEqual(
-    await (await request("/project-folder/pick", "POST", {})).json(),
-    { cancelled: true },
+  const retired = await request("/project-folder/pick", "POST", {});
+  assert.equal(retired.status, 409);
+  const error = await retired.json();
+  assert.equal(error.error.code, "PICKER_UNAVAILABLE");
+  assert.match(error.error.message, /Choose folder/);
+  assert.match(error.error.message, /Refresh Agent Desk/);
+  assert.match(error.error.message, /Browse server/);
+  assert.equal(counts().picks, 0);
+  assert.equal(
+    (await request("/project-folder/pick", "POST", {}, null)).status,
+    401,
   );
-  assert.equal(counts().picks, 1);
+  assert.equal(
+    (await request("/project-folder/pick", "POST", {}, "codex")).status,
+    403,
+  );
+  assert.equal((await request("/project-folder/pick", "GET")).status, 404);
 });
 test("project creation canonicalizes folders and reuses same registered path under concurrency", async (t) => {
   const { request } = await app(t),

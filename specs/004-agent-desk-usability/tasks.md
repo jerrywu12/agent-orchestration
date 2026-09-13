@@ -22,13 +22,15 @@
 - [x] T011 [US4] Add brief form, recorded/missing evidence checklist and copy packet in CreateDialogs.tsx, TicketDetails.tsx and WorkflowBrief.tsx; frontend. Preserve existing guards and honest evidence semantics.
 
 ## Integration and delivery
+
+Current resolution: [folder-selection-resolution.md](folder-selection-resolution.md) explicitly replaces the native chooser requirement. Original merge, deployment and Chrome installation evidence is verified; the old Mac-unlock hold is obsolete. Completion of the replacement is tracked on canonical AGENT-3 with exact-head review and merged-runtime evidence, not by pretending a native dialog was tested.
 - [x] T012 Integrate UI install button in App.tsx (frontend), all new browser tests via playwright.config.ts and deterministic tests/serve-e2e.mjs (lead); full npm test/build/test:e2e. Fix reviewed gaps only within named feature scope.
-- [ ] T013 Independent review of source/auth/limits/packets/PWA and browser/native proof; record specs/004-agent-desk-usability/verification.md, update tools/agent-desk/README.md, docs/AGENT_DESK_POLICY.md and docs/PROJECT_DEVELOPMENT.md.
-- [ ] T014 Commit/push/PR, green CI and review, merge and ff main; preview/backup/redeploy app with existing bin/install.mjs, install Chrome app through Chrome UI, verify exact live root/SHA/claims and owned-ticket delivery. Record evidence and rollback paths.
+- [x] T013 Original source/auth/limits/packets/PWA and browser review verified in PR17/PR21 and subsequent independent acceptance audit. Remaining folder selection uses the replacement contract, with separate exact-head review before its release.
+- [x] T014 Original commit/PR/CI/merge/deployment verified; Chrome standalone bundle registration verified. Replacement delivery is owned by AGENT-3 under the amendment and requires its own merge/installed-runtime proof before Done.
 
 Dependencies: T001→T002. Parser T005 and PWA T004 are independent after contracts; frontend T003/T007/T009/T011 follows frozen shared types and runs alongside lead backend work. Lead serializes all shared service/http/lockfile changes. Final T012→T013→T014. MVP slices stay checkpointed; all four stories are required for user completion.
 
-Delivery checkpoint (2026-09-13): T002–T012 passed; 175 Node tests, 34 browser tests,
+Historical delivery checkpoint (2026-09-13, superseded by the resolution above): T002–T012 passed; 175 Node tests, 34 browser tests,
 build, independent source review and all three CI jobs green. PR17 merged and the exact
 runtime is deployed with backup/rollback and claim preservation verified. T013/T014 remain
 open only for completing the native folder chooser and Chrome standalone installation:

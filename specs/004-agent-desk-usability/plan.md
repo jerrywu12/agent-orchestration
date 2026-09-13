@@ -2,6 +2,8 @@
 
 Status: locked. Branch `codex/agent-desk-usability`, base `aae5a50`; local execution because this change depends on macOS/Chrome and installed private data. User requested implementation, so the lead owns specify → plan → tasks → implement through reviewed deployment.
 
+Amendment 2026-09-13: [folder-selection-resolution.md](folder-selection-resolution.md) supersedes the native folder chooser below. The supported selection path is the in-app server folder browser; native invocation is retired rather than left as an untestable acceptance prerequisite. Other feature architecture and safety gates remain unchanged.
+
 ## Technical context
 Existing Node 22 HTTP/SQLite service, React/TypeScript/Vite frontend and project-local Playwright. Add PDF.js and word-extractor for portable local text extraction. No cloud model calls, Office dependency or uploaded-file execution. Auth, Host/Origin protection, transactional claims, GitHub conflict logic and isolated worktrees remain authoritative.
 

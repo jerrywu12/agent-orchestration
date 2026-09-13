@@ -30,7 +30,6 @@ export function FolderPicker({
   const [busy, setBusy] = useState("");
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
-  const [nativeAvailable, setNativeAvailable] = useState(true);
   const sequence = useRef(0);
   const currentPath = useRef(path);
   currentPath.current = path;
@@ -65,6 +64,7 @@ export function FolderPicker({
   }
   function browse(directory = path) {
     setBrowsing(true);
+    setListing(null);
     void operation(
       "browse",
       () =>
@@ -73,7 +73,6 @@ export function FolderPicker({
         ),
       (result) => {
         setListing(result);
-        setNativeAvailable(result.nativePicker);
       },
     );
   }
@@ -99,51 +98,28 @@ export function FolderPicker({
       },
     );
   }
-  function nativePick() {
-    const before = currentPath.current;
-    void operation(
-      "native",
-      () =>
-        intakeRequest<FolderInspection | { cancelled: true }>(
-          "/project-folder/pick",
-          {},
-          120000,
-        ),
-      (result) => {
-        if ("cancelled" in result) {
-          setNotice("Folder selection cancelled. Your form is unchanged.");
-          return;
-        }
-        if (currentPath.current === before) apply(result);
-        else
-          setNotice(
-            "The working directory changed while the chooser was open. Choose the folder again to apply it.",
-          );
-      },
-    );
+  function cancelSelection() {
+    // Listing/inspection are read-only; fence their late results without
+    // making the user wait for a pending request to release the form.
+    sequence.current += 1;
+    setBrowsing(false);
+    setListing(null);
+    setBusy("");
+    onBusy(false);
+    setError("");
+    setNotice("Folder selection cancelled. Your form is unchanged.");
   }
   return (
     <div className="folder-picker">
       <div className="folder-actions">
-        {nativeAvailable && (
-          <button
-            type="button"
-            className="button small-button"
-            disabled={disabled || !!busy}
-            onClick={nativePick}
-          >
-            <FolderOpen size={15} />
-            Choose folder
-          </button>
-        )}
         <button
           type="button"
           className="button small-button"
           disabled={disabled || !!busy}
           onClick={() => browse()}
         >
-          <Folder size={15} />
-          Browse server
+          <FolderOpen size={15} />
+          Choose folder
         </button>
         <button
           type="button"
@@ -157,11 +133,9 @@ export function FolderPicker({
       {busy && (
         <p className="field-hint" role="status">
           <LoaderCircle size={14} className="spin" />
-          {busy === "native"
-            ? "Choose a folder in the server Mac’s dialog…"
-            : busy === "inspect"
-              ? "Inspecting the existing folder…"
-              : "Loading server folders…"}
+          {busy === "inspect"
+            ? "Inspecting the existing folder…"
+            : "Loading server folders…"}
         </p>
       )}
       {notice && (
@@ -171,7 +145,7 @@ export function FolderPicker({
       )}
       {error && (
         <p className="intake-warning" role="alert">
-          {error} Use Browse server if the native chooser is unavailable.
+          {error} Check the server path and choose a folder again.
         </p>
       )}
       {browsing && (
@@ -181,7 +155,7 @@ export function FolderPicker({
             <button
               type="button"
               className="text-button"
-              onClick={() => setBrowsing(false)}
+              onClick={cancelSelection}
             >
               Close browser
             </button>

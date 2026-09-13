@@ -1,5 +1,7 @@
 # Agent Desk desktop and intake verification
 
+Current owner follow-through: see [folder-selection-resolution.md](folder-selection-resolution.md). Historical Mac-unlock/native-selection notes below describe the original release, not a current permission request. Chrome standalone registration was subsequently verified; the remaining native chooser mechanism is being replaced with a directly verifiable in-app selection path, not marked tested or silently waived.
+
 Feature branch: `codex/agent-desk-usability`, based on `aae5a50`.
 Source: `/private/tmp/agent-desk-usability`; canonical repo: `/Users/jerry/agent-orchestrator`.
 

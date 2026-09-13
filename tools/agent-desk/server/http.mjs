@@ -99,7 +99,6 @@ export function createAppServer({
   agentStatusMonitor = null,
   documentProcessor = async (input, options) =>
     (await import("./document-processor.mjs")).processDocument(input, options),
-  folderOptions = {},
 }) {
   service.runner ??= runner;
   const documentJobs = new Set();
@@ -418,14 +417,9 @@ export function createAppServer({
             fail(
               409,
               "PICKER_UNAVAILABLE",
-              "Use Browse server folders from a remote connection.",
+              "Refresh Agent Desk to use the in-app Choose folder, or use Browse server in older versions.",
             );
-          return json(
-            await pickProjectFolder({
-              ...folderOptions,
-              projects: service.store.list("project"),
-            }),
-          );
+          return json(await pickProjectFolder());
         }
         if (resource === "projects" && key === "inspect" && method === "POST")
           return json(
@@ -716,7 +710,6 @@ export function createAppServer({
 }
 export async function startServer({
   machineOptions = {},
-  folderOptions = {},
   agentStatusOptions = {},
 } = {}) {
   const host = process.env.AGENT_DESK_HOST ?? "127.0.0.1";
@@ -779,7 +772,6 @@ export async function startServer({
     syncManager,
     machineMonitor,
     agentStatusMonitor,
-    folderOptions,
   });
   await new Promise((r, reject) => {
     server.once("error", reject);
