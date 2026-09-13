@@ -19,7 +19,17 @@ function age(value: string | null | undefined, now: number) {
 function isWorking(result: RunResult) {
   return (
     ["running", "already_running"].includes(result.status) &&
-    !result.telemetry?.releasedAt
+    !result.telemetry?.releasedAt &&
+    !executionNeedsInspection(result)
+  );
+}
+export function executionNeedsInspection(result: RunResult) {
+  return (
+    ["running", "already_running"].includes(result.status) &&
+    !result.telemetry?.releasedAt &&
+    ["external", "suspended", "interrupted"].includes(
+      result.telemetry?.state || "",
+    )
   );
 }
 export function heartbeatStale(result: RunResult, now: number) {
@@ -37,6 +47,7 @@ export function runCounts(results: RunResult[], now: number) {
         ["needs_takeover", "claim_released", "failed", "skipped"].includes(
           row.status,
         ) ||
+        executionNeedsInspection(row) ||
         heartbeatStale(row, now)
       )
         counts.attention++;
@@ -53,6 +64,7 @@ interface RunProgressProps {
   ticketKey: string;
   now: number;
   paused: boolean;
+  batchCreatedAt?: string;
   recoveryState?: "idle" | "reserved" | "ended" | "closed" | "unknown";
 }
 const recoveryMessages = {
@@ -65,6 +77,25 @@ const recoveryMessages = {
 };
 export function RunProgress(props: RunProgressProps) {
   const { result, ticketKey, recoveryState = "unknown" } = props;
+  if (result.status === "queued") {
+    const queuedAt = timestamp(result.queuedAt);
+    const submittedAt = timestamp(props.batchCreatedAt);
+    return (
+      <div
+        className="run-progress run-queue"
+        role="group"
+        aria-label={`Progress for ${ticketKey}`}
+      >
+        <p className="run-queue-timing">
+          {queuedAt !== null
+            ? `Waiting for ${duration(props.now - queuedAt)}`
+            : submittedAt !== null
+              ? `Batch submitted ${duration(props.now - submittedAt)} ago`
+              : "Waiting time unavailable"}
+        </p>
+      </div>
+    );
+  }
   if (["needs_takeover", "claim_released"].includes(result.status)) {
     const complete = result.status === "claim_released";
     const releasedAt = timestamp(result.telemetry?.releasedAt);
@@ -184,6 +215,11 @@ function ExecutionProgress({
       {stale && (
         <p className="run-progress-warning">
           No recent heartbeat · inspect this execution
+        </p>
+      )}
+      {executionNeedsInspection(result) && (
+        <p className="run-progress-warning">
+          Session {telemetry?.state} · inspect its current status
         </p>
       )}
       <dl className="run-progress-facts">

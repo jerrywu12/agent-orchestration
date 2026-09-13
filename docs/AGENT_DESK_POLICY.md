@@ -208,5 +208,12 @@ separate operator action, never an automatic response to heartbeat age.
 All work supports bulk Run Agent and Archive. Bulk runs are bounded, durable and
 report each item independently; stale claims require explicit recovery. Restart
 interrupts pending batches visibly without replay. Archive refuses active claims.
+The managed-agent limit counts supervisor-owned children, including processes still
+closing after a terminal report. Retained external or stale claims protect their
+ticket and scope without reserving an entire provider. Direct, bulk and confirmed
+launches share a maximum of four managed slots, reduced by the smallest limit of
+outstanding batches. Queued requests show their actual wait reason; validation
+failures are surfaced before a capacity wait. A successful claim binds pending
+requests for that ticket to its exact execution, preventing later duplicate starts.
 For Agent Desk verification, use scripts/API/automated DOM checks; no computer
 control or screenshots.

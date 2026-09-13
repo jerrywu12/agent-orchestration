@@ -3,6 +3,7 @@ import { EventEmitter } from "node:events";
 import { existsSync } from "node:fs";
 import { isAbsolute } from "node:path";
 import { fail, id, now } from "./store.mjs";
+import { assertManagedCapacity } from "./capacity.mjs";
 import { ensureProjectWorkflow, migrateWorkflow } from "./workflow.mjs";
 import {
   PREPARATION_FIELDS,
@@ -429,14 +430,6 @@ export class Service extends EventEmitter {
       );
     return result;
   }
-  ownerBusy(ownerId, exceptId) {
-    return this.store
-      .list("ticket")
-      .some(
-        (t) =>
-          t.id !== exceptId && this.store.active(t.id)?.agentId === ownerId,
-      );
-  }
   launchFingerprint(ticket) {
     return JSON.stringify(
       [
@@ -542,11 +535,6 @@ export class Service extends EventEmitter {
         outcome: intent?.status === "started" ? "started" : "failed",
         reason: intent?.reason,
       };
-    if (this.ownerBusy(intent.ownerId, key))
-      return {
-        outcome: "queued",
-        reason: "The selected owner is busy. Confirmed launch is queued.",
-      };
     // A missing supervisor is a visible post-admission failure, never silent approval.
     try {
       const ticket = this.require("ticket", key);
@@ -568,22 +556,45 @@ export class Service extends EventEmitter {
         );
       if (!this.runner)
         fail(503, "RUNNER_UNAVAILABLE", "Launch supervisor is unavailable.");
-      this.runner.start(key, { automatic: true });
+      this.runner.validateStart?.(key, { automatic: true });
+      assertManagedCapacity(this, this.runner);
+      const execution = this.runner.start(key, { automatic: true });
       this.store.put("launch-intent", {
-        ...intent,
+        ...this.store.get("launch-intent", key),
         status: "started",
+        executionId: execution.id,
+        code: undefined,
+        reason: "Agent started.",
         updatedAt: now(),
       });
+      this.changed();
       return { outcome: "started" };
     } catch (error) {
+      if (error.code === "CAPACITY_FULL") {
+        if (intent.reason !== error.message || intent.code !== error.code) {
+          this.store.put("launch-intent", {
+            ...intent,
+            reason: error.message,
+            code: error.code,
+            updatedAt: now(),
+          });
+          this.changed();
+        }
+        return { outcome: "queued", reason: error.message };
+      }
+      const reason = error.status
+        ? error.message
+        : "Launch failed; inspect the retained execution.";
       this.store.put("launch-intent", {
-        ...intent,
+        ...this.store.get("launch-intent", key),
         status: "failed",
-        reason: error.message,
+        code: error.status ? error.code : "LAUNCH_FAILED",
+        reason,
         updatedAt: now(),
       });
-      this.store.activity(key, "start_failed", error.message);
-      return { outcome: "failed", reason: error.message };
+      this.store.activity(key, "start_failed", reason);
+      this.changed();
+      return { outcome: "failed", reason };
     }
   }
   dispatchConfirmed() {
@@ -675,6 +686,7 @@ export class Service extends EventEmitter {
         external: !!input.external,
         releasedAt: null,
       });
+      this.bindPendingLaunches(execution);
       if (purpose === "implementation") {
         const activeStage = this.store
           .list("stage", ticket.projectId)
@@ -698,6 +710,45 @@ export class Service extends EventEmitter {
       this.changed();
       return execution;
     });
+  }
+  bindPendingLaunches(execution) {
+    // The claim and its pending requests commit together. A fast external/direct
+    // run may finish before the next drain; its authorization must not replay.
+    const intent = this.store.get("launch-intent", execution.ticketId);
+    if (intent?.status === "queued")
+      this.store.put("launch-intent", {
+        ...intent,
+        status: "started",
+        executionId: execution.id,
+        code: undefined,
+        reason: "Confirmed work has an execution.",
+        updatedAt: now(),
+      });
+    for (const batch of this.store.list("run-batch")) {
+      if (
+        batch.state !== "running" ||
+        !batch.results.some(
+          (row) =>
+            row.ticketId === execution.ticketId && row.status === "queued",
+        )
+      )
+        continue;
+      this.store.put("run-batch", {
+        ...batch,
+        results: batch.results.map((row) =>
+          row.ticketId === execution.ticketId && row.status === "queued"
+            ? {
+                ...row,
+                status: "running",
+                executionId: execution.id,
+                queueReason: undefined,
+                code: undefined,
+                message: "Execution started.",
+              }
+            : row,
+        ),
+      });
+    }
   }
   resolutionNeeded(ticket) {
     return (

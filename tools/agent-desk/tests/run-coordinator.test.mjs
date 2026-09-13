@@ -457,7 +457,11 @@ test("overlapping batches do not spawn a second owner; restart does not replay q
     requestId: "request-second",
   });
   await tick();
-  assert.equal(f.coord.get(two.id).results[0].status, "already_running");
+  assert.equal(f.coord.get(two.id).results[0].status, "running");
+  assert.equal(
+    f.coord.get(two.id).results[0].executionId,
+    f.store.active(a.id).id,
+  );
   assert.equal(f.runner.children.size, 1);
   f.coord.close();
   const restart = new RunCoordinator(f.service, f.runner);

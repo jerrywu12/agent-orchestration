@@ -375,6 +375,248 @@ async function mockRecovery(page: Page) {
   };
 }
 
+test("queued dispatch shows its real wait and limit before observed work across polling and reload", async ({
+  page,
+}) => {
+  const app = await mockRecovery(page);
+  const queued = {
+    ticketId: "ticket-0",
+    status: "queued",
+    message: "Waiting for managed agent capacity (2/2 active).",
+    queueReason: "capacity",
+    queuedAt: "2026-09-13T11:59:00.000Z",
+  };
+  app.updateRun({ observedAt: now, results: [queued] });
+  await page.goto("/");
+  await page.getByLabel("Select ticket SMARTSTO-100").check();
+  await page.getByRole("button", { name: "Run Agent", exact: true }).click();
+  const panel = page.getByRole("region", { name: "Bulk run results" });
+  const progress = panel.getByRole("group", {
+    name: "Progress for SMARTSTO-100",
+  });
+  await expect(
+    panel.getByRole("heading", { name: "Waiting to start" }),
+  ).toBeVisible();
+  await expect(
+    panel.getByText("Agent limit: 2 · 1 ticket", { exact: true }),
+  ).toBeVisible();
+  await expect(panel.getByText("1 queued", { exact: true })).toBeVisible();
+  await expect(panel.getByText("0 working", { exact: true })).toBeVisible();
+  await expect(panel.getByText(queued.message, { exact: true })).toBeVisible();
+  await expect(
+    progress.getByText("Waiting for 1m 0s", { exact: true }),
+  ).toBeVisible();
+  await expect(progress.getByText("Elapsed", { exact: true })).toHaveCount(0);
+  await expect(panel.getByRole("progressbar")).toHaveCount(0);
+  await page.clock.fastForward(5000);
+  await expect(
+    progress.getByText("Waiting for 1m 5s", { exact: true }),
+  ).toBeVisible();
+
+  app.updateRun({ observedAt: "2026-09-13T12:00:05.000Z" });
+  await page.reload();
+  await expect(
+    panel.getByRole("heading", { name: "Waiting to start" }),
+  ).toBeVisible();
+  expect(app.writes.filter((item) => item.path === "/api/runs")).toHaveLength(
+    1,
+  );
+  app.failPoll();
+  await page.clock.fastForward(2100);
+  await expect(
+    panel.getByText("Tracking paused · showing last reported evidence", {
+      exact: true,
+    }),
+  ).toBeVisible();
+  await expect(panel.getByText(queued.message, { exact: true })).toBeVisible();
+  await expect(panel.getByText("0 working", { exact: true })).toBeVisible();
+
+  app.updateRun({
+    observedAt: "2026-09-13T12:00:08.000Z",
+    results: [
+      {
+        ticketId: "ticket-0",
+        status: "running",
+        executionId: "observed-execution",
+        message: "Inspecting the exact execution",
+        telemetry: liveTelemetry({
+          startedAt: "2026-09-13T12:00:08.000Z",
+          heartbeatAt: "2026-09-13T12:00:08.000Z",
+          lastActivityAt: "2026-09-13T12:00:08.000Z",
+          reportingReadyAt: null,
+        }),
+      },
+    ],
+  });
+  app.recoverPoll();
+  await panel.getByRole("button", { name: "Retry run tracking" }).click();
+  await expect(
+    panel.getByRole("heading", { name: "Agent run in progress" }),
+  ).toBeVisible();
+  await expect(panel.getByText("0 queued", { exact: true })).toBeVisible();
+  await expect(panel.getByText("1 working", { exact: true })).toBeVisible();
+  await expect(
+    progress.getByText("Working · no percentage reported", { exact: true }),
+  ).toBeVisible();
+  await expect(progress.getByText(/^Waiting for /)).toHaveCount(0);
+  await expect(
+    panel.getByText("Agent limit: 2 · 1 ticket", { exact: true }),
+  ).toBeVisible();
+  expect(app.writes.filter((item) => item.path === "/api/runs")).toHaveLength(
+    1,
+  );
+});
+
+test("queued dispatch with attention shows action required and labels legacy batch timing", async ({
+  page,
+}) => {
+  const app = await mockRecovery(page);
+  app.updateRun({
+    observedAt: now,
+    createdAt: "2026-09-13T11:59:00.000Z",
+    results: [
+      {
+        ticketId: "ticket-0",
+        status: "queued",
+        message: "Waiting for dispatch.",
+      },
+      {
+        ticketId: "ticket-2",
+        status: "needs_takeover",
+        executionId: "old-execution",
+        message: "Inspect the prior claim before takeover",
+      },
+    ],
+  });
+  await page.goto("/");
+  await page.getByLabel("Select ticket SMARTSTO-100").check();
+  await page.getByLabel("Select ticket SMARTSTO-102").check();
+  await page.getByRole("button", { name: "Run Agent", exact: true }).click();
+  const panel = page.getByRole("region", { name: "Bulk run results" });
+  await expect(
+    panel.getByRole("heading", { name: "Action required" }),
+  ).toBeVisible();
+  await expect(
+    panel.getByText("Agent limit: 2 · 2 tickets", { exact: true }),
+  ).toBeVisible();
+  await expect(panel.getByText("1 queued", { exact: true })).toBeVisible();
+  await expect(panel.getByText("0 working", { exact: true })).toBeVisible();
+  await expect(
+    panel.getByText("1 needs attention", { exact: true }),
+  ).toBeVisible();
+  const progress = panel.getByRole("group", {
+    name: "Progress for SMARTSTO-100",
+  });
+  await expect(
+    progress.getByText("Batch submitted 1m 0s ago", { exact: true }),
+  ).toBeVisible();
+  await expect(progress.getByText("Elapsed", { exact: true })).toHaveCount(0);
+  await expect(progress.getByRole("progressbar")).toHaveCount(0);
+  await expect(
+    panel.getByText("Waiting for takeover", { exact: true }),
+  ).toBeVisible();
+  await expect(
+    panel.getByRole("button", { name: "Take over SMARTSTO-102", exact: true }),
+  ).toBeVisible();
+  expect(app.writes.some((item) => item.path.endsWith("/takeover"))).toBe(
+    false,
+  );
+});
+
+test("pending dispatch submission is distinct from restoring an earlier batch", async ({
+  page,
+}) => {
+  const app = await mockRecovery(page);
+  app.updateRun({
+    observedAt: now,
+    results: [
+      {
+        ticketId: "ticket-0",
+        status: "queued",
+        message: "Waiting for dispatch.",
+        queuedAt: now,
+        queueReason: "dispatch",
+      },
+    ],
+  });
+  app.delayAcceptedRun();
+  await page.goto("/");
+  await page.getByLabel("Select ticket SMARTSTO-100").check();
+  await page.getByRole("button", { name: "Run Agent", exact: true }).click();
+  await expect.poll(() => app.writes.length).toBe(1);
+  const panel = page.getByRole("region", { name: "Bulk run results" });
+  try {
+    await expect(
+      panel.getByRole("heading", {
+        name: "Submitting run request…",
+        exact: true,
+      }),
+    ).toBeVisible();
+    await expect(
+      panel.getByRole("heading", { name: "Restoring agent run", exact: true }),
+    ).toHaveCount(0);
+    await expect(
+      panel.getByRole("heading", {
+        name: "Agent run in progress",
+        exact: true,
+      }),
+    ).toHaveCount(0);
+    expect(app.reads()).toBe(0);
+  } finally {
+    await app.releaseAcceptedRun();
+  }
+  await expect(
+    panel.getByRole("heading", { name: "Waiting to start" }),
+  ).toBeVisible();
+  expect(app.writes.filter((item) => item.path === "/api/runs")).toHaveLength(
+    1,
+  );
+});
+
+for (const executionState of ["external", "suspended", "interrupted"]) {
+  test(`fresh ${executionState} reservation requires inspection instead of counting as working`, async ({
+    page,
+  }) => {
+    const app = await mockRecovery(page);
+    const message = `Execution ${executionState}; inspect its current status.`;
+    app.updateRun({
+      observedAt: now,
+      results: [
+        {
+          ticketId: "ticket-0",
+          status: "already_running",
+          executionId: "reserved-execution",
+          message,
+          telemetry: liveTelemetry({
+            state: executionState,
+            summary: message,
+            progress: 35,
+            reportingReadyAt: null,
+          }),
+        },
+      ],
+    });
+    await page.goto("/");
+    await page.getByLabel("Select ticket SMARTSTO-100").check();
+    await page.getByRole("button", { name: "Run Agent", exact: true }).click();
+    const panel = page.getByRole("region", { name: "Bulk run results" });
+    await expect(
+      panel.getByRole("heading", { name: "Action required" }),
+    ).toBeVisible();
+    await expect(panel.getByText("0 working", { exact: true })).toBeVisible();
+    await expect(
+      panel.getByText("1 needs attention", { exact: true }),
+    ).toBeVisible();
+    await expect(panel.getByText(message, { exact: true })).toBeVisible();
+    await expect(
+      panel.getByText("Last reported progress: 35%", { exact: true }),
+    ).toBeVisible();
+    await expect(panel.getByText("35% reported", { exact: true })).toHaveCount(
+      0,
+    );
+  });
+}
+
 test("bulk run tracks normal, blocked and stale tickets without taking over", async ({
   page,
 }) => {
