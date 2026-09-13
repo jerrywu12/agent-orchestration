@@ -24,7 +24,8 @@ Local source receipts (Node 22.22; private logs under `~/.local/state/agent-effi
 
 - Pre-fix backend RED: `run-0x6e3n45.log`; expected claim_released, actual needs_takeover. Direct-action DOM RED: `run-ir4jny3p.log`; released-claim attention RED: `run-es0ibkwq.log`.
 - Full backend: 249/249 passed, `run-lkrythvc.log`, including real HTTP takeover with synthetic claims and separate explicit dispatch.
-- Production TypeScript/Vite build passed, `run-smaszroo.log`.
-- Full scripted DOM suite: 73/73 passed, `run-1pbmyczs.log`. Covers direct action, lost responses plus failed refresh, exact-claim protection, idle/active/Done review text, actual delayed callback fencing and existing intake/archive/progress/mobile journeys. No screenshots or real provider launches.
+- Production TypeScript/Vite build passed, final `run-2gj9zxfv.log`.
+- Review found that the existing ticket drawer needed an exact execution component identity to reset release state and ignore old responses when the ticket gains a replacement claim. Both open-drawer regressions failed before the one-line identity fix (`run-n1n6da7y.log`); focused GREEN `run-skvbinv9.log`.
+- Final full scripted DOM suite: 75/75 passed, `run-wz3xp3nv.log`. Covers direct action, lost responses plus failed refresh, exact-claim protection, idle/active/Done review text, actual delayed callback fencing, same-drawer replacement/pending-old-response behavior and existing intake/archive/progress/mobile journeys. No screenshots or real provider launches.
 
 These receipts establish source behavior. The release PR and AGENT-7 carry subsequent exact-head review, CI, installed-runtime and preservation evidence.

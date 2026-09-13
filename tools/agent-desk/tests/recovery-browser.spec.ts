@@ -1190,3 +1190,122 @@ test("delayed takeover release cannot overwrite a newer saved batch identity", a
     ),
   ).toEqual(newer);
 });
+
+function replaceDrawerExecution(app: Awaited<ReturnType<typeof mockRecovery>>) {
+  app.state.tickets[2].execution = {
+    ...app.state.tickets[2].execution!,
+    id: "replacement-execution",
+    sessionId: "replacement-session",
+    state: "running",
+    releasedAt: null,
+    heartbeatAt: "2026-09-12T12:00:00.000Z",
+  };
+  app.setStatus({
+    executionId: "replacement-execution",
+    sessionId: "replacement-session",
+    state: "running",
+    canTakeOver: true,
+    stale: true,
+    processAlive: null,
+    reason: "Replacement execution needs inspection",
+  });
+}
+async function confirmDrawerTakeover(page: Page) {
+  await page
+    .getByRole("button", { name: "Take over prior claim", exact: true })
+    .click();
+  await page
+    .getByLabel("Takeover reason")
+    .fill("Preserve this execution's work; its client cannot be found.");
+  await page
+    .getByLabel(
+      "I understand the prior process may still exist and will preserve its work.",
+    )
+    .check();
+  await page
+    .getByRole("button", { name: "Confirm takeover", exact: true })
+    .click();
+}
+
+test("open drawer resets takeover state for a replacement execution", async ({
+  page,
+}) => {
+  const app = await mockRecovery(page);
+  await page.goto("/");
+  await page
+    .getByRole("button", { name: "Invisible session", exact: true })
+    .click();
+  await confirmDrawerTakeover(page);
+  await expect(
+    page.getByText(
+      "Prior claim released. Existing work is preserved. You can now start an agent.",
+      { exact: true },
+    ),
+  ).toBeVisible();
+  replaceDrawerExecution(app);
+  await page.clock.fastForward(4100);
+  await expect(
+    page
+      .locator(".execution-tracking")
+      .getByText("replacement-execution", { exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "Take over prior claim", exact: true }),
+  ).toBeVisible();
+  await confirmDrawerTakeover(page);
+  const requests = app.writes.filter((item) => item.path.endsWith("/takeover"));
+  expect(requests).toHaveLength(2);
+  expect(requests[1].body).toMatchObject({
+    executionId: "replacement-execution",
+    sessionId: "replacement-session",
+  });
+});
+
+test("open drawer ignores a pending old release after execution scope changes", async ({
+  page,
+}) => {
+  const app = await mockRecovery(page);
+  app.delayTakeoverResponse();
+  await page.goto("/");
+  await page
+    .getByRole("button", { name: "Invisible session", exact: true })
+    .click();
+  await confirmDrawerTakeover(page);
+  replaceDrawerExecution(app);
+  await page.clock.fastForward(4100);
+  await expect(
+    page
+      .locator(".execution-tracking")
+      .getByText("replacement-execution", { exact: true }),
+  ).toBeVisible();
+  await page
+    .getByRole("button", { name: "Take over prior claim", exact: true })
+    .click();
+  await page
+    .getByLabel("Takeover reason")
+    .fill("Reviewing only the replacement execution.");
+  const oldResponse = page.waitForResponse(
+    (response) =>
+      response.request().url().endsWith("/takeover") &&
+      response.request().postDataJSON()?.executionId === "old-execution",
+  );
+  await app.releaseTakeoverResponse();
+  await (await oldResponse).finished();
+  await expect(page.getByLabel("Takeover reason")).toHaveValue(
+    "Reviewing only the replacement execution.",
+  );
+  await expect(
+    page
+      .locator(".execution-tracking")
+      .getByText("replacement-execution", { exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByText(
+      "Prior claim released. Existing work is preserved. You can now start an agent.",
+      { exact: true },
+    ),
+  ).toHaveCount(0);
+  expect(
+    app.writes.filter((item) => item.path.endsWith("/takeover")),
+  ).toHaveLength(1);
+});

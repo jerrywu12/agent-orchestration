@@ -547,6 +547,7 @@ export function TicketDetails({
             </div>
           )}
           <ExecutionTracking
+            key={`${ticket.id}:${execution?.id || "none"}`}
             ticketId={ticket.id}
             executionId={execution?.id}
             disabled={!!busy || dirty}
