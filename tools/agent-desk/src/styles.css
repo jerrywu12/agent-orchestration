@@ -4456,3 +4456,87 @@ progress::-moz-progress-bar {
     margin-bottom: 8px;
   }
 }
+
+/* Exact-execution batch evidence; animation never represents a percentage. */
+.run-overview {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 20px;
+  margin-top: 12px;
+  font-size: 14px;
+}
+.run-update-status {
+  margin: 8px 0 12px;
+  font-size: 13px;
+  color: var(--muted);
+}
+.run-update-paused,
+.run-progress-warning {
+  color: var(--warning);
+}
+.run-progress {
+  flex: 1 0 100%;
+  min-width: 0;
+  padding: 4px 0;
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+.run-progress-meter {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+}
+.run-progress-meter > progress,
+.run-progress-indeterminate {
+  width: 160px;
+  height: 6px;
+  max-width: 100%;
+  accent-color: var(--green);
+}
+.run-progress-indeterminate {
+  display: block;
+  background: var(--soft);
+  overflow: hidden;
+  border-radius: 3px;
+}
+.run-progress-indeterminate > span {
+  display: block;
+  width: 30%;
+  height: 100%;
+  background: var(--green);
+  animation: run-evidence-working 1.8s ease-in-out infinite alternate;
+}
+.run-progress-paused .run-progress-indeterminate > span {
+  animation: none;
+  background: var(--muted);
+}
+@keyframes run-evidence-working {
+  from { transform: translateX(0); }
+  to { transform: translateX(230%); }
+}
+.run-progress-facts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 24px;
+  margin: 12px 0 0;
+}
+.run-progress-facts > div {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 8px;
+}
+.run-progress-facts dt {
+  color: var(--muted);
+}
+.run-progress-facts dd {
+  margin: 0;
+}
+.bulk-results .run-progress-warning {
+  margin-top: 8px;
+}
+@media (prefers-reduced-motion: reduce) {
+  .run-progress-indeterminate > span {
+    animation: none;
+  }
+}

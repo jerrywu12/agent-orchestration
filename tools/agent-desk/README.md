@@ -33,6 +33,11 @@ require readiness; the explicit Start action alone grants a bounded blocker-reso
 ## Run several tickets and recover missing sessions
 
 Select visible tickets on **All work**, then choose **Run Agent** or **Archive**.
+The run panel refreshes every two seconds with each exact execution's latest status,
+reported progress, elapsed time and separate heartbeat/activity timestamps. Missing
+percentages stay indeterminate; stale heartbeats and paused tracking remain visible.
+Existing runs keep updating until their own execution finishes, without starting a
+second executor or following a newer run on the same ticket.
 Run Agent queues up to100 selected tickets with1–4 concurrent managed agents
 (default2). Blocked tickets receive a resolution pass; active claims stay reserved.
 Each ticket has its own outcome. Pending runs are retained as interrupted results

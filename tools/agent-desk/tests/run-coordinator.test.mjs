@@ -65,23 +65,159 @@ const confirm = (e) => ({
   reason: "Session cannot be traced; preserve original worktree.",
 });
 test("bulk read model follows exact live execution progress without rewriting batch records", async (t) => {
-  const f = fixture(t), ticket = f.ticket();
-  const batch = f.coord.submit({ticketIds:[ticket.id],requestId:"live-progress-test",concurrency:1});
+  const f = fixture(t),
+    ticket = f.ticket();
+  const batch = f.coord.submit({
+    ticketIds: [ticket.id],
+    requestId: "live-progress-test",
+    concurrency: 1,
+  });
+  assert.ok(Number.isFinite(Date.parse(batch.observedAt)));
   await tick();
-  const e=f.store.active(ticket.id), persisted=f.store.get("run-batch",batch.id);
-  f.service.event(e.id,{agentId:e.agentId,sessionId:e.sessionId,eventId:"progress-1",seq:1,type:"progress",summary:"Verifying the acceptance tests",progress:35});
-  const row=f.coord.get(batch.id).results[0];
-  assert.equal(row.message,"Verifying the acceptance tests");
-  assert.equal(row.telemetry.progress,35);
+  const e = f.store.active(ticket.id),
+    persisted = f.store.get("run-batch", batch.id);
+  f.service.event(e.id, {
+    agentId: e.agentId,
+    sessionId: e.sessionId,
+    eventId: "progress-1",
+    seq: 1,
+    type: "progress",
+    summary: "Verifying the acceptance tests",
+    progress: 35,
+  });
+  const row = f.coord.get(batch.id).results[0];
+  assert.equal(row.message, "Verifying the acceptance tests");
+  assert.equal(row.telemetry.progress, 35);
   assert.ok(row.telemetry.lastActivityAt);
-  assert.deepEqual(f.store.get("run-batch",batch.id),persisted);
-  const activityAt=row.telemetry.lastActivityAt;
-  f.store.saveExecution({...f.store.execution(e.id),heartbeatAt:"2001-01-01T00:00:00.000Z"});
-  f.service.event(e.id,{agentId:e.agentId,sessionId:e.sessionId,eventId:"heartbeat-2",seq:2,type:"heartbeat"});
-  const next=f.coord.get(batch.id).results[0].telemetry;
-  assert.equal(next.lastActivityAt,activityAt);
-  assert.equal(next.stale,false);
-  assert.equal(next.summary,"Verifying the acceptance tests");
+  assert.deepEqual(f.store.get("run-batch", batch.id), persisted);
+  const activityAt = row.telemetry.lastActivityAt;
+  f.store.saveExecution({
+    ...f.store.execution(e.id),
+    heartbeatAt: "2001-01-01T00:00:00.000Z",
+  });
+  f.service.event(e.id, {
+    agentId: e.agentId,
+    sessionId: e.sessionId,
+    eventId: "heartbeat-2",
+    seq: 2,
+    type: "heartbeat",
+  });
+  const next = f.coord.get(batch.id).results[0].telemetry;
+  assert.equal(next.lastActivityAt, activityAt);
+  assert.equal(next.stale, false);
+  assert.equal(next.summary, "Verifying the acceptance tests");
+});
+test("existing execution stays monitored and an old batch never adopts its replacement", async (t) => {
+  const f = fixture(t),
+    ticket = f.ticket(),
+    e = f.runner.start(ticket.id);
+  const input = {
+    ticketIds: [ticket.id],
+    requestId: "existing-progress-test",
+    concurrency: 1,
+  };
+  const batch = f.coord.submit(input);
+  await tick();
+  assert.equal(f.store.get("run-batch", batch.id).state, "complete");
+  assert.equal(f.coord.get(batch.id).state, "running");
+  assert.equal(f.coord.get(batch.id).results[0].status, "already_running");
+  f.service.event(e.id, {
+    agentId: e.agentId,
+    sessionId: e.sessionId,
+    eventId: "existing-progress",
+    seq: 1,
+    type: "progress",
+    summary: "Running verification",
+    progress: 0,
+  });
+  assert.equal(f.coord.submit(input).results[0].telemetry.progress, 0);
+  f.service.event(e.id, {
+    agentId: e.agentId,
+    sessionId: e.sessionId,
+    eventId: "existing-finish",
+    seq: 2,
+    type: "checkpoint",
+    summary: "Saved checkpoint",
+  });
+  f.runner.children.delete(e.id);
+  const replacement = f.runner.start(ticket.id);
+  f.service.event(replacement.id, {
+    agentId: replacement.agentId,
+    sessionId: replacement.sessionId,
+    eventId: "replacement-progress",
+    seq: 1,
+    type: "progress",
+    summary: "PRIVATE NEW RUN",
+    progress: 80,
+  });
+  const result = f.coord.get(batch.id);
+  assert.equal(result.state, "complete");
+  assert.equal(result.results[0].executionId, e.id);
+  assert.equal(result.results[0].status, "checkpointed");
+  assert.equal(result.results[0].telemetry.summary, "Saved checkpoint");
+  assert.equal(JSON.stringify(result).includes("PRIVATE NEW RUN"), false);
+});
+test("run telemetry is a bounded whitelist with honest legacy freshness", async (t) => {
+  const f = fixture(t),
+    ticket = f.ticket();
+  const batch = f.coord.submit({
+    ticketIds: [ticket.id],
+    requestId: "bounded-progress-test",
+    concurrency: 1,
+  });
+  await tick();
+  const e = f.store.active(ticket.id);
+  f.store.saveExecution({
+    ...e,
+    summary: "x".repeat(4500),
+    progress: 150,
+    heartbeatAt: "invalid",
+    startedAt: "invalid",
+    lastActivityAt: undefined,
+    secret: "NEVER EXPOSE",
+    sessionId: "PRIVATE LEASE",
+    worktreePath: "PRIVATE PATH",
+  });
+  const result = f.coord.get(batch.id),
+    telemetry = result.results[0].telemetry;
+  assert.equal(telemetry.summary.length, 4000);
+  assert.equal(telemetry.progress, null);
+  assert.equal(telemetry.heartbeatAt, null);
+  assert.equal(telemetry.lastActivityAt, null);
+  assert.equal(telemetry.startedAt, null);
+  assert.equal(telemetry.stale, true);
+  assert.ok(Number.isFinite(Date.parse(result.observedAt)));
+  assert.equal(
+    /NEVER EXPOSE|PRIVATE LEASE|PRIVATE PATH/.test(JSON.stringify(result)),
+    false,
+  );
+});
+test("missing or mismatched exact execution is visible and cannot expose another ticket", async (t) => {
+  const f = fixture(t),
+    ticket = f.ticket();
+  const batch = f.coord.submit({
+    ticketIds: [ticket.id],
+    requestId: "missing-progress-test",
+    concurrency: 1,
+  });
+  await tick();
+  const foreign = f.ticket(),
+    e = f.runner.start(foreign.id);
+  f.store.saveExecution({ ...e, summary: "FOREIGN UPDATE" });
+  const saved = f.store.get("run-batch", batch.id);
+  f.store.put("run-batch", {
+    ...saved,
+    results: saved.results.map((row) => ({ ...row, executionId: e.id })),
+  });
+  let result = f.coord.get(batch.id);
+  assert.equal(result.state, "complete");
+  assert.equal(result.results[0].status, "failed");
+  assert.match(result.results[0].message, /unavailable/);
+  assert.equal(JSON.stringify(result).includes("FOREIGN UPDATE"), false);
+  f.store.db.prepare("DELETE FROM executions WHERE id=?").run(e.id);
+  result = f.coord.get(batch.id);
+  assert.equal(result.results[0].telemetry, undefined);
+  assert.match(result.results[0].message, /unavailable/);
 });
 test("stale recovery retains old work and fences old execution events with exact confirmation", async (t) => {
   const f = fixture(t),

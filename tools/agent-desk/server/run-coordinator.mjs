@@ -202,10 +202,67 @@ export class RunCoordinator {
     return { results };
   }
   get(batchId) {
-    return (
+    const batch =
       this.service.store.get("run-batch", batchId) ??
-      fail(404, "NOT_FOUND", "Run batch not found.")
-    );
+      fail(404, "NOT_FOUND", "Run batch not found.");
+    // Dispatch records are durable queue outcomes. Progress belongs to the
+    // exact execution they started or observed, not the ticket's latest run.
+    const results = batch.results.map((row) => {
+      if (!row.executionId) return row;
+      const e = this.service.store.execution(row.executionId);
+      if (!e || e.ticketId !== row.ticketId)
+        return {
+          ...row,
+          status: "failed",
+          message:
+            "Execution record is unavailable. Open the ticket to inspect its history.",
+        };
+      const timestamp = (value) =>
+        typeof value === "string" &&
+        value.length <= 100 &&
+        Number.isFinite(Date.parse(value))
+          ? value
+          : null;
+      const telemetry = {
+        state: e.state,
+        summary: typeof e.summary === "string" ? e.summary.slice(0, 4000) : "",
+        progress:
+          Number.isFinite(e.progress) && e.progress >= 0 && e.progress <= 100
+            ? e.progress
+            : null,
+        startedAt: timestamp(e.startedAt),
+        heartbeatAt: timestamp(e.heartbeatAt),
+        lastActivityAt: timestamp(e.lastActivityAt),
+        releasedAt: timestamp(e.releasedAt),
+        reportingReadyAt: timestamp(e.reportingReadyAt),
+        stale: stale(e),
+      };
+      if (!["running", "already_running"].includes(row.status))
+        return { ...row, telemetry };
+      const status = !e.releasedAt
+        ? row.status
+        : e.state === "awaiting_review"
+          ? "awaiting_review"
+          : e.state === "checkpointed"
+            ? "checkpointed"
+            : "failed";
+      return {
+        ...row,
+        status,
+        message: telemetry.summary || row.message,
+        telemetry,
+      };
+    });
+    return {
+      ...batch,
+      results,
+      observedAt: now(),
+      state: results.some((row) =>
+        ["queued", "running", "already_running"].includes(row.status),
+      )
+        ? "running"
+        : "complete",
+    };
   }
   submit(input) {
     const ticketIds = ids(input.ticketIds),
@@ -229,7 +286,7 @@ export class RunCoordinator {
           "REQUEST_CONFLICT",
           "This request ID was used for a different selection.",
         );
-      return prior;
+      return this.get(prior.id);
     }
     const batch = this.service.store.put("run-batch", {
       id: requestId,
@@ -244,7 +301,7 @@ export class RunCoordinator {
       })),
     });
     this.schedule();
-    return batch;
+    return this.get(batch.id);
   }
   schedule() {
     if (this.closed || this.scheduled) return;
