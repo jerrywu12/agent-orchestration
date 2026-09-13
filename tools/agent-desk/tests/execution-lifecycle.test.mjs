@@ -52,6 +52,73 @@ test("effective completion releases leaf into review once, never Done", (t) => {
   report("complete");
   assert.deepEqual(store.get("ticket", ticket.id).stageHistory, history);
 });
+test("Done supersedes resume state without changing checkpoint history", (t) => {
+  const { store, service, ticket, execution, stage, report } = fixture(t);
+  report("checkpoint");
+  const checkpoint = store.execution(execution.id);
+  const current = store.get("ticket", ticket.id);
+  assert.ok(current.resumeReason);
+  const done = service.updateTicket(ticket.id, {
+    version: current.version,
+    stageId: stage("done"),
+  });
+  assert.equal(done.resumeReason, "");
+  assert.equal(store.get("ticket", ticket.id).resumeReason, "");
+  assert.deepEqual(store.execution(execution.id), checkpoint);
+  report("checkpoint");
+  assert.equal(service.getTicket(ticket.id).resumeReason, "");
+  assert.equal(store.get("ticket", ticket.id).stageId, stage("done"));
+  const reopened = service.updateTicket(ticket.id, {
+    version: done.version,
+    stageId: stage("backlog"),
+  });
+  assert.equal(reopened.resumeReason, "");
+  assert.equal(store.active(ticket.id), null);
+});
+test("legacy Done resume metadata is non-actionable on every read and after reopening", (t) => {
+  const { store, service, ticket, execution, stage, report } = fixture(t);
+  report("checkpoint");
+  const current = store.get("ticket", ticket.id);
+  const legacy = store.put(
+    "ticket",
+    { ...current, stageId: stage("done") },
+    current.version,
+  );
+  const checkpoint = store.execution(execution.id);
+  assert.ok(legacy.resumeReason);
+  assert.equal(service.getTicket(ticket.id).resumeReason, "");
+  assert.equal(
+    service.state().tickets.find((t) => t.id === ticket.id).resumeReason,
+    "",
+  );
+  assert.deepEqual(
+    store.get("ticket", ticket.id),
+    legacy,
+    "reads do not rewrite historical data",
+  );
+  assert.deepEqual(store.execution(execution.id), checkpoint);
+  const reopened = service.updateTicket(ticket.id, {
+    version: legacy.version,
+    stageId: stage("backlog"),
+  });
+  assert.equal(reopened.resumeReason, "");
+  assert.deepEqual(store.execution(execution.id), checkpoint);
+  assert.equal(store.active(ticket.id), null);
+});
+test("Done continues to refuse active claims without releasing them", (t) => {
+  const { store, service, ticket, execution, stage, report } = fixture(t);
+  const current = store.get("ticket", ticket.id);
+  assert.throws(
+    () =>
+      service.updateTicket(ticket.id, {
+        version: current.version,
+        stageId: stage("done"),
+      }),
+    /Checkpoint or finish/,
+  );
+  assert.deepEqual(store.active(ticket.id), store.execution(execution.id));
+  assert.deepEqual(store.get("ticket", ticket.id), current);
+});
 for (const type of ["checkpoint", "failed", "stopped"])
   test(`${type} moves active leaf to Backlog with retained-work reason`, (t) => {
     const { store, service, ticket, stage, report } = fixture(t);
