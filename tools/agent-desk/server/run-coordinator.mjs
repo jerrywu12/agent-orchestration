@@ -55,6 +55,7 @@ export class RunCoordinator {
     }
     this.onChange = () => this.schedule();
     service.on("change", this.onChange);
+    this.schedule();
   }
   close() {
     this.closed = true;
@@ -333,6 +334,7 @@ export class RunCoordinator {
     });
   }
   drain() {
+    this.service.dispatchConfirmed();
     const batches = this.service.store
       .list("run-batch")
       .filter((b) => b.state === "running");
@@ -379,6 +381,7 @@ export class RunCoordinator {
             continue;
           }
           if (this.runner.children.size >= limit) continue;
+          if (this.service.ownerBusy(t.ownerId, t.id)) continue;
           const run = this.runner.start(t.id);
           row.executionId = run.id;
           row.status = "running";

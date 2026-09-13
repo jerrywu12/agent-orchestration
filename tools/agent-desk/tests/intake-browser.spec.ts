@@ -659,7 +659,7 @@ test("a successfully created ticket locks its original packet while opening is p
     dialog.getByRole("textbox", { name: "Scope", exact: true }),
   ).toBeDisabled();
   await expect(
-    dialog.getByRole("combobox", { name: /^Owner Assignment records/ }),
+    dialog.getByRole("combobox", { name: /^Owner/ }),
   ).toBeDisabled();
   await expect(dialog.getByText(/Your ticket was created/)).toBeVisible();
   mocked.resumeRefresh();

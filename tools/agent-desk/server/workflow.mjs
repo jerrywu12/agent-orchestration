@@ -4,6 +4,7 @@ import { id } from "./store.mjs";
 export const WORKFLOW = Object.freeze(
   [
     { name: "Backlog", role: "backlog", color: "#87909b" },
+    { name: "Planning", role: "planning", color: "#a48be0" },
     { name: "Ready", role: "ready", color: "#748ffc" },
     { name: "In progress", role: "active", color: "#f0b35b" },
     { name: "In review", role: "review", color: "#bc8cff" },
@@ -21,7 +22,7 @@ const aliases = new Map([
   ["to do", "backlog"],
   ["todo", "backlog"],
   ["ready", "ready"],
-  ["planning", "ready"],
+  ["planning", "planning"],
   ["active", "active"],
   ["executing", "active"],
   ["in progress", "active"],

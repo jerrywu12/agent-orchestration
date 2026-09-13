@@ -1210,6 +1210,20 @@ export function WorkView({
                               {ticket.title}
                             </button>
                             <span className="ticket-indicators">
+                              {ticket.launchIntent &&
+                                ticket.launchIntent.status !== "started" && (
+                                  <span
+                                    className="status-chip warning"
+                                    title={
+                                      ticket.launchIntent.reason ||
+                                      "Waiting for agent capacity"
+                                    }
+                                  >
+                                    {ticket.launchIntent.status === "queued"
+                                      ? "Queued"
+                                      : "Launch failed"}
+                                  </span>
+                                )}
                               {ticket.blockedReason && (
                                 <span
                                   className="status-chip warning"

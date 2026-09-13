@@ -13,17 +13,36 @@ function fixture(t) {
     store.close();
     rmSync(dir, { recursive: true, force: true });
   });
-  const project = app.createProject({ name: "Research", key: "RES" });
+  const project = app.createProject({
+    name: "Research",
+    key: "RES",
+    repo: "fixture/research",
+  });
   return { store, app, project };
 }
 const ticket = (app, project, extra = {}) =>
   app.createTicket({
     projectId: project.id,
     title: "Implement signal",
+    brief: {
+      specification: "Fixture specification",
+      acceptanceCriteria: "Verify the behavior under test",
+      scope: "Isolated fixture implementation",
+      verification: "Run the focused fixture assertions",
+      allowedPaths: `fixtures/${crypto.randomUUID()}/**`,
+      conflictKeys: "none",
+    },
     ownerId: "codex",
     stageId: app
       .state()
-      .stages.find((s) => s.projectId === project.id && s.role === "ready").id,
+      .stages.find(
+        (s) =>
+          s.projectId === project.id &&
+          s.role ===
+            (extra.blockedReason || extra.dependsOn?.length
+              ? "active"
+              : "ready"),
+      ).id,
     ...extra,
   });
 test("ticket updates persist with canonical stages and reject lost updates", (t) => {
@@ -256,11 +275,13 @@ test("stage role edits cannot silently turn occupied work into delivered work", 
   const { app, project } = fixture(t);
   const x = ticket(app, project);
   app.claim(x.id, { agentId: "codex", sessionId: "active" });
+  const occupied = app.getTicket(x.id);
+  assert.equal(app.require("stage", occupied.stageId).role, "active");
   assert.throws(
-    () => app.updateStage(x.stageId, { role: "done" }),
+    () => app.updateStage(occupied.stageId, { role: "done" }),
     (e) => e.code === "FIXED_WORKFLOW",
   );
-  assert.equal(app.require("stage", x.stageId).role, "ready");
+  assert.equal(app.require("stage", app.getTicket(x.id).stageId).role, "active");
 });
 test("linked GitHub repository identity cannot be retargeted to another repository", (t) => {
   const { app, store, project } = fixture(t);

@@ -50,6 +50,7 @@ async function projectFixture(request: APIRequestContext, label: string) {
     data: {
       name: unique(label),
       key: `T${randomUUID().slice(0, 7)}`.toUpperCase(),
+      repo: `fixture/${randomUUID()}`,
     },
   });
   expect(response.status(), await response.text()).toBe(201);
@@ -72,6 +73,7 @@ async function ticketFixture(
       projectId: project.id,
       stageId,
       title: unique("Ticket"),
+      brief: { specification: "Synthetic spec", acceptanceCriteria: "Fixture assertions pass", scope: "Synthetic ticket only", verification: "Browser assertions", allowedPaths: `fixtures/${randomUUID()}.ts`, conflictKeys: "none" },
       ...fields,
     },
   });
@@ -246,7 +248,7 @@ test("create, assign, edit and comment through the UI; reload retains the result
 
   await dialog
     .getByRole("combobox", { name: "Stage", exact: true })
-    .selectOption({ label: "Ready" });
+    .selectOption({ label: "Backlog" });
   await dialog
     .getByRole("combobox", { name: "Priority", exact: true })
     .selectOption("high");
@@ -314,7 +316,7 @@ test("fixed workflow survives reload and custom-stage writes are rejected", asyn
 }) => {
   const { project } = await projectFixture(request, "Stage workflow");
   const { project: other } = await projectFixture(request, "Other workflow");
-  const names = ["Backlog", "Ready", "In progress", "In review", "Done"];
+  const names = ["Backlog", "Planning", "Ready", "In progress", "In review", "Done"];
   await page.goto("/");
   await openProject(page, project);
   await openSettings(page);

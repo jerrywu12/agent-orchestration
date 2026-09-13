@@ -32,7 +32,8 @@ assignments, dependencies, execution reservations and GitHub intent are retained
 | Role | Stage | Meaning |
 | --- | --- | --- |
 | `backlog` | Backlog | Captured work; explicit Start can begin a bounded resolution/triage pass. |
-| `ready` | Ready | Scope and next action are prepared for execution. |
+| `planning` | Planning | An assigned planner prepares the specification and independent implementation tickets. |
+| `ready` | Ready | Buildable, conflict-checked work admitted for a confirmed owner; waiting work shows its queue reason. |
 | `active` | In progress | An executor or active child work owns the remaining scope. |
 | `review` | In review | Reviewable result exists; include its PR/artifact and verification evidence. |
 | `done` | Done | Acceptance and delivery verified; code changes require merge evidence. |
@@ -48,8 +49,9 @@ one agent both roles, move review to another agent. If no independent reviewer i
 available, record the gap and leave the result for Jerry. Self-review is not
 independent review.
 
-Use a bounded task brief for implementation: observable acceptance criteria, allowed scope
-and a verification plan. These fields are optional for capture/triage; missing information
+Use a bounded task brief for implementation: specification reference, observable acceptance criteria,
+scope, verification plan, repository-relative allowed paths and shared behavior/API/schema identifiers.
+Use `none` explicitly when no shared resource changes. These fields are optional for capture/triage; missing information
 must remain visible rather than being fabricated. The checklist distinguishes recorded
 references from independently verified checks, review, merge and deployment. A copied packet
 is a handoff aid; read current ticket state and acquire the exact claim before execution.
@@ -62,7 +64,8 @@ Originals and extracted text remain private to the service and authorized ticket
 they are not automatically published to GitHub. Folder registration discovers an existing
 repository without modifying it; runner readiness checks still apply before Start.
 
-A parent stays open until all children are done. After planning it may use an
+A parent stays open until all children are done. New planner-created children remain in Planning
+until individually admitted; creating a child never confirms its execution. After planning the parent may use an
 active stage as a container without its own executor or branch; delivery evidence
 is its children's verified results. It need not pass through PR review itself.
 Backward moves require reasons: review defects return to execution; changed
@@ -106,9 +109,18 @@ honor Backlog, dependency and blocker holds.
    An aggregate claim remains reserved until every held session is reconciled.
    Do not use a new wrapper to resume an existing executor.
 
-Assignment does not launch work. Explicit Start is the default; stage `autoStart`
-is separately configured and must pass the same ownership/readiness checks.
-Do not enable it during migration or metadata cleanup. Labels never bypass holds.
+Assignment alone does not launch work. A move to Planning or Ready prompts for an owner;
+confirmation authorizes that agent to start or queue. Planning executions remain in Planning.
+Ready admission requires complete preparation, leaf scope, resolved blockers/dependencies and
+no overlapping development. Actual implementation start moves to In progress. Queued and failed
+launches remain visible. Stage metadata, imports and migration never authorize a launch.
+
+Conflict checks cover Ready, In progress, unmerged In review and outstanding execution reservations
+across project aliases of the same repository. Compare allowed paths and shared-resource identifiers;
+disjoint files alone do not establish independence. Missing competing scope holds admission.
+Resolve overlap by combining duplicate work, narrowing scope or completing ordered dependencies.
+Recheck in the admission and claim transaction. A held execution retains its scope snapshot even if
+the ticket is moved or edited. Preserve existing sessions; labels and stale heartbeats never release them.
 
 ## Stable connections and outside agents
 

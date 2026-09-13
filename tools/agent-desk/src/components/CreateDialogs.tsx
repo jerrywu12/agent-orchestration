@@ -189,7 +189,7 @@ export function CreateTicket({
   projectId?: string;
   stageId?: string;
   onClose: () => void;
-  onCreated: (ticket: Ticket) => Promise<void>;
+  onCreated: (ticket: Ticket, targetStageId?: string) => Promise<void>;
 }) {
   const [project, setProject] = useState(
     projectId || state.projects[0]?.id || "",
@@ -215,6 +215,9 @@ export function CreateTicket({
     setError("");
     setBusy(true);
     try {
+      const target = stages.find((item) => item.id === stage);
+      const needsTransition =
+        target && ["planning", "ready"].includes(target.role);
       const ticket =
         created.current ||
         (await api<Ticket>("/tickets", "POST", {
@@ -225,11 +228,17 @@ export function CreateTicket({
           priority,
           brief,
           attachmentIds: attachments.map((attachment) => attachment.id),
-          ...(stage ? { stageId: stage } : {}),
+          ...(stage
+            ? {
+                stageId: needsTransition
+                  ? stages.find((item) => item.role === "backlog")?.id
+                  : stage,
+              }
+            : {}),
         }));
       created.current = ticket;
       setCreatedTicket(ticket);
-      await onCreated(ticket);
+      await onCreated(ticket, needsTransition ? stage : undefined);
     } catch (failure) {
       setError(errorMessage(failure));
     } finally {
@@ -347,8 +356,8 @@ export function CreateTicket({
               ))}
             </select>
             <span className="field-hint">
-              Assignment records responsibility. Start an agent explicitly from
-              the ticket.
+              Planning and Ready open an owner confirmation after capture.
+              Confirming starts or queues the assigned agent.
             </span>
           </label>
         </fieldset>

@@ -2,6 +2,9 @@ import { ApiError } from "./api";
 import type { Attachment, TaskBrief } from "./intake-types";
 
 export const emptyBrief = (): TaskBrief => ({
+  specification: "",
+  allowedPaths: "",
+  conflictKeys: "",
   acceptanceCriteria: "",
   scope: "",
   verification: "",

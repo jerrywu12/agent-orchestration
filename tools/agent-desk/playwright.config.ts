@@ -7,6 +7,7 @@ export default defineConfig({
     "intake-browser.spec.ts",
     "workflow-browser.spec.ts",
     "recovery-browser.spec.ts",
+    "planning-ready.spec.ts",
   ],
   workers: 1,
   timeout: 30000,

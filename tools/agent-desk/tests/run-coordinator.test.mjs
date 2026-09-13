@@ -17,13 +17,32 @@ function fixture(
 ) {
   const store = new Store(":memory:"),
     service = new Service(store),
-    project = service.createProject({ name: "Recovery" });
+    project = service.createProject({
+      name: "Recovery",
+      repo: "fixture/recovery",
+    });
   const ticket = (extra = {}) =>
     service.createTicket({
       projectId: project.id,
       title: "Fixture",
+      brief: {
+        specification: "Fixture specification",
+        acceptanceCriteria: "Verify the behavior under test",
+        scope: "Isolated fixture implementation",
+        verification: "Run the focused fixture assertions",
+        allowedPaths: `fixtures/${crypto.randomUUID()}/**`,
+        conflictKeys: "none",
+      },
       ownerId: "codex",
-      stageId: service.state().stages.find((s) => s.role === "ready").id,
+      stageId: service
+        .state()
+        .stages.find(
+          (s) =>
+            s.role ===
+            (extra.blockedReason || extra.dependsOn?.length
+              ? "active"
+              : "ready"),
+        ).id,
       ...extra,
     });
   const runner = {
@@ -376,9 +395,9 @@ test("bulk archive is partial and refuses active reservations", (t) => {
 });
 test("bulk queue bounds concurrency, resolves blocked work and surfaces stale reservations", async (t) => {
   const f = fixture(t),
-    a = f.ticket({ blockedReason: "dependency" }),
-    b = f.ticket(),
-    c = f.ticket(),
+    a = f.ticket({ ownerId: "claude", blockedReason: "dependency" }),
+    b = f.ticket({ ownerId: "gemini" }),
+    c = f.ticket({ ownerId: "claude" }),
     held = f.ticket(),
     done = f.ticket({
       stageId: f.service.state().stages.find((s) => s.role === "done").id,
@@ -406,7 +425,7 @@ test("bulk queue bounds concurrency, resolves blocked work and surfaces stale re
   const run = f.store.active(a.id);
   f.runner.children.delete(run.id);
   f.service.event(run.id, {
-    agentId: "codex",
+    agentId: run.agentId,
     sessionId: run.sessionId,
     eventId: "finish",
     seq: 1,

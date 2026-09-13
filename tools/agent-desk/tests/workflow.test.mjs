@@ -117,7 +117,7 @@ test("canonical migration preserves surviving identities, claims and all sync in
     before = database(store),
     ticket = store.get("ticket", "held");
   migrateWorkflow(store);
-  assert.equal(store.list("stage").length, 10);
+  assert.equal(store.list("stage").length, 12);
   for (const project of store.list("project")) {
     const stages = store
       .list("stage", project.id)
@@ -185,7 +185,7 @@ test("missing workflow stages are created once, duplicates/unknown holds fold in
     github: { number: 1, dirty: false, syncState: "synced" },
   });
   const stages = ensureProjectWorkflow(store, "p");
-  assert.equal(stages.length, 5);
+  assert.equal(stages.length, 6);
   assert.ok(stages.every((s) => !s.autoStart));
   assert.equal(store.get("ticket", "t").stageId, stages[0].id);
   assert.equal(store.get("ticket", "t").blockedReason, "Existing");
@@ -196,7 +196,7 @@ test("missing workflow stages are created once, duplicates/unknown holds fold in
   const before = database(store);
   ensureProjectWorkflow(store, "p");
   assert.deepEqual(database(store), before);
-  assert.equal(legacyRole("Planning"), "ready");
+  assert.equal(legacyRole("Planning"), "planning");
   assert.equal(legacyRole("Parked"), "backlog");
   assert.equal(legacyRole("Unexpected"), "backlog");
 });

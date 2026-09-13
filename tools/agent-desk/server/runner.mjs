@@ -40,6 +40,7 @@ export function executable(name) {
 export class Runner {
   constructor(service, { dataDir, url }) {
     this.service = service;
+    service.runner = this;
     this.dataDir = dataDir;
     this.url = url;
     this.children = new Map();
@@ -131,6 +132,7 @@ export class Runner {
     const prior = this.service.store.latest(ticketId);
     const resolveBlockers =
       !automatic &&
+      this.service.require("stage", ticket.stageId).role !== "planning" &&
       (this.service.resolutionNeeded(ticket) || prior?.state === "revoked");
     const run = this.service.claim(
       ticketId,
@@ -176,7 +178,10 @@ export class Runner {
       const activeStage = this.service.store
         .list("stage", ticket.projectId)
         .find((s) => s.role === "active");
-      if (currentTicket.stageId !== activeStage.id)
+      if (
+        run.purpose === "implementation" &&
+        currentTicket.stageId !== activeStage.id
+      )
         this.service.updateTicket(ticketId, {
           version: currentTicket.version,
           stageId: activeStage.id,
