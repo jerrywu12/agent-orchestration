@@ -113,7 +113,7 @@ test("apply preserves unrelated JSON/TOML config and creates private backups and
     { selectedType: "oauth-personal" },
   );
   for (const [path, agent] of [
-    [".gemini/config/mcp_config.json", "antigravity"],
+    [".gemini/config/mcp_config.json", "gemini"],
     [".cursor/mcp.json", "cursor"],
   ]) {
     const config = JSON.parse(await readFile(join(f.home, path), "utf8"));

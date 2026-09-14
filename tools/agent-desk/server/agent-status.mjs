@@ -30,8 +30,6 @@ const unsupported = Object.freeze({
     "Limits unavailable: Gemini's quota API requires an account-specific integration; starting an interactive session is not a passive check.",
   cursor:
     "Limits unavailable: no passive Cursor quota integration is configured; browser cookies and app credentials are not extracted.",
-  antigravity:
-    "Limits unavailable: Antigravity quota reporting needs an explicit local integration; dynamic session servers are not probed.",
   hermes:
     "Limits unavailable: Hermes uses multiple upstream providers with separate quotas; there is no universal Hermes limit.",
   ollama:

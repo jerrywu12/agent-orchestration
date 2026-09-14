@@ -463,3 +463,31 @@ test("HTTP readiness and transition require admin and preserve stale-stage atomi
   assert.equal((await result.json()).outcome, "started");
   assert.equal((await request("/transition", "POST", input)).status, 409);
 });
+test("external agent confirms into Planning cleanly without launch supervisor or runner.start", (t) => {
+  const { service, store, stage, make } = setup(t);
+  const ticket = make({ stageId: stage("backlog"), ownerId: "gemini" });
+  let runnerInvoked = false;
+  service.runner = {
+    children: new Map(),
+    availability: () => [{ id: "gemini", available: false, reason: "Reports through CLI/MCP; no direct launch adapter" }],
+    start: () => {
+      runnerInvoked = true;
+      throw new Error("Runner start should not be called for external agent");
+    },
+  };
+  const result = service.transition(ticket.id, {
+    version: ticket.version,
+    stageId: stage("planning"),
+    ownerId: "gemini",
+    confirmed: true,
+  });
+  assert.equal(result.outcome, "started");
+  assert.equal(runnerInvoked, false);
+  const updated = service.getTicket(ticket.id);
+  assert.equal(updated.stageId, stage("planning"));
+  assert.equal(updated.ownerId, "gemini");
+  const intent = store.get("launch-intent", ticket.id);
+  assert.equal(intent.status, "started");
+  assert.match(intent.reason, /external/i);
+});
+

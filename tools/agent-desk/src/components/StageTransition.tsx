@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { api, errorMessage, pathId } from "../api";
 import type { DeskState, Integrations, Stage, Ticket } from "../types";
-import { ErrorNotice, isActive, Modal, ticketKey } from "./shared";
+import { ErrorNotice, isActive, isExternalAgent, Modal, ticketKey } from "./shared";
 
 interface Readiness {
   ready: boolean;
@@ -54,7 +54,9 @@ export function StageTransition({
   const stale = !!current && current.version !== ticket.version;
   const owner = state.agents.find((item) => item.id === ownerId);
   const availability = integrations?.agents.find((item) => item.id === ownerId);
-  const unavailable = !owner?.enabled || availability?.available === false;
+  const external = isExternalAgent(owner);
+  const unavailable =
+    !owner?.enabled || (!external && availability?.available === false);
   useEffect(() => {
     if (planning) return;
     let cancelled = false;
@@ -139,7 +141,12 @@ export function StageTransition({
             ))}
           </select>
         </label>
-        {ownerId && availability?.available === false && (
+        {ownerId && external && (
+          <p className="field-hint">
+            Reports through CLI/MCP; start in client or connector.
+          </p>
+        )}
+        {ownerId && !external && availability?.available === false && (
           <p className="field-hint">
             {availability.reason || "This agent cannot start locally."}
           </p>
@@ -215,8 +222,12 @@ export function StageTransition({
             {busy
               ? "Starting…"
               : planning
-                ? "Confirm and start planning"
-                : "Confirm and start"}
+                ? external
+                  ? "Confirm planning"
+                  : "Confirm and start planning"
+                : external
+                  ? "Confirm"
+                  : "Confirm and start"}
           </button>
         </div>
       </div>
