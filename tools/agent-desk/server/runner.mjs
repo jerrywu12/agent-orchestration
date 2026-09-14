@@ -25,6 +25,15 @@ const adapters = {
     command: "agent",
     args: ["--print", "--output-format", "stream-json"],
   },
+  gemini: {
+    command: "agy",
+    args: [
+      "--output-format",
+      "stream-json",
+      "--dangerously-skip-permissions",
+      "-p",
+    ],
+  },
 };
 export function executable(name) {
   for (const folder of (process.env.PATH ?? "").split(delimiter)) {
@@ -291,20 +300,27 @@ export class Runner {
         for (const line of lines) {
           try {
             const event = JSON.parse(line);
-            const kind = String(event.type ?? "");
+            const kind = String(event.type ?? event.event ?? "");
+            const sessionId =
+              agent.adapter === "codex"
+                ? event.thread_id
+                : agent.adapter === "gemini"
+                  ? event.conversation_id
+                  : null;
             if (
-              agent.adapter === "codex" &&
-              kind === "thread.started" &&
+              sessionId &&
               /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
-                event.thread_id ?? "",
+                sessionId,
               )
             ) {
               const current = this.service.store.execution(run.id);
-              this.service.store.saveExecution({
-                ...current,
-                nativeSessionId: event.thread_id,
-                nativeSessionSource: "runner",
-              });
+              if (!current?.nativeSessionId) {
+                this.service.store.saveExecution({
+                  ...current,
+                  nativeSessionId: sessionId,
+                  nativeSessionSource: "runner",
+                });
+              }
             }
             if (["turn.started", "thread.started"].includes(kind))
               send("progress", `Agent ${kind.replaceAll(".", " ")}`);
@@ -316,10 +332,27 @@ export class Runner {
                 "progress",
                 String(event.item.text ?? "Agent update").slice(0, 1500),
               );
-            if (kind === "result" && event.is_error)
+            if (
+              event.event === "step_update" &&
+              event.step_update?.step_type === "agent_response" &&
+              event.step_update.text_delta
+            )
+              send(
+                "progress",
+                String(event.step_update.text_delta).slice(0, 1500),
+              );
+            if (
+              (kind === "result" && event.is_error) ||
+              (event.event === "result" && event.result?.status === "ERROR")
+            )
               send(
                 "progress",
                 "Agent reported an error; awaiting process exit.",
+              );
+            else if (event.event === "result" && event.result?.response)
+              send(
+                "progress",
+                String(event.result.response).slice(0, 1500),
               );
           } catch {}
         }

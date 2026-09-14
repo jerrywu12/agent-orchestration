@@ -27,7 +27,7 @@ const unsupported = Object.freeze({
   claude:
     "Limits unavailable: no passive Claude quota adapter is configured. Session status-line reporting requires a separate integration.",
   gemini:
-    "Limits unavailable: Gemini's quota API requires an account-specific integration; starting an interactive session is not a passive check.",
+    "Limits unavailable: Gemini/Antigravity quota reporting needs an explicit local integration; dynamic session servers are not probed.",
   cursor:
     "Limits unavailable: no passive Cursor quota integration is configured; browser cookies and app credentials are not extracted.",
   hermes:

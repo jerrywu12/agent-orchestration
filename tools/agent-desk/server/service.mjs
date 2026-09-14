@@ -33,7 +33,7 @@ const strings = (v, name) => {
 const agentDefaults = [
   ["codex", "Codex", "#2c8069", "codex"],
   ["claude", "Claude", "#bc7457", "claude"],
-  ["gemini", "Gemini", "#538ace", "external"],
+  ["gemini", "Gemini/Antigravity", "#538ace", "gemini"],
   ["cursor", "Cursor", "#515761", "cursor"],
   ["hermes", "Hermes", "#b09251", "external"],
   ["ollama", "Ollama", "#687586", "external"],

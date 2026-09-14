@@ -465,14 +465,42 @@ test("HTTP readiness and transition require admin and preserve stale-stage atomi
 });
 test("external agent confirms into Planning cleanly without launch supervisor or runner.start", (t) => {
   const { service, store, stage, make } = setup(t);
-  const ticket = make({ stageId: stage("backlog"), ownerId: "gemini" });
+  const ticket = make({ stageId: stage("backlog"), ownerId: "hermes" });
   let runnerInvoked = false;
   service.runner = {
     children: new Map(),
-    availability: () => [{ id: "gemini", available: false, reason: "Reports through CLI/MCP; no direct launch adapter" }],
+    availability: () => [{ id: "hermes", available: false, reason: "Reports through CLI/MCP; no direct launch adapter" }],
     start: () => {
       runnerInvoked = true;
       throw new Error("Runner start should not be called for external agent");
+    },
+  };
+  const result = service.transition(ticket.id, {
+    version: ticket.version,
+    stageId: stage("planning"),
+    ownerId: "hermes",
+    confirmed: true,
+  });
+  assert.equal(result.outcome, "started");
+  assert.equal(runnerInvoked, false);
+  const updated = service.getTicket(ticket.id);
+  assert.equal(updated.stageId, stage("planning"));
+  assert.equal(updated.ownerId, "hermes");
+  const intent = store.get("launch-intent", ticket.id);
+  assert.equal(intent.status, "started");
+  assert.match(intent.reason, /external/i);
+});
+
+test("Gemini/Antigravity agent invokes runner.start when confirmed into Planning", (t) => {
+  const { service, store, stage, make } = setup(t);
+  const ticket = make({ stageId: stage("backlog"), ownerId: "gemini" });
+  let runnerTicketId = null;
+  service.runner = {
+    children: new Map(),
+    availability: () => [{ id: "gemini", available: true }],
+    start: (id) => {
+      runnerTicketId = id;
+      return { executionId: "exec-gemini-1", sessionId: "sess-gemini-1", state: "running" };
     },
   };
   const result = service.transition(ticket.id, {
@@ -482,12 +510,9 @@ test("external agent confirms into Planning cleanly without launch supervisor or
     confirmed: true,
   });
   assert.equal(result.outcome, "started");
-  assert.equal(runnerInvoked, false);
+  assert.equal(runnerTicketId, ticket.id);
   const updated = service.getTicket(ticket.id);
   assert.equal(updated.stageId, stage("planning"));
   assert.equal(updated.ownerId, "gemini");
-  const intent = store.get("launch-intent", ticket.id);
-  assert.equal(intent.status, "started");
-  assert.match(intent.reason, /external/i);
 });
 
