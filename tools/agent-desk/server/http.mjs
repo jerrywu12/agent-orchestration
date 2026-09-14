@@ -741,7 +741,6 @@ export async function startServer({
         "claude",
         "gemini",
         "cursor",
-        "antigravity",
         "hermes",
         "ollama",
         "arkcli",

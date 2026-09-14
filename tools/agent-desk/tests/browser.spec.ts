@@ -22,7 +22,6 @@ test.beforeEach(async ({ page }) => {
           "claude",
           "gemini",
           "cursor",
-          "antigravity",
           "hermes",
           "ollama",
           "arkcli",

@@ -232,3 +232,12 @@ export function Modal({
     </dialog>
   );
 }
+
+export function isExternalAgent(agent?: Agent | null): boolean {
+  if (!agent) return false;
+  if (agent.adapter === "external") return true;
+  if (agent.capabilities && typeof agent.capabilities === "object" && !Array.isArray(agent.capabilities)) {
+    return (agent.capabilities as { execute?: boolean }).execute === false;
+  }
+  return false;
+}

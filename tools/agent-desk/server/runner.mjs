@@ -21,7 +21,6 @@ const adapters = {
     command: "claude",
     args: ["--print", "--verbose", "--output-format", "stream-json"],
   },
-  gemini: { command: "gemini", args: ["--output-format", "stream-json", "-p"] },
   cursor: {
     command: "agent",
     args: ["--print", "--output-format", "stream-json"],

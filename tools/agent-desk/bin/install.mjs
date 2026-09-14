@@ -561,7 +561,7 @@ async function makePlan(input) {
     ],
     [
       ".gemini/config/mcp_config.json",
-      (text, path) => updateJson(text, command, "antigravity", path),
+      (text, path) => updateJson(text, command, "gemini", path),
     ],
     [
       ".cursor/mcp.json",

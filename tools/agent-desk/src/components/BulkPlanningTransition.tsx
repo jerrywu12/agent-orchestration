@@ -2,16 +2,11 @@ import { useRef, useState } from "react";
 import { api, ApiError, errorMessage, pathId } from "../api";
 import type { Agent, DeskState, Integrations, Ticket } from "../types";
 import type { TransitionResult } from "./StageTransition";
-import { ErrorNotice, isActive, Modal, ticketKey } from "./shared";
+import { ErrorNotice, isActive, isExternalAgent, Modal, ticketKey } from "./shared";
 import { PlanningProgress } from "./PlanningProgress";
 
 function executable(agent: Agent) {
-  return (
-    agent.enabled &&
-    (!agent.capabilities ||
-      Array.isArray(agent.capabilities) ||
-      agent.capabilities.execute !== false)
-  );
+  return agent.enabled;
 }
 
 function candidate(ticket: Ticket, state: DeskState) {
@@ -77,11 +72,12 @@ export function BulkPlanningTransition({
   const availability = integrations?.agents.find(
     (agent) => agent.id === ownerId,
   );
+  const isExternal = isExternalAgent(owner);
   const canStart =
     !!owner &&
     executable(owner) &&
     !!integrations &&
-    availability?.available !== false;
+    (isExternal || availability?.available !== false);
   const eligible = tickets.filter((ticket) => !candidate(ticket, state).reason);
 
   async function confirm() {
@@ -131,7 +127,9 @@ export function BulkPlanningTransition({
           }));
           result =
             response.outcome === "started"
-              ? "Moved to Planning · planning agent started."
+              ? isExternal
+                ? "Moved to Planning · external agent assigned."
+                : "Moved to Planning · planning agent started."
               : response.outcome === "queued"
                 ? `Moved to Planning · queued. ${response.reason || "Waiting for planner capacity."}`
                 : `Moved to Planning · agent failed to start. ${response.reason || "Open the ticket to inspect the launch failure."}`;

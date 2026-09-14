@@ -378,7 +378,6 @@ test("unsupported providers return truthful separate reasons without invoking an
       "claude",
       "gemini",
       "cursor",
-      "antigravity",
       "hermes",
       "ollama",
       "arkcli",

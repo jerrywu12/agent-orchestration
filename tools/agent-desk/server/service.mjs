@@ -33,9 +33,8 @@ const strings = (v, name) => {
 const agentDefaults = [
   ["codex", "Codex", "#2c8069", "codex"],
   ["claude", "Claude", "#bc7457", "claude"],
-  ["gemini", "Gemini", "#538ace", "gemini"],
+  ["gemini", "Gemini", "#538ace", "external"],
   ["cursor", "Cursor", "#515761", "cursor"],
-  ["antigravity", "Antigravity", "#8d69b5", "external"],
   ["hermes", "Hermes", "#b09251", "external"],
   ["ollama", "Ollama", "#687586", "external"],
   ["arkcli", "ArkCLI", "#b86d74", "external"],
@@ -535,12 +534,12 @@ export class Service extends EventEmitter {
       const agent = this.require("agent", input.ownerId);
       if (!agent.enabled)
         fail(422, "AGENT_DISABLED", "This agent is disabled.");
-      if (agent.capabilities?.execute === false)
-        fail(422, "EXTERNAL_AGENT", "Select an agent with a launch adapter.");
+      const isExternal =
+        agent.adapter === "external" || agent.capabilities?.execute === false;
       const availability = this.runner
         ?.availability?.()
         .find((a) => a.id === agent.id);
-      if (availability && !availability.available)
+      if (!isExternal && availability && !availability.available)
         fail(
           422,
           "ADAPTER_UNAVAILABLE",
@@ -556,9 +555,10 @@ export class Service extends EventEmitter {
         fail(409, "ARCHIVED", "Archived work cannot start.");
       const project = this.require("project", previous.projectId);
       if (
-        !project.path ||
-        !isAbsolute(project.path) ||
-        !existsSync(project.path)
+        !isExternal &&
+        (!project.path ||
+          !isAbsolute(project.path) ||
+          !existsSync(project.path))
       )
         fail(
           422,
@@ -588,11 +588,21 @@ export class Service extends EventEmitter {
         purpose: stage.role === "planning" ? "planning" : "implementation",
         confirmed: true,
         fingerprint: this.launchFingerprint(result),
-        status: "queued",
+        status: isExternal ? "started" : "queued",
+        reason: isExternal
+          ? "External agent; start in client or report through CLI/MCP."
+          : undefined,
         createdAt: now(),
       });
       return result;
     });
+    if (
+      this.require("agent", input.ownerId).adapter === "external" ||
+      this.require("agent", input.ownerId).capabilities?.execute === false
+    ) {
+      this.changed();
+      return { ticket: this.getTicket(key), outcome: "started" };
+    }
     const result = this.dispatchIntent(key);
     this.changed();
     return { ticket: this.getTicket(key), ...result };
@@ -616,6 +626,20 @@ export class Service extends EventEmitter {
           "INTENT_CHANGED",
           "Queued stage or owner changed; confirm again.",
         );
+      const agent = this.require("agent", intent.ownerId);
+      if (
+        agent.adapter === "external" ||
+        agent.capabilities?.execute === false
+      ) {
+        this.store.put("launch-intent", {
+          ...intent,
+          status: "started",
+          reason: "External agent; start in client or report through CLI/MCP.",
+          updatedAt: now(),
+        });
+        this.changed();
+        return { outcome: "started" };
+      }
       this.ready(key, intent.ownerId);
       if (intent.fingerprint !== this.launchFingerprint(ticket))
         fail(
