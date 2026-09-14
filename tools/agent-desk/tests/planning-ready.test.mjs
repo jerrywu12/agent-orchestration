@@ -588,6 +588,26 @@ test("parent planning completion auto-advances clean child subtasks to Ready and
   assert.equal(launchedPurpose, "implementation");
   const currentChild = service.getTicket(child.id);
   assert.equal(currentChild.stageId, stage("active"));
+  const currentParent = service.getTicket(parent.id);
+  assert.equal(currentParent.stageId, stage("active"));
+});
+
+test("parent container stages synchronize as child subtasks advance to review and done", (t) => {
+  const { service, stage, make } = setup(t);
+  const parent = make({ stageId: stage("planning") });
+  const child = make({ parentId: parent.id, stageId: stage("active") });
+
+  service.syncParentContainerStage(parent.id);
+  assert.equal(service.getTicket(parent.id).stageId, stage("active"));
+
+  // When child moves to review, parent moves to review
+  service.updateTicket(child.id, { version: child.version, stageId: stage("review") });
+  assert.equal(service.getTicket(parent.id).stageId, stage("review"));
+
+  // When child moves to done, parent moves to done
+  const currentChild = service.getTicket(child.id);
+  service.updateTicket(child.id, { version: currentChild.version, stageId: stage("done") });
+  assert.equal(service.getTicket(parent.id).stageId, stage("done"));
 });
 
 test("planning with remaining blocker or unfinished dependency remains in Planning without advancing", (t) => {

@@ -341,6 +341,7 @@ export class RunCoordinator {
   }
   drain() {
     this.service.advancePlanningTickets?.();
+    this.service.syncAllParentContainers?.();
     this.service.dispatchConfirmed();
     const batches = this.service.store
       .list("run-batch")

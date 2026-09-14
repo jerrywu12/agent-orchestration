@@ -648,3 +648,18 @@ test("coordinator drain auto-advances previously completed planning tickets into
   assert.equal(f.store.active(ticket.id).purpose, "implementation");
 });
 
+test("coordinator drain auto-synchronizes parent containers when children advance", async (t) => {
+  const f = fixture(t);
+  const planningStage = f.store.list("stage", f.project.id).find((s) => s.role === "planning").id;
+  const reviewStage = f.store.list("stage", f.project.id).find((s) => s.role === "review").id;
+
+  const parent = f.ticket({ stageId: planningStage });
+  const child = f.ticket({ parentId: parent.id, stageId: reviewStage });
+
+  f.coord.drain();
+
+  const updatedParent = f.service.getTicket(parent.id);
+  assert.equal(updatedParent.stageId, reviewStage);
+});
+
+
