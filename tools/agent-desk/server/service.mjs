@@ -482,7 +482,11 @@ export class Service extends EventEmitter {
         this.require("stage", next.stageId).autoStart
       )
         this.emit("autostart", key);
-      return this.decorate(result);
+      const decorated = this.decorate(result);
+      if (next.parentId && next.stageId !== previous.stageId) {
+        this.syncParentContainerStage(next.parentId);
+      }
+      return decorated;
     });
   }
   readiness(key) {
@@ -1121,6 +1125,9 @@ export class Service extends EventEmitter {
     if (toAdvance && !this.store.inTransaction) {
       this.advancePlanningTickets(toAdvance);
     }
+    if (resultTicket.parentId && !this.store.inTransaction) {
+      this.syncParentContainerStage(resultTicket.parentId);
+    }
     return resultTicket;
   }
   advancePlanningTickets(targetTicketId = null) {
@@ -1175,6 +1182,7 @@ export class Service extends EventEmitter {
             }
           }
         }
+        this.syncParentContainerStage(ticket.id);
       } else {
         // Leaf ticket (standalone or child subtask)
         const stage = this.store.get("stage", ticket.stageId);
@@ -1210,7 +1218,71 @@ export class Service extends EventEmitter {
         }
       }
     }
+    this.syncAllParentContainers();
     return advanced;
+  }
+  syncParentContainerStage(parentId) {
+    if (!parentId) return;
+    const parent = this.store.get("ticket", parentId);
+    if (!parent || parent.archived) return;
+
+    const children = this.store
+      .list("ticket", parent.projectId)
+      .filter((t) => t.parentId === parent.id && !t.archived);
+    if (children.length === 0) return;
+
+    const parentActive = this.store.active(parent.id);
+    if (parentActive && parentActive.purpose === "planning") return;
+
+    const stages = this.store.list("stage", parent.projectId);
+    const stageMap = new Map(stages.map((s) => [s.id, s]));
+    const childRoles = children
+      .map((c) => stageMap.get(c.stageId)?.role)
+      .filter(Boolean);
+    if (childRoles.length === 0) return;
+
+    let targetRole = null;
+    if (childRoles.every((r) => r === "done")) {
+      targetRole = "done";
+    } else if (
+      childRoles.every((r) => r === "review" || r === "done") &&
+      childRoles.some((r) => r === "review")
+    ) {
+      targetRole = "review";
+    } else if (
+      childRoles.some(
+        (r) => r === "active" || r === "ready" || r === "review",
+      )
+    ) {
+      targetRole = "active";
+    }
+
+    if (targetRole) {
+      const currentRole = stageMap.get(parent.stageId)?.role;
+      if (currentRole !== targetRole) {
+        const targetStage = stages.find((s) => s.role === targetRole);
+        if (targetStage) {
+          try {
+            const updated = this.updateTicket(parent.id, {
+              version: parent.version,
+              stageId: targetStage.id,
+            });
+            if (updated.parentId) {
+              this.syncParentContainerStage(updated.parentId);
+            }
+          } catch {}
+        }
+      }
+    }
+  }
+  syncAllParentContainers() {
+    const tickets = this.store.list("ticket");
+    const parentIds = new Set(
+      tickets.map((t) => t.parentId).filter(Boolean),
+    );
+    for (const parentId of parentIds) {
+      this.syncParentContainerStage(parentId);
+    }
   }
   event(key, input) {
     let ticketId = null;
@@ -1363,6 +1435,10 @@ export class Service extends EventEmitter {
     });
     if (input.type === "complete" && ticketId) {
       this.advancePlanningTickets(ticketId);
+      const t = this.store.get("ticket", ticketId);
+      if (t?.parentId) {
+        this.syncParentContainerStage(t.parentId);
+      }
     }
     return result;
   }
