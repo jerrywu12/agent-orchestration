@@ -1051,13 +1051,29 @@ export class Service extends EventEmitter {
       return child;
     });
   }
+  isPlanningExecutionComplete(execution) {
+    if (!execution || !execution.releasedAt) return false;
+    if (["failed", "stopped", "revoked"].includes(execution.state)) return false;
+    if (execution.state === "awaiting_review") return true;
+    const last = this.store.db
+      .prepare(
+        "SELECT data FROM events WHERE execution_id=? ORDER BY seq DESC LIMIT 1",
+      )
+      .get(execution.id);
+    if (!last) return false;
+    try {
+      return JSON.parse(last.data).type === "complete";
+    } catch {
+      return false;
+    }
+  }
   settleExecutionStage(execution, eventType) {
-    return this.store.transaction(() => {
+    let toAdvance = null;
+    const resultTicket = this.store.transaction(() => {
       const current = this.store.execution(execution.id);
       const ticket = this.require("ticket", execution.ticketId);
       if (
         !current?.releasedAt ||
-        current.purpose === "planning" ||
         ![
           "awaiting_review",
           "checkpointed",
@@ -1067,7 +1083,20 @@ export class Service extends EventEmitter {
         ].includes(current.state) ||
         this.store.active(ticket.id) ||
         this.store.latest(ticket.id)?.id !== execution.id ||
-        ticket.ownerId !== current.agentId ||
+        ticket.ownerId !== current.agentId
+      )
+        return ticket;
+      if (current.purpose === "planning") {
+        if (
+          this.isPlanningExecutionComplete(current) &&
+          !ticket.blockedReason &&
+          !this.resolutionNeeded(ticket)
+        ) {
+          toAdvance = ticket.id;
+        }
+        return ticket;
+      }
+      if (
         this.require("stage", ticket.stageId).role !== "active" ||
         this.store.list("ticket").some((t) => t.parentId === ticket.id)
       )
@@ -1089,12 +1118,107 @@ export class Service extends EventEmitter {
         { resumeReason },
       );
     });
+    if (toAdvance && !this.store.inTransaction) {
+      this.advancePlanningTickets(toAdvance);
+    }
+    return resultTicket;
+  }
+  advancePlanningTickets(targetTicketId = null) {
+    const candidates = targetTicketId
+      ? [this.store.get("ticket", targetTicketId)].filter(Boolean)
+      : this.store.list("ticket");
+    const advanced = [];
+    for (const ticket of candidates) {
+      if (ticket.archived) continue;
+      if (ticket.blockedReason) continue;
+      if (this.resolutionNeeded(ticket)) continue;
+
+      const children = this.store
+        .list("ticket", ticket.projectId)
+        .filter((t) => t.parentId === ticket.id);
+
+      if (children.length > 0) {
+        // Parent ticket: verify parent planning execution completed successfully
+        const latest = this.store.latest(ticket.id);
+        if (
+          !latest ||
+          latest.purpose !== "planning" ||
+          !this.isPlanningExecutionComplete(latest)
+        )
+          continue;
+
+        for (const child of children) {
+          if (
+            child.archived ||
+            child.blockedReason ||
+            this.resolutionNeeded(child)
+          )
+            continue;
+          const childStage = this.store.get("stage", child.stageId);
+          if (childStage?.role !== "planning" || this.store.active(child.id))
+            continue;
+          const r = this.readiness(child.id);
+          if (r.ready) {
+            const readyStage = this.store
+              .list("stage", child.projectId)
+              .find((s) => s.role === "ready");
+            if (readyStage) {
+              try {
+                this.transition(child.id, {
+                  version: child.version,
+                  stageId: readyStage.id,
+                  ownerId: child.ownerId,
+                  confirmed: true,
+                });
+                advanced.push(child.id);
+              } catch {}
+            }
+          }
+        }
+      } else {
+        // Leaf ticket (standalone or child subtask)
+        const stage = this.store.get("stage", ticket.stageId);
+        if (!stage || stage.role !== "planning") continue;
+        if (this.store.active(ticket.id)) continue;
+
+        const planningExecution =
+          this.store.latest(ticket.id) ??
+          (ticket.parentId ? this.store.latest(ticket.parentId) : null);
+        if (
+          !planningExecution ||
+          planningExecution.purpose !== "planning" ||
+          !this.isPlanningExecutionComplete(planningExecution)
+        )
+          continue;
+
+        const r = this.readiness(ticket.id);
+        if (r.ready) {
+          const readyStage = this.store
+            .list("stage", ticket.projectId)
+            .find((s) => s.role === "ready");
+          if (readyStage) {
+            try {
+              this.transition(ticket.id, {
+                version: ticket.version,
+                stageId: readyStage.id,
+                ownerId: ticket.ownerId,
+                confirmed: true,
+              });
+              advanced.push(ticket.id);
+            } catch {}
+          }
+        }
+      }
+    }
+    return advanced;
   }
   event(key, input) {
-    return this.store.transaction(() => {
+    let ticketId = null;
+    const result = this.store.transaction(() => {
       const execution =
         this.store.execution(key) ??
         fail(404, "NOT_FOUND", "Execution not found.");
+      ticketId = execution.ticketId;
       if (
         input.agentId !== execution.agentId ||
         input.sessionId !== execution.sessionId
@@ -1237,6 +1361,10 @@ export class Service extends EventEmitter {
       this.changed();
       return result;
     });
+    if (input.type === "complete" && ticketId) {
+      this.advancePlanningTickets(ticketId);
+    }
+    return result;
   }
   reconcileExternal(key, input) {
     return this.store.transaction(() => {

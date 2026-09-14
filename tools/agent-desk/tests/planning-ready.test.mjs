@@ -516,3 +516,104 @@ test("Gemini/Antigravity agent invokes runner.start when confirmed into Planning
   assert.equal(updated.ownerId, "gemini");
 });
 
+test("clean planning completion on leaf ticket auto-advances to Ready and starts implementation", (t) => {
+  const { service, stage, make } = setup(t);
+  const ticket = make({ stageId: stage("planning"), brief });
+  let launchedId = null;
+  let launchedPurpose = null;
+  service.runner = {
+    children: new Map(),
+    availability: () => [{ id: "codex", available: true }],
+    start: (id) => {
+      launchedId = id;
+      const claimed = service.claim(id, { agentId: "codex", sessionId: "impl-session" });
+      launchedPurpose = claimed.purpose;
+      return claimed;
+    },
+  };
+  const run = service.claim(ticket.id, { agentId: "codex", sessionId: "plan-session" });
+  assert.equal(run.purpose, "planning");
+
+  service.event(run.id, {
+    agentId: "codex",
+    sessionId: run.sessionId,
+    eventId: "terminal-complete",
+    seq: 1,
+    type: "complete",
+    summary: "Finished planning successfully with no issues",
+  });
+
+  assert.equal(launchedId, ticket.id);
+  assert.equal(launchedPurpose, "implementation");
+  const current = service.getTicket(ticket.id);
+  assert.equal(current.stageId, stage("active"));
+});
+
+test("parent planning completion auto-advances clean child subtasks to Ready and starts child implementation", (t) => {
+  const { service, stage, make } = setup(t);
+  const parent = make({ stageId: stage("planning") });
+  let launchedId = null;
+  let launchedPurpose = null;
+  service.runner = {
+    children: new Map(),
+    availability: () => [{ id: "codex", available: true }],
+    start: (id) => {
+      launchedId = id;
+      const claimed = service.claim(id, { agentId: "codex", sessionId: "child-impl-session" });
+      launchedPurpose = claimed.purpose;
+      return claimed;
+    },
+  };
+  const run = service.claim(parent.id, { agentId: "codex", sessionId: "parent-plan-session" });
+  const child = service.createSubtask(parent.id, {
+    agentId: "codex",
+    sessionId: run.sessionId,
+    executionId: run.id,
+    reason: "Independent child subtask",
+    title: "Implement documentation update",
+    brief,
+  });
+  assert.equal(child.stageId, stage("planning"));
+
+  service.event(run.id, {
+    agentId: "codex",
+    sessionId: run.sessionId,
+    eventId: "parent-complete",
+    seq: 1,
+    type: "complete",
+    summary: "Parent plan complete; child subtask created and reviewed",
+  });
+
+  assert.equal(launchedId, child.id);
+  assert.equal(launchedPurpose, "implementation");
+  const currentChild = service.getTicket(child.id);
+  assert.equal(currentChild.stageId, stage("active"));
+});
+
+test("planning with remaining blocker or unfinished dependency remains in Planning without advancing", (t) => {
+  const { service, stage, make } = setup(t);
+  const dep = make();
+  const ticket = make({ stageId: stage("planning"), brief, dependsOn: [dep.id] });
+  let runnerInvoked = false;
+  service.runner = {
+    children: new Map(),
+    availability: () => [{ id: "codex", available: true }],
+    start: () => {
+      runnerInvoked = true;
+    },
+  };
+  const run = service.claim(ticket.id, { agentId: "codex", sessionId: "plan-blocked" });
+
+  service.event(run.id, {
+    agentId: "codex",
+    sessionId: run.sessionId,
+    eventId: "blocked-complete",
+    seq: 1,
+    type: "complete",
+    summary: "Plan prepared but dependency remains unfinished",
+  });
+
+  assert.equal(runnerInvoked, false);
+  assert.equal(service.require("ticket", ticket.id).stageId, stage("planning"));
+});
+
