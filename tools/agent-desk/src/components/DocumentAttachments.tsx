@@ -266,7 +266,7 @@ export function DocumentAttachments({
         <Upload size={20} />
         <div>
           <strong>Drop documents here</strong>
-          <span>Markdown, TXT, DOC, DOCX or text-based PDF · 10 MiB each</span>
+          <span>Markdown, TXT, DOC, DOCX or text-based PDF · 15 MiB each</span>
         </div>
         <button
           type="button"

@@ -117,11 +117,11 @@ their read-only extracted preview and download. Unsaved edits are protected when
 reloading. If another editor changed the document, your draft remains available; explicitly
 discard it before reloading the latest copy. Attachment changes also advance the ticket version.
 
-Limits are five combined documents per ticket, 10 MiB per file, 200,000 Markdown characters
-and 100,000 extracted characters per other file,
+Limits are five combined documents per ticket, 15 MiB per file, 15,728,640 extracted characters
+per file,
 200 PDF pages, 20 pending uploads, and 1 GiB total stored attachment data including text and
 metadata. Draft uploads expire after 24 hours. Parsing uses at most two workers with a
-20-second deadline and 128 MiB V8 heap limit per worker (not a total process-memory limit).
+30-second deadline and 384 MiB V8 heap limit per worker (not a total process-memory limit).
 Originals and text live in the private SQLite database and are included in its backups.
 
 The ticket details drawer focuses on title, stage, priority, effort, owner, labels, description,

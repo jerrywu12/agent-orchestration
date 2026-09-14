@@ -9,7 +9,9 @@ export const emptyBrief = (): TaskBrief => ({
   scope: "",
   verification: "",
 });
-export const MAX_DOCUMENT_BYTES = 10 * 1024 * 1024;
+// Mirrors DOCUMENT_LIMITS in server/document-processor.mjs.
+export const MAX_DOCUMENT_BYTES = 15 * 1024 * 1024;
+export const MAX_DOCUMENT_CHARS = 15 * 1024 * 1024;
 export const DOCUMENT_ACCEPT = ".md,.markdown,.txt,.doc,.docx,.pdf";
 
 // Extraction and the native chooser have longer bounded lifetimes than ordinary mutations.
@@ -56,7 +58,7 @@ export async function intakeRequest<T>(
 
 export async function uploadDocument(file: File): Promise<Attachment> {
   if (file.size > MAX_DOCUMENT_BYTES)
-    throw new Error("This file exceeds the 10 MiB limit.");
+    throw new Error("This file exceeds the 15 MiB limit.");
   if (!/\.(md|markdown|txt|docx?|pdf)$/i.test(file.name))
     throw new Error(
       "Choose a Markdown, TXT, DOC, DOCX, or text-based PDF document.",

@@ -2,18 +2,24 @@ import { createHash } from "node:crypto";
 import { basename, extname } from "node:path";
 import { Worker } from "node:worker_threads";
 
+// Text caps match the byte cap so any accepted file can also be extracted whole:
+// a limit below maxFileBytes would reject documents the size rule just admitted.
 export const DOCUMENT_LIMITS = Object.freeze({
-  maxFileBytes: 10 * 1024 * 1024,
-  maxTextChars: 100000,
-  maxMarkdownChars: 200000,
+  maxFileBytes: 15 * 1024 * 1024,
+  maxTextChars: 15 * 1024 * 1024,
+  maxMarkdownChars: 15 * 1024 * 1024,
   maxPdfPages: 200,
   maxArchiveEntries: 1000,
-  maxArchiveBytes: 32 * 1024 * 1024,
-  maxArchiveEntryBytes: 16 * 1024 * 1024,
-  timeoutMs: 20000,
+  maxArchiveBytes: 48 * 1024 * 1024,
+  maxArchiveEntryBytes: 24 * 1024 * 1024,
+  timeoutMs: 30000,
   maxConcurrent: 2,
-  workerHeapMb: 128,
+  workerHeapMb: 384,
 });
+
+/** Base64 of the largest document, plus room for the JSON envelope and name. */
+export const MAX_UPLOAD_BODY_BYTES =
+  Math.ceil(DOCUMENT_LIMITS.maxFileBytes / 3) * 4 + 64 * 1024;
 
 const messages = Object.freeze({
   unsupported_type: "Choose a Markdown, TXT, DOC, DOCX or PDF document.",
@@ -36,9 +42,7 @@ const messages = Object.freeze({
 
 export class DocumentProcessingError extends Error {
   constructor(code) {
-    const safeCode = Object.hasOwn(messages, code)
-      ? code
-      : "processing_failed";
+    const safeCode = Object.hasOwn(messages, code) ? code : "processing_failed";
     super(messages[safeCode]);
     this.name = "DocumentProcessingError";
     this.code = safeCode;
