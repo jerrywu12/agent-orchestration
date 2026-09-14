@@ -612,3 +612,39 @@ test("optional takeover notes retain validation and explicit confirmation", asyn
   );
   assert.equal(f.store.active(ticket.id).id, old.id);
 });
+
+test("coordinator drain auto-advances previously completed planning tickets into Ready and dispatches them", async (t) => {
+  const { mkdtempSync, rmSync } = await import("node:fs");
+  const { tmpdir } = await import("node:os");
+  const { join } = await import("node:path");
+  const dir = mkdtempSync(join(tmpdir(), "coord-plan-"));
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
+
+  const f = fixture(t);
+  f.service.runner = f.runner;
+  f.service.updateProject(f.project.id, { path: dir });
+
+  const planningStage = f.store.list("stage", f.project.id).find((s) => s.role === "planning").id;
+  const activeStage = f.store.list("stage", f.project.id).find((s) => s.role === "active").id;
+  const ticket = f.ticket({ stageId: planningStage });
+  const run = f.service.claim(ticket.id, { agentId: "codex", sessionId: "prior-plan" });
+
+  f.service.event(run.id, {
+    agentId: "codex",
+    sessionId: run.sessionId,
+    eventId: "terminal-plan-complete",
+    seq: 1,
+    type: "complete",
+    summary: "Plan completed prior to coordinator drain",
+  });
+
+  // Now trigger coordinator drain
+  f.coord.drain();
+
+  // Ticket should have advanced to ready, and then been dispatched to active
+  const updated = f.service.getTicket(ticket.id);
+  assert.equal(updated.stageId, activeStage);
+  assert.ok(f.store.active(ticket.id));
+  assert.equal(f.store.active(ticket.id).purpose, "implementation");
+});
+
