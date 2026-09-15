@@ -34,6 +34,7 @@ import { api, errorMessage, pathId } from "../api";
 import type { MachineSnapshot } from "../machine-types";
 import type { DeskState } from "../types";
 import { EmptyState, isActive, ticketKey, timeAgo } from "./shared";
+import { AgentActivity } from "./AgentActivity";
 
 type MachineTab = "agents" | "libraries" | "sources";
 const POLL_INTERVAL = 15000;
@@ -424,6 +425,7 @@ export function MachineView({
           >
             {tab === "agents" ? (
               <>
+                <AgentActivity />
                 <AgentInventory
                   snapshot={snapshot}
                   state={state}

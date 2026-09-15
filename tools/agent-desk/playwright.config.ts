@@ -11,6 +11,7 @@ export default defineConfig({
     "planning-ready.spec.ts",
     "archive-done.spec.ts",
     "bulk-planning.spec.ts",
+    "activity-browser.spec.ts",
   ],
   workers: 1,
   timeout: 30000,

@@ -97,6 +97,7 @@ export function createAppServer({
   syncManager = null,
   machineMonitor = null,
   agentStatusMonitor = null,
+  activityMonitor = null,
   documentProcessor = async (input, options) =>
     (await import("./document-processor.mjs")).processDocument(input, options),
 }) {
@@ -456,6 +457,21 @@ export function createAppServer({
             );
           fail(404, "NOT_FOUND", "Machine endpoint not found.");
         }
+        if (resource === "activity") {
+          if (!activityMonitor)
+            fail(
+              503,
+              "ACTIVITY_UNAVAILABLE",
+              "Activity monitoring is unavailable.",
+            );
+          if (path === "/api/activity" && method === "GET")
+            return json(activityMonitor.snapshot());
+          if (path === "/api/activity/refresh" && method === "POST") {
+            activityMonitor.refresh();
+            return json(activityMonitor.snapshot(), 202);
+          }
+          fail(404, "NOT_FOUND", "Activity endpoint not found.");
+        }
         if (resource === "agents" && key === "status") {
           if (!agentStatusMonitor)
             fail(
@@ -711,6 +727,7 @@ export function createAppServer({
     for (const controller of documentJobs) controller.abort();
     machineMonitor?.close();
     agentStatusMonitor?.close();
+    activityMonitor?.close();
     for (const res of clients) res.end();
   });
   return server;
@@ -718,6 +735,7 @@ export function createAppServer({
 export async function startServer({
   machineOptions = {},
   agentStatusOptions = {},
+  activityOptions = {},
 } = {}) {
   const host = process.env.AGENT_DESK_HOST ?? "127.0.0.1";
   const port = Number(process.env.AGENT_DESK_PORT ?? 4310);
@@ -769,6 +787,8 @@ export async function startServer({
     agents: service.store.list("agent").map((a) => a.id),
     ...agentStatusOptions,
   });
+  const { AgentActivityMonitor } = await import("./agent-activity.mjs");
+  const activityMonitor = new AgentActivityMonitor(activityOptions);
   const server = createAppServer({
     service,
     runner,
@@ -778,6 +798,7 @@ export async function startServer({
     syncManager,
     machineMonitor,
     agentStatusMonitor,
+    activityMonitor,
   });
   await new Promise((r, reject) => {
     server.once("error", reject);
@@ -785,6 +806,8 @@ export async function startServer({
   });
   server.on("close", () => {
     machineMonitor.close();
+    agentStatusMonitor.close();
+    activityMonitor.close();
     legacyObserver.close();
     runner.coordinator.close();
     clearInterval(syncManager.timer);
@@ -798,6 +821,7 @@ export async function startServer({
     legacyObserver,
     machineMonitor,
     agentStatusMonitor,
+    activityMonitor,
   };
 }
 if (
