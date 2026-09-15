@@ -10,7 +10,11 @@ import {
   doc,
   docx,
   docxEntries,
+  gif,
+  jpeg,
   pdf,
+  png,
+  webp,
   zip,
 } from "./fixtures/documents/synthetic.mjs";
 
@@ -86,6 +90,38 @@ test("signature, extension, input and filename validation fail closed", async ()
     bytes: Buffer.from("text"),
   });
   assert.equal(safe.name, "safe.txt");
+});
+
+test("raster images are accepted by extension, validated by signature and keep no extracted text", async () => {
+  for (const [name, bytes, mediaType] of [
+    ["shot.png", png(), "image/png"],
+    ["shot.PNG", png([0, 255, 0]), "image/png"],
+    ["photo.jpg", jpeg(), "image/jpeg"],
+    ["photo.jpeg", jpeg(), "image/jpeg"],
+    ["anim.gif", gif(), "image/gif"],
+    ["graph.webp", webp(), "image/webp"],
+  ]) {
+    const result = await processDocument({ name, bytes });
+    assert.equal(result.mediaType, mediaType);
+    assert.equal(result.text, "");
+    assert.equal(result.size, bytes.length);
+    assert.equal(
+      result.sha256,
+      createHash("sha256").update(bytes).digest("hex"),
+    );
+  }
+  // Content must match the claimed image format, regardless of extension.
+  await rejected("fake.png", Buffer.from("not a png"), "invalid_document");
+  await rejected("fake.jpg", png(), "invalid_document");
+  await rejected("fake.gif", jpeg(), "invalid_document");
+  await rejected("fake.webp", png(), "invalid_document");
+  await rejected("image.exe", png(), "unsupported_type");
+  // Tiny payload still fails structural image validation.
+  await rejected(
+    "empty.png",
+    Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+    "invalid_document",
+  );
 });
 
 test("synthetic PDF, DOC and DOCX produce real local extracted text", async () => {

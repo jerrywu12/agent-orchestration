@@ -265,7 +265,7 @@ export function createAppServer({
             (method === "GET" &&
               resource === "attachments" &&
               key &&
-              (!action || action === "download"))
+              (!action || action === "download" || action === "content"))
           )
         )
           fail(
@@ -363,7 +363,7 @@ export function createAppServer({
                 known.includes(error.code) ? error.code : "DOCUMENT_PROCESSING",
                 known.includes(error.code)
                   ? error.message
-                  : "This document could not be processed. Try a readable TXT, DOC, DOCX or text-based PDF file.",
+                  : "This file could not be processed. Try a readable TXT, DOC, DOCX, text-based PDF, or a PNG, JPEG, GIF or WebP image file.",
               );
             } finally {
               documentJobs.delete(controller);
@@ -398,6 +398,20 @@ export function createAppServer({
               "Content-Type": "application/octet-stream",
               "Content-Length": attachment.bytes.length,
               "Content-Disposition": `attachment; filename="document"; filename*=UTF-8''${filename}`,
+            });
+            return res.end(attachment.bytes);
+          }
+          if (key && action === "content" && method === "GET") {
+            // Inline bytes power image thumbnails. Only stored image media
+            // types are served inline; everything else stays a download.
+            const attachment = service.attachments.original(key);
+            if (!/^image\/(png|jpeg|gif|webp)$/.test(attachment.mediaType))
+              fail(404, "NOT_FOUND", "Attachment content not found.");
+            res.writeHead(200, {
+              "Content-Type": attachment.mediaType,
+              "Content-Length": attachment.bytes.length,
+              "Content-Disposition": "inline",
+              "Cache-Control": "no-store",
             });
             return res.end(attachment.bytes);
           }
@@ -612,8 +626,11 @@ export function createAppServer({
         )
           return json(service.transition(key, input));
         if (
-          resource === "tickets" && key && action === "attachments" &&
-          parts.length === 4 && method === "POST"
+          resource === "tickets" &&
+          key &&
+          action === "attachments" &&
+          parts.length === 4 &&
+          method === "POST"
         )
           return json(service.attachDocuments(key, input));
         if (resource === "tickets" && !key && method === "POST")
@@ -736,15 +753,9 @@ export async function startServer({
   } catch (e) {
     if (e.code !== "ENOENT") throw e;
     agentTokens = Object.fromEntries(
-      [
-        "codex",
-        "claude",
-        "gemini",
-        "cursor",
-        "hermes",
-        "ollama",
-        "arkcli",
-      ].map((a) => [a, randomBytes(32).toString("hex")]),
+      ["codex", "claude", "gemini", "cursor", "hermes", "ollama", "arkcli"].map(
+        (a) => [a, randomBytes(32).toString("hex")],
+      ),
     );
     writeFileSync(tokenPath, JSON.stringify(agentTokens), {
       mode: 0o600,

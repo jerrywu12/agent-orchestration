@@ -3933,6 +3933,24 @@ progress::-moz-progress-bar {
   padding: 13px;
   margin: 10px 0;
 }
+.document-thumb-link {
+  display: inline-block;
+  margin-top: 10px;
+  border-radius: 4px;
+  line-height: 0;
+}
+.document-thumb {
+  display: block;
+  max-width: 220px;
+  max-height: 160px;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  object-fit: contain;
+  background: #f7f8f5;
+}
+.document-image-hint {
+  margin-top: 8px;
+}
 .intake-warning {
   color: var(--warning);
   background: #fffaf0;

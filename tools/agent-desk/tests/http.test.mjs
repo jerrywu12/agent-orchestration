@@ -4,6 +4,7 @@ import assert from "node:assert/strict";
 import { Store } from "../server/store.mjs";
 import { Service } from "../server/service.mjs";
 import { createAppServer } from "../server/http.mjs";
+import { png } from "./fixtures/documents/synthetic.mjs";
 async function app(t, options = {}) {
   const store = new Store(":memory:");
   const service = new Service(store);
@@ -253,4 +254,55 @@ test("Effort HTTP field supports create read edit clear and rejects invalid unau
   assert.equal(ticket.effort, null);
   response = await fetch(url + endpoint, { headers: { authorization: "Bearer effort-fixture-admin" } });
   assert.equal((await response.json()).effort, null);
+});
+
+test("image attachments upload, serve inline and bind to a ticket", async (t) => {
+  const { url } = await app(t);
+  const bytes = png([12, 34, 56]);
+  const upload = await fetch(url + "/api/attachments", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      name: "diagram.png",
+      contentBase64: bytes.toString("base64"),
+    }),
+  });
+  assert.equal(upload.status, 201);
+  const attachment = await upload.json();
+  assert.equal(attachment.mediaType, "image/png");
+  assert.equal(attachment.text, "");
+  assert.equal(attachment.size, bytes.length);
+  const content = await fetch(
+    `${url}/api/attachments/${attachment.id}/content`,
+  );
+  assert.equal(content.status, 200);
+  assert.match(content.headers.get("content-type") ?? "", /^image\/png/);
+  assert.equal(
+    (content.headers.get("content-disposition") ?? "").includes("attachment"),
+    false,
+  );
+  assert.deepEqual(Buffer.from(await content.arrayBuffer()), bytes);
+  const project = await (
+    await fetch(url + "/api/projects", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ name: "Images" }),
+    })
+  ).json();
+  const created = await (
+    await fetch(url + "/api/tickets", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        projectId: project.id,
+        title: "Screenshot bug",
+        attachmentIds: [attachment.id],
+      }),
+    })
+  ).json();
+  assert.equal(created.attachments[0].mediaType, "image/png");
+  assert.equal(
+    (await fetch(`${url}/api/attachments/missing/content`)).status,
+    404,
+  );
 });

@@ -126,6 +126,37 @@ test("storage quota includes expanded text, not only compressed original bytes",
   );
   store.close();
 });
+test("images bind with empty extracted text while staying downloadable by id", () => {
+  const root = mkdtempSync(join(tmpdir(), "desk-image-"));
+  const store = new Store(join(root, "desk.db"));
+  const service = new Service(store);
+  const project = service.createProject({ name: "Shots" });
+  const bytes = Buffer.from([
+    0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 1, 2, 3, 4, 5,
+  ]);
+  const image = service.attachments.save({
+    name: "diagram.png",
+    bytes,
+    result: { text: "", mediaType: "image/png", warnings: [] },
+  });
+  assert.equal(image.mediaType, "image/png");
+  assert.equal(image.text, "");
+  assert.equal(
+    service.attachments.original(image.id).bytes.length,
+    bytes.length,
+  );
+  const ticket = service.createTicket({
+    projectId: project.id,
+    title: "Visual reference",
+    attachmentIds: [image.id],
+  });
+  const context = service.getTicket(ticket.id).attachmentContext;
+  assert.equal(context.length, 1);
+  assert.equal(context[0].mediaType, "image/png");
+  assert.equal(context[0].text, "");
+  store.close();
+  rmSync(root, { recursive: true, force: true });
+});
 test("duplicate create IDs cannot replace tickets or add a sixth attachment", () => {
   const store = new Store(":memory:"),
     service = new Service(store),

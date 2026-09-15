@@ -8,6 +8,7 @@ import {
 } from "react";
 import {
   Download,
+  FileImage,
   FileText,
   LoaderCircle,
   Paperclip,
@@ -15,7 +16,12 @@ import {
   Upload,
 } from "lucide-react";
 import { api, ApiError, errorMessage, pathId } from "../api";
-import { DOCUMENT_ACCEPT, downloadDocument, uploadDocument } from "../intake";
+import {
+  DOCUMENT_ACCEPT,
+  attachmentContentUrl,
+  downloadDocument,
+  uploadDocument,
+} from "../intake";
 import type { Attachment } from "../intake-types";
 import type { Ticket } from "../types";
 import { Modal } from "./shared";
@@ -38,10 +44,39 @@ const sizeLabel = (bytes: number) =>
     : bytes < 1024 ** 2
       ? `${Math.ceil(bytes / 1024)} KB`
       : `${(bytes / 1024 ** 2).toFixed(1)} MiB`;
+const isImage = (attachment: Attachment) =>
+  attachment.mediaType.startsWith("image/");
 const discard = (id: string) => api(`/attachments/${pathId(id)}`, "DELETE");
+
+function ImageThumbnail({ attachment }: { attachment: Attachment }) {
+  const [failed, setFailed] = useState(false);
+  if (failed)
+    return (
+      <p className="field-hint document-image-hint">
+        Image preview unavailable. Download to open it.
+      </p>
+    );
+  return (
+    <a
+      className="document-thumb-link"
+      href={attachmentContentUrl(attachment)}
+      target="_blank"
+      rel="noreferrer"
+    >
+      <img
+        className="document-thumb"
+        src={attachmentContentUrl(attachment)}
+        alt={attachment.name}
+        loading="lazy"
+        onError={() => setFailed(true)}
+      />
+    </a>
+  );
+}
 
 function Preview({ attachment }: { attachment: Attachment }) {
   const [reading, setReading] = useState(false);
+  if (isImage(attachment)) return <ImageThumbnail attachment={attachment} />;
   if (attachment.mediaType === "text/markdown")
     return (
       <>
@@ -265,8 +300,11 @@ export function DocumentAttachments({
       >
         <Upload size={20} />
         <div>
-          <strong>Drop documents here</strong>
-          <span>Markdown, TXT, DOC, DOCX or text-based PDF · 10 MiB each</span>
+          <strong>Drop documents or images here</strong>
+          <span>
+            Markdown, TXT, DOC, DOCX, text-based PDF · PNG, JPEG, GIF, WebP · 10
+            MiB each
+          </span>
         </div>
         <button
           type="button"
@@ -303,7 +341,11 @@ export function DocumentAttachments({
         {files.map((file) => (
           <article className="document-item" key={file.key}>
             <div className="document-item-heading">
-              <FileText size={16} />
+              {file.attachment && isImage(file.attachment) ? (
+                <FileImage size={16} />
+              ) : (
+                <FileText size={16} />
+              )}
               <div>
                 <strong>{file.name}</strong>
                 <span>
@@ -611,7 +653,11 @@ export function TicketDocuments({
         {context.map((attachment) => (
           <article className="document-item" key={attachment.id}>
             <div className="document-item-heading">
-              <FileText size={16} />
+              {isImage(attachment) ? (
+                <FileImage size={16} />
+              ) : (
+                <FileText size={16} />
+              )}
               <div>
                 <strong>{attachment.name}</strong>
                 <span>{sizeLabel(attachment.size)}</span>
