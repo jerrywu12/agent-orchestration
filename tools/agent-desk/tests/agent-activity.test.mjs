@@ -705,3 +705,182 @@ test("invariant amendment: activeCount > 0 yields state 'active' even when a sou
   assert.equal(codexTaskSource.reason, REASONS.SOURCE_NOT_FOUND);
 });
 
+test("sleep prevention: no hold -> inactive with empty holders (acceptance 2.2)", async (t) => {
+  const { mkdtempSync, rmSync } = await import("node:fs");
+  const { tmpdir } = await import("node:os");
+  const { join } = await import("node:path");
+  const { createTestCodexDb, makeSyntheticPsOutput } = await import(
+    "./fixtures/activity/build.mjs"
+  );
+
+  const testDir = mkdtempSync(join(tmpdir(), "agent-activity-sleep-none-"));
+  t.after(() => rmSync(testDir, { recursive: true, force: true }));
+  createTestCodexDb({ dir: testDir, filename: "state_5.sqlite" });
+
+  const psOutput = makeSyntheticPsOutput([
+    { pid: 101, ppid: 1, etime: "02:00", command: "/usr/local/bin/claude" },
+    { pid: 102, ppid: 1, etime: "01:00", command: "/bin/bash" },
+  ]);
+
+  const res = await collectActivity({
+    codexDir: testDir,
+    runPs: () => psOutput,
+  });
+
+  assert.equal(res.sleepPrevention.state, "inactive");
+  assert.deepEqual(res.sleepPrevention.holders, []);
+});
+
+test("sleep prevention: non-agent-linked caffeinate hold -> not reported (acceptance 2.3)", async (t) => {
+  const { mkdtempSync, rmSync } = await import("node:fs");
+  const { tmpdir } = await import("node:os");
+  const { join } = await import("node:path");
+  const { createTestCodexDb, makeSyntheticPsOutput } = await import(
+    "./fixtures/activity/build.mjs"
+  );
+
+  const testDir = mkdtempSync(join(tmpdir(), "agent-activity-sleep-unlinked-"));
+  t.after(() => rmSync(testDir, { recursive: true, force: true }));
+  createTestCodexDb({ dir: testDir, filename: "state_5.sqlite" });
+
+  // A user manually ran caffeinate in their shell, unrelated to agents
+  const psOutput = makeSyntheticPsOutput([
+    { pid: 500, ppid: 1, etime: "10:00", command: "/bin/zsh" },
+    { pid: 501, ppid: 500, etime: "05:30", command: "caffeinate -d" },
+    { pid: 600, ppid: 1, etime: "08:00", command: "caffeinate -u -t 3600" },
+  ]);
+
+  const res = await collectActivity({
+    codexDir: testDir,
+    runPs: () => psOutput,
+  });
+
+  assert.equal(res.sleepPrevention.state, "inactive");
+  assert.deepEqual(res.sleepPrevention.holders, []);
+});
+
+test("sleep prevention: regression case for real wrapper shape on this Mac (R-005, acceptance 2.1)", async (t) => {
+  const { mkdtempSync, rmSync } = await import("node:fs");
+  const { tmpdir } = await import("node:os");
+  const { join } = await import("node:path");
+  const { createTestCodexDb, makeSyntheticPsOutput } = await import(
+    "./fixtures/activity/build.mjs"
+  );
+
+  const testDir = mkdtempSync(join(tmpdir(), "agent-activity-sleep-wrapper-"));
+  t.after(() => rmSync(testDir, { recursive: true, force: true }));
+  createTestCodexDb({ dir: testDir, filename: "state_5.sqlite" });
+
+  // Real shape measured on this Mac:
+  // launchd (1) -> agent_caffeinate_watch.sh (1614) -> caffeinate -is (2195)
+  // Notice: no /opt/homebrew/bin/codex in command line!
+  const psOutput = makeSyntheticPsOutput([
+    {
+      pid: 1614,
+      ppid: 1,
+      etime: "12:58:30",
+      command: "/bin/bash /Users/jerry/.local/bin/agent_caffeinate_watch.sh",
+    },
+    {
+      pid: 2195,
+      ppid: 1614,
+      etime: "12:58:29",
+      command: "caffeinate -is",
+    },
+  ]);
+
+  const res = await collectActivity({
+    codexDir: testDir,
+    runPs: () => psOutput,
+  });
+
+  assert.equal(res.sleepPrevention.state, "active");
+  assert.equal(res.sleepPrevention.holders.length, 1);
+  assert.equal(res.sleepPrevention.holders[0].pid, 2195);
+  assert.equal(res.sleepPrevention.holders[0].elapsedSeconds, 46709);
+
+  // FR-019 Privacy: Holders carry pid and elapsedSeconds ONLY
+  const holderKeys = Object.keys(res.sleepPrevention.holders[0]).sort();
+  assert.deepEqual(holderKeys, ["elapsedSeconds", "pid"]);
+
+  const snapshotJson = JSON.stringify(res.sleepPrevention);
+  assert.ok(
+    !snapshotJson.includes("agent_caffeinate_watch"),
+    "wrapper script path must not appear in sleepPrevention",
+  );
+  assert.ok(
+    !snapshotJson.includes("caffeinate -is"),
+    "command line must not appear in sleepPrevention",
+  );
+});
+
+test("sleep prevention: ancestry fallback to tracked agent process (acceptance 2.1)", async (t) => {
+  const { mkdtempSync, rmSync } = await import("node:fs");
+  const { tmpdir } = await import("node:os");
+  const { join } = await import("node:path");
+  const { createTestCodexDb, makeSyntheticPsOutput } = await import(
+    "./fixtures/activity/build.mjs"
+  );
+
+  const testDir = mkdtempSync(join(tmpdir(), "agent-activity-sleep-ancestry-"));
+  t.after(() => rmSync(testDir, { recursive: true, force: true }));
+  createTestCodexDb({ dir: testDir, filename: "state_5.sqlite" });
+
+  // caffeinate spawned as child of an agent worker or its child process
+  const psOutput = makeSyntheticPsOutput([
+    { pid: 3001, ppid: 1, etime: "20:00", command: "/usr/local/bin/claude" },
+    { pid: 3002, ppid: 3001, etime: "15:00", command: "caffeinate -i" },
+  ]);
+
+  const res = await collectActivity({
+    codexDir: testDir,
+    runPs: () => psOutput,
+  });
+
+  assert.equal(res.sleepPrevention.state, "active");
+  assert.equal(res.sleepPrevention.holders.length, 1);
+  assert.equal(res.sleepPrevention.holders[0].pid, 3002);
+  assert.equal(res.sleepPrevention.holders[0].elapsedSeconds, 900);
+});
+
+test("sleep prevention: caps holders at maxHolders (50) and sets truncated", async (t) => {
+  const { mkdtempSync, rmSync } = await import("node:fs");
+  const { tmpdir } = await import("node:os");
+  const { join } = await import("node:path");
+  const { createTestCodexDb, makeSyntheticPsOutput } = await import(
+    "./fixtures/activity/build.mjs"
+  );
+
+  const testDir = mkdtempSync(join(tmpdir(), "agent-activity-sleep-caps-"));
+  t.after(() => rmSync(testDir, { recursive: true, force: true }));
+  createTestCodexDb({ dir: testDir, filename: "state_5.sqlite" });
+
+  const rows = [
+    {
+      pid: 1614,
+      ppid: 1,
+      etime: "05:00",
+      command: "/bin/bash /Users/jerry/.local/bin/agent_caffeinate_watch.sh",
+    },
+  ];
+  for (let i = 0; i < 55; i++) {
+    rows.push({
+      pid: 2000 + i,
+      ppid: 1614,
+      etime: "04:00",
+      command: "caffeinate -is",
+    });
+  }
+
+  const psOutput = makeSyntheticPsOutput(rows);
+  const res = await collectActivity({
+    codexDir: testDir,
+    runPs: () => psOutput,
+  });
+
+  assert.equal(res.sleepPrevention.state, "active");
+  assert.equal(res.sleepPrevention.holders.length, 50);
+  assert.equal(res.truncated, true);
+});
+
+
