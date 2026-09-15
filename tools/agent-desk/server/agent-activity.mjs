@@ -192,15 +192,65 @@ export function matchAgentWorker(command) {
   return null;
 }
 
+export function isCaffeinateProcess(command) {
+  if (typeof command !== "string") return false;
+  return /(?:^|[\/\\])caffeinate(?:\s|$)/i.test(command);
+}
+
+export function isAgentCaffeinateWrapper(command) {
+  if (typeof command !== "string") return false;
+  return /\bagent_caffeinate_watch(?:\.sh)?\b|\bcom\.jerry\.agent-caffeinate\b/i.test(
+    command,
+  );
+}
+
+export function isAgentLinkedCaffeinate(proc, processMap) {
+  if (!proc) return false;
+  // Primary: wrapper script or LaunchAgent label in command
+  if (isAgentCaffeinateWrapper(proc.rawCommand)) {
+    return true;
+  }
+  // Secondary: command directly targets a tracked agent
+  if (matchAgentWorker(proc.rawCommand) !== null) {
+    return true;
+  }
+
+  // Walk ppid ancestry
+  let currPid = proc.ppid;
+  const visited = new Set([proc.pid]);
+
+  while (Number.isSafeInteger(currPid) && currPid > 1 && !visited.has(currPid)) {
+    visited.add(currPid);
+    const parent = processMap.get(currPid);
+    if (!parent) break;
+
+    // Primary: recognized wrapper
+    if (isAgentCaffeinateWrapper(parent.rawCommand)) {
+      return true;
+    }
+
+    // Secondary fallback: ancestry to a tracked agent process
+    if (matchAgentWorker(parent.rawCommand) !== null) {
+      return true;
+    }
+
+    currPid = parent.ppid;
+  }
+
+  return false;
+}
+
 export function parseProcessList(
   psOutput,
   { codexTasksObservable = true } = {},
 ) {
   if (typeof psOutput !== "string")
-    return { workers: [], codexFallbackWorkers: [] };
+    return { workers: [], codexFallbackWorkers: [], sleepHolders: [] };
   const lines = psOutput.split(/\r?\n/);
   const workers = [];
   const codexFallbackWorkers = [];
+  const processes = [];
+  const processMap = new Map();
 
   for (const line of lines.slice(0, ACTIVITY_LIMITS.psMaxRows)) {
     if (!line.trim()) continue;
@@ -215,36 +265,55 @@ export function parseProcessList(
     const elapsedSeconds = parseElapsedSeconds(etimeStr);
     if (elapsedSeconds === null) continue;
 
-    const matched = matchAgentWorker(rawCommand);
-    if (!matched) continue;
+    const proc = { pid, ppid, elapsedSeconds, rawCommand };
+    processes.push(proc);
+    processMap.set(pid, proc);
+  }
 
-    // Command string discarded here — never reaches the snapshot (FR-019)
-    if (matched.id === "codex") {
-      codexFallbackWorkers.push({
-        agentId: matched.id,
-        agentName: matched.name,
-        pid,
-        elapsedSeconds,
-      });
-      if (!codexTasksObservable) {
+  for (const proc of processes) {
+    const matched = matchAgentWorker(proc.rawCommand);
+    if (matched) {
+      // Command string discarded here — never reaches the snapshot (FR-019)
+      if (matched.id === "codex") {
+        codexFallbackWorkers.push({
+          agentId: matched.id,
+          agentName: matched.name,
+          pid: proc.pid,
+          elapsedSeconds: proc.elapsedSeconds,
+        });
+        if (!codexTasksObservable) {
+          workers.push({
+            agentId: matched.id,
+            agentName: matched.name,
+            pid: proc.pid,
+            elapsedSeconds: proc.elapsedSeconds,
+          });
+        }
+      } else {
         workers.push({
           agentId: matched.id,
           agentName: matched.name,
-          pid,
-          elapsedSeconds,
+          pid: proc.pid,
+          elapsedSeconds: proc.elapsedSeconds,
         });
       }
-    } else {
-      workers.push({
-        agentId: matched.id,
-        agentName: matched.name,
-        pid,
-        elapsedSeconds,
-      });
     }
   }
 
-  return { workers, codexFallbackWorkers };
+  const sleepHolders = [];
+  for (const proc of processes) {
+    if (isCaffeinateProcess(proc.rawCommand)) {
+      if (isAgentLinkedCaffeinate(proc, processMap)) {
+        // Discard rawCommand — only pid and elapsedSeconds (FR-019)
+        sleepHolders.push({
+          pid: proc.pid,
+          elapsedSeconds: proc.elapsedSeconds,
+        });
+      }
+    }
+  }
+
+  return { workers, codexFallbackWorkers, sleepHolders };
 }
 
 function scanRolloutMarker(filePath, windowBytes) {
@@ -496,7 +565,7 @@ export async function collectActivity(options = {}) {
       state: "unobservable",
       tasks: [],
       workers: [],
-      sleepPrevention: { state: "inactive", holders: [] },
+      sleepPrevention: { state: "unobservable", holders: [] },
       sources: [
         {
           id: "codex-tasks",
@@ -529,6 +598,7 @@ export async function collectActivity(options = {}) {
   let psReason = null;
   let workers = [];
   let codexFallbackWorkers = [];
+  let sleepHolders = [];
 
   if (!["darwin", "linux"].includes(platform)) {
     psStatus = "unobservable";
@@ -543,6 +613,7 @@ export async function collectActivity(options = {}) {
         const parsed = parseProcessList(output, { codexTasksObservable });
         workers = parsed.workers;
         codexFallbackWorkers = parsed.codexFallbackWorkers;
+        sleepHolders = parsed.sleepHolders || [];
       }
     } catch {
       psStatus = "unobservable";
@@ -573,16 +644,27 @@ export async function collectActivity(options = {}) {
     state = "unobservable";
   }
 
+  let sleepPreventionState = "inactive";
+  if (psStatus === "unobservable") {
+    sleepPreventionState = "unobservable";
+  } else if (sleepHolders.length > 0) {
+    sleepPreventionState = "active";
+  }
+
   const truncated =
     tasks.length > ACTIVITY_LIMITS.maxTasks ||
-    workers.length > ACTIVITY_LIMITS.maxWorkers;
+    workers.length > ACTIVITY_LIMITS.maxWorkers ||
+    sleepHolders.length > ACTIVITY_LIMITS.maxHolders;
 
   return {
     activeCount: tasks.length + workers.length,
     state,
     tasks: tasks.slice(0, ACTIVITY_LIMITS.maxTasks),
     workers: workers.slice(0, ACTIVITY_LIMITS.maxWorkers),
-    sleepPrevention: { state: "inactive", holders: [] },
+    sleepPrevention: {
+      state: sleepPreventionState,
+      holders: sleepHolders.slice(0, ACTIVITY_LIMITS.maxHolders),
+    },
     sources: [
       {
         id: "codex-tasks",
@@ -640,7 +722,7 @@ export class AgentActivityMonitor {
       state: "unobservable",
       tasks: [],
       workers: [],
-      sleepPrevention: { state: "inactive", holders: [] },
+      sleepPrevention: { state: "unobservable", holders: [] },
       sources: [
         {
           id: "codex-tasks",
