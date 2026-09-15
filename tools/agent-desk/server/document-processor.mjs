@@ -16,7 +16,8 @@ export const DOCUMENT_LIMITS = Object.freeze({
 });
 
 const messages = Object.freeze({
-  unsupported_type: "Choose a Markdown, TXT, DOC, DOCX or PDF document.",
+  unsupported_type:
+    "Choose a Markdown, TXT, DOC, DOCX, PDF document or a PNG, JPEG, GIF or WebP image.",
   invalid_document:
     "The document is malformed, has an invalid encoding, or contains unsupported content. Export a plain text copy and retry.",
   encrypted_document:
@@ -36,9 +37,7 @@ const messages = Object.freeze({
 
 export class DocumentProcessingError extends Error {
   constructor(code) {
-    const safeCode = Object.hasOwn(messages, code)
-      ? code
-      : "processing_failed";
+    const safeCode = Object.hasOwn(messages, code) ? code : "processing_failed";
     super(messages[safeCode]);
     this.name = "DocumentProcessingError";
     this.code = safeCode;
@@ -71,6 +70,54 @@ const mediaTypes = Object.freeze({
   ".docx":
     "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
 });
+// Raster images carry no extracted text: they are stored byte-only and served
+// inline for visual reference, so they bypass the text-extraction worker.
+const imageMediaTypes = Object.freeze({
+  ".png": "image/png",
+  ".jpg": "image/jpeg",
+  ".jpeg": "image/jpeg",
+  ".gif": "image/gif",
+  ".webp": "image/webp",
+});
+const pngSignature = Buffer.from([
+  0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a,
+]);
+function validateImage(kind, bytes) {
+  // Magic-byte checks only, matching the existing PDF/OLE trust boundary:
+  // extension and declared content must agree, full decoding happens client-side.
+  if (
+    kind === ".png" &&
+    !(
+      bytes.length >= 25 &&
+      bytes.subarray(0, 8).equals(pngSignature) &&
+      bytes.subarray(12, 16).toString("ascii") === "IHDR"
+    )
+  )
+    throw new DocumentProcessingError("invalid_document");
+  if (
+    (kind === ".jpg" || kind === ".jpeg") &&
+    !(bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff)
+  )
+    throw new DocumentProcessingError("invalid_document");
+  if (
+    kind === ".gif" &&
+    !(
+      bytes.length >= 6 &&
+      (bytes.subarray(0, 6).toString("ascii") === "GIF87a" ||
+        bytes.subarray(0, 6).toString("ascii") === "GIF89a")
+    )
+  )
+    throw new DocumentProcessingError("invalid_document");
+  if (
+    kind === ".webp" &&
+    !(
+      bytes.length >= 12 &&
+      bytes.subarray(0, 4).toString("ascii") === "RIFF" &&
+      bytes.subarray(8, 12).toString("ascii") === "WEBP"
+    )
+  )
+    throw new DocumentProcessingError("invalid_document");
+}
 const oleMagic = Buffer.from("d0cf11e0a1b11ae1", "hex");
 let active = 0;
 
@@ -99,12 +146,29 @@ export async function processDocument(input, options = {}) {
   if (!name || name.length > 200)
     throw new DocumentProcessingError("invalid_document");
   const kind = extname(name).toLowerCase();
-  if (!Object.hasOwn(mediaTypes, kind))
+  const imageType = Object.hasOwn(imageMediaTypes, kind)
+    ? imageMediaTypes[kind]
+    : null;
+  if (!Object.hasOwn(mediaTypes, kind) && !imageType)
     throw new DocumentProcessingError("unsupported_type");
   const bytes = input.bytes;
   if (bytes.length > limits.maxFileBytes)
     throw new DocumentProcessingError("document_limit");
-  if (bytes.length === 0) throw new DocumentProcessingError("no_text");
+  if (bytes.length === 0)
+    throw new DocumentProcessingError(
+      imageType ? "invalid_document" : "no_text",
+    );
+  if (imageType) {
+    validateImage(kind, bytes);
+    return {
+      name,
+      size: bytes.length,
+      sha256: createHash("sha256").update(bytes).digest("hex"),
+      mediaType: imageType,
+      text: "",
+      warnings: [],
+    };
+  }
   const ole = bytes.subarray(0, 8).equals(oleMagic);
   const pdf = bytes.subarray(0, 5).equals(Buffer.from("%PDF-"));
   const zip = bytes.length >= 4 && bytes.readUInt32LE(0) === 0x04034b50;

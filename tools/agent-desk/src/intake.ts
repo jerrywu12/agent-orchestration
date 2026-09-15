@@ -10,7 +10,10 @@ export const emptyBrief = (): TaskBrief => ({
   verification: "",
 });
 export const MAX_DOCUMENT_BYTES = 10 * 1024 * 1024;
-export const DOCUMENT_ACCEPT = ".md,.markdown,.txt,.doc,.docx,.pdf";
+export const DOCUMENT_ACCEPT =
+  ".md,.markdown,.txt,.doc,.docx,.pdf,.png,.jpg,.jpeg,.gif,.webp";
+const DOCUMENT_NAME = /\.(md|markdown|txt|docx?|pdf)$/i;
+const IMAGE_NAME = /\.(png|jpe?g|gif|webp)$/i;
 
 // Extraction and the native chooser have longer bounded lifetimes than ordinary mutations.
 export async function intakeRequest<T>(
@@ -57,9 +60,9 @@ export async function intakeRequest<T>(
 export async function uploadDocument(file: File): Promise<Attachment> {
   if (file.size > MAX_DOCUMENT_BYTES)
     throw new Error("This file exceeds the 10 MiB limit.");
-  if (!/\.(md|markdown|txt|docx?|pdf)$/i.test(file.name))
+  if (!DOCUMENT_NAME.test(file.name) && !IMAGE_NAME.test(file.name))
     throw new Error(
-      "Choose a Markdown, TXT, DOC, DOCX, or text-based PDF document.",
+      "Choose a Markdown, TXT, DOC, DOCX, text-based PDF document, or a PNG, JPEG, GIF or WebP image.",
     );
   const contentBase64 = await new Promise<string>((resolve, reject) => {
     const reader = new FileReader();
@@ -72,6 +75,10 @@ export async function uploadDocument(file: File): Promise<Attachment> {
     name: file.name,
     contentBase64,
   });
+}
+
+export function attachmentContentUrl(attachment: Attachment) {
+  return `/api/attachments/${encodeURIComponent(attachment.id)}/content`;
 }
 
 export async function downloadDocument(attachment: Attachment) {

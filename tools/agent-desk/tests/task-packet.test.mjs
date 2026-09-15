@@ -37,6 +37,42 @@ test("packet separates instructions and references and includes acceptance check
   ])
     assert.match(packet, re);
 });
+
+test("packet lists image references as visual-only with inline content ids", () => {
+  const packet = buildTaskPacket({
+    project: { key: "DOC" },
+    ticket: {
+      id: "t",
+      number: 2,
+      title: "Fix layout from screenshot",
+      description: "See image",
+      brief: {
+        acceptanceCriteria: "Matches the screenshot",
+        scope: "src/**",
+        verification: "npm test",
+      },
+      attachmentContext: [
+        {
+          id: "img1",
+          name: "bug.png",
+          sha256: "def",
+          mediaType: "image/png",
+          text: "",
+          warnings: [],
+        },
+      ],
+    },
+    execution: { id: "e", agentId: "codex", sessionId: "s" },
+    worktree: "/fixture",
+  });
+  assert.match(packet, /bug\.png/);
+  assert.match(packet, /image\/png/);
+  assert.match(packet, /visual/i);
+  assert.match(packet, /img1\/content/);
+  // Images contribute no documentText payload.
+  const data = JSON.parse(packet.slice(packet.indexOf("{")));
+  assert.deepEqual(data.documentText, []);
+});
 test("packet caps UTF8 argv size and points to full scoped context", () => {
   const packet = buildTaskPacket({
     project: { key: "DOC" },

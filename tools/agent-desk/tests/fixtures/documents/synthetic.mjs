@@ -1,4 +1,4 @@
-import { crc32, deflateRawSync } from "node:zlib";
+import { crc32, deflateRawSync, deflateSync } from "node:zlib";
 
 // Deliberately generated documents: no real user files, Office, or external tools.
 export function zip(entries) {
@@ -102,6 +102,80 @@ export function pdf(
     .join("");
   out += `trailer\n<< /Size ${offsets.length} /Root 1 0 R${encrypted ? ` /Encrypt ${objects.length} 0 R /ID [<00112233445566778899aabbccddeeff><00112233445566778899aabbccddeeff>]` : ""} >>\nstartxref\n${xref}\n%%EOF\n`;
   return Buffer.from(out);
+}
+
+// Minimal valid raster image fixtures, hand-built so no user files or image
+// libraries are needed. Server-side validation checks magic bytes only, like
+// the existing PDF/OLE checks; the PNG fixture is also browser-decodable.
+export function png([r = 255, g = 0, b = 0] = []) {
+  const chunk = (type, data) => {
+    const len = Buffer.alloc(4);
+    len.writeUInt32BE(data.length);
+    const body = Buffer.concat([Buffer.from(type, "ascii"), data]);
+    const crc = Buffer.alloc(4);
+    crc.writeUInt32BE(crc32(body));
+    return Buffer.concat([len, body, crc]);
+  };
+  // A single pixel, 8-bit non-interlaced RGB.
+  const ihdr = Buffer.alloc(13);
+  ihdr.writeUInt32BE(1, 0);
+  ihdr.writeUInt32BE(1, 4);
+  ihdr[8] = 8;
+  ihdr[9] = 2;
+  const scanline = Buffer.from([0, r, g, b]);
+  const idat = deflateSync(scanline);
+  return Buffer.concat([
+    Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+    chunk("IHDR", ihdr),
+    chunk("IDAT", idat),
+    chunk("IEND", Buffer.alloc(0)),
+  ]);
+}
+export function jpeg(label = "desk-jpeg-fixture") {
+  // JFIF shell: SOI + APP0/JFIF + COM carrying the label + EOI.
+  const comment = Buffer.from(label, "utf8").subarray(0, 64);
+  const seg = Buffer.concat([
+    Buffer.from([0xff, 0xfe]),
+    Buffer.from([(comment.length + 2) >> 8, (comment.length + 2) & 0xff]),
+    comment,
+  ]);
+  return Buffer.concat([
+    Buffer.from([0xff, 0xd8, 0xff]),
+    Buffer.from([0xe0, 0x00, 0x10]),
+    Buffer.from("JFIF\x00\x01\x01\x00\x00\x01\x00\x01\x00\x00", "latin1"),
+    seg,
+    Buffer.from([0xff, 0xd9]),
+  ]);
+}
+export function gif(label = "desk-gif-fixture") {
+  // GIF89a logical screen descriptor with a 1x1 global color table.
+  return Buffer.concat([
+    Buffer.from("GIF89a", "ascii"),
+    Buffer.from([1, 0, 1, 0, 0x80, 0, 0]),
+    Buffer.from([0xff, 0x00, 0x00, 0x00, 0x00, 0x00]),
+    Buffer.from([0x2c, 0, 0, 0, 0, 1, 0, 1, 0, 0]),
+    Buffer.from([0x02, 0x02, 0x44, 0x01, 0x00]),
+    Buffer.from([0x3b]),
+    Buffer.from(label, "utf8"),
+  ]);
+}
+export function webp(label = "desk-webp-fixture") {
+  // RIFF/WEBP container shell with a VP8X extended-header chunk.
+  const payload = Buffer.from(label, "utf8");
+  const chunk = (fourcc, data) =>
+    Buffer.concat([
+      Buffer.from(fourcc, "ascii"),
+      Buffer.from([data.length, 0, 0, 0]),
+      data,
+    ]);
+  const vp8x = Buffer.from([0, 0, 0, 0, 0, 1, 0, 0, 0, 0]);
+  const body = Buffer.concat([chunk("VP8X", vp8x), chunk("XMP ", payload)]);
+  return Buffer.concat([
+    Buffer.from("RIFF", "ascii"),
+    Buffer.from([body.length, 0, 0, 0]),
+    Buffer.from("WEBP", "ascii"),
+    body,
+  ]);
 }
 
 // Minimal Word97 CFB: one FAT, one directory sector, two 4096-byte streams.

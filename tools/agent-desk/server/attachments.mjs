@@ -1,6 +1,9 @@
 import { createHash } from "node:crypto";
 import { fail, id } from "./store.mjs";
-import { DOCUMENT_LIMITS, validateMarkdownText } from "./document-processor.mjs";
+import {
+  DOCUMENT_LIMITS,
+  validateMarkdownText,
+} from "./document-processor.mjs";
 const DAY = 24 * 60 * 60 * 1000;
 export class Attachments {
   constructor(
@@ -61,10 +64,11 @@ export class Attachments {
         "ATTACHMENT_SIZE",
         "Each document must be between 1 byte and 10 MiB.",
       );
+    const isImage = String(result.mediaType ?? "").startsWith("image/");
     if (
       !result ||
       typeof result.text !== "string" ||
-      !result.text.trim() ||
+      (!isImage && !result.text.trim()) ||
       result.text.length >
         (result.mediaType === "text/markdown"
           ? DOCUMENT_LIMITS.maxMarkdownChars

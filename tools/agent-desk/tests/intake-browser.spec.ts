@@ -1,6 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
 import { randomUUID } from "node:crypto";
-import { doc, docx, pdf } from "./fixtures/documents/synthetic.mjs";
+import { doc, docx, pdf, png } from "./fixtures/documents/synthetic.mjs";
 import type { DeskState, Ticket } from "../src/types";
 import type { Attachment } from "../src/intake-types";
 
@@ -362,8 +362,13 @@ test("documents and structured brief survive creation, reload, safe preview and 
     .getByRole("button", { name: "Document-driven task", exact: true })
     .click();
   dialog = page.getByRole("dialog");
-  expect(mocked.current.tickets.find(item => item.id === "created-ticket")?.brief?.acceptanceCriteria).toBe("Unicode 文档 and all references persist.");
-  await expect(dialog.getByRole("textbox", { name: "Acceptance criteria", exact: true })).toHaveCount(0);
+  expect(
+    mocked.current.tickets.find((item) => item.id === "created-ticket")?.brief
+      ?.acceptanceCriteria,
+  ).toBe("Unicode 文档 and all references persist.");
+  await expect(
+    dialog.getByRole("textbox", { name: "Acceptance criteria", exact: true }),
+  ).toHaveCount(0);
   await expect(
     dialog
       .getByRole("region", { name: "Attached reference documents" })
@@ -387,10 +392,16 @@ test("documents and structured brief survive creation, reload, safe preview and 
     mocked.current.tickets.find((item) => item.id === "created-ticket")?.brief
       ?.scope,
   ).toBe("Only the fixture module.");
-  expect(mocked.current.tickets.find(item => item.id === "created-ticket")?.description).toBe("Only the fixture module and its tests.");
-  await expect(dialog.getByRole("button", { name: "Copy task packet", exact: true })).toHaveCount(0);
-  await expect(dialog.getByRole("region", { name: "Workflow checklist", exact: true })).toHaveCount(0);
-
+  expect(
+    mocked.current.tickets.find((item) => item.id === "created-ticket")
+      ?.description,
+  ).toBe("Only the fixture module and its tests.");
+  await expect(
+    dialog.getByRole("button", { name: "Copy task packet", exact: true }),
+  ).toHaveCount(0);
+  await expect(
+    dialog.getByRole("region", { name: "Workflow checklist", exact: true }),
+  ).toHaveCount(0);
 });
 
 test("failed and removed processing documents cannot disappear into ticket creation", async ({
@@ -528,14 +539,102 @@ test("real local parsers bind all four document formats and keep originals in ti
       exact: true,
     })
     .click();
-  expect(detail.brief?.acceptanceCriteria).toBe("All originals and extracted text persist.");
-  await expect(page.getByRole("dialog").getByRole("textbox", { name: "Acceptance criteria", exact: true })).toHaveCount(0);
+  expect(detail.brief?.acceptanceCriteria).toBe(
+    "All originals and extracted text persist.",
+  );
+  await expect(
+    page
+      .getByRole("dialog")
+      .getByRole("textbox", { name: "Acceptance criteria", exact: true }),
+  ).toHaveCount(0);
   await expect(
     page
       .getByRole("dialog")
       .getByRole("region", { name: "Attached reference documents" })
       .locator(".document-item"),
   ).toHaveCount(4);
+});
+
+test("dropped image becomes an inline thumbnail and binds with the ticket", async ({
+  page,
+  request,
+}) => {
+  const suffix = randomUUID().slice(0, 8);
+  const projectResponse = await request.post("/api/projects", {
+    data: { name: `Images ${suffix}`, key: `I${suffix}`.toUpperCase() },
+  });
+  expect(projectResponse.status()).toBe(201);
+  const project = await projectResponse.json();
+  await page.route("**/api/integrations", (route) =>
+    route.fulfill({ json: { github: { available: false }, agents: [] } }),
+  );
+  await newTicket(page);
+  const dialog = page.getByRole("dialog");
+  await dialog
+    .getByRole("combobox", { name: "Project", exact: true })
+    .selectOption(project.id);
+  await dialog
+    .getByLabel("Title", { exact: true })
+    .fill(`Screenshot fixture ${suffix}`);
+  await dialog
+    .getByRole("textbox", { name: "Acceptance criteria", exact: true })
+    .fill("Image reference is stored, previewed and downloadable.");
+  const dropped = await page.evaluateHandle((bytes) => {
+    const transfer = new DataTransfer();
+    transfer.items.add(
+      new File([new Uint8Array(bytes)], "screen.png", {
+        type: "image/png",
+      }),
+    );
+    return transfer;
+  }, Array.from(png()));
+  await dialog.locator(".document-dropzone").dispatchEvent("drop", {
+    dataTransfer: dropped,
+  });
+  await dropped.dispose();
+  await expect(dialog.locator(".document-item")).toHaveCount(1);
+  const thumb = dialog.locator(".document-thumb");
+  await expect(thumb).toBeVisible();
+  await expect
+    .poll(async () =>
+      thumb.evaluate((el) => (el as HTMLImageElement).naturalWidth),
+    )
+    .toBeGreaterThan(0);
+  await expect(
+    dialog.getByRole("button", { name: "Create ticket", exact: true }),
+  ).toBeEnabled({ timeout: 30000 });
+  await expect(dialog.getByRole("alert")).toHaveCount(0);
+  await dialog
+    .getByRole("button", { name: "Create ticket", exact: true })
+    .click();
+  const detail = page.getByRole("dialog");
+  await expect(
+    detail
+      .getByRole("region", { name: "Attached reference documents" })
+      .locator(".document-thumb"),
+  ).toBeVisible();
+  const state: DeskState = await (await request.get("/api/state")).json();
+  const ticket = state.tickets.find(
+    (item) => item.title === `Screenshot fixture ${suffix}`,
+  )!;
+  expect(ticket.attachments).toHaveLength(1);
+  const full: Ticket = await (
+    await request.get(`/api/tickets/${ticket.id}`)
+  ).json();
+  const image = full.attachmentContext![0];
+  expect(image.mediaType).toBe("image/png");
+  expect(image.text).toBe("");
+  const content = await request.get(`/api/attachments/${image.id}/content`);
+  expect(content.status()).toBe(200);
+  expect(content.headers()["content-type"]).toMatch(/^image\/png/);
+  expect((await content.body()).length).toBe(image.size);
+  // The same bytes remain available as a forced download.
+  const downloadResponse = await request.get(
+    `/api/attachments/${image.id}/download`,
+  );
+  expect(downloadResponse.headers()["content-disposition"]).toMatch(
+    /^attachment/,
+  );
 });
 
 test("server folder browsing fills untouched metadata and preserves an explicit project name", async ({
@@ -808,17 +907,27 @@ test("a successfully created ticket locks its original packet while opening is p
   expect(mocked.created).toHaveLength(1);
 });
 
-test("owner and stage remain editable while agent holds stay out of the drawer", async ({ page }) => {
+test("owner and stage remain editable while agent holds stay out of the drawer", async ({
+  page,
+}) => {
   const mocked = await mockIntake(page);
   mocked.current.stages[0].role = "backlog";
   mocked.current.tickets[0].ownerId = "codex";
   mocked.current.agents[0].enabled = false;
   await page.goto("/");
-  await page.getByRole("button", { name: fixtureState.tickets[0].title, exact: true }).click();
+  await page
+    .getByRole("button", { name: fixtureState.tickets[0].title, exact: true })
+    .click();
   const dialog = page.getByRole("dialog");
-  await expect(dialog.getByRole("combobox", { name: "Owner", exact: true })).toHaveValue("codex");
-  await expect(dialog.getByRole("combobox", { name: "Stage", exact: true })).toHaveValue("planning");
-  await expect(dialog.getByRole("region", { name: "Workflow checklist" })).toHaveCount(0);
+  await expect(
+    dialog.getByRole("combobox", { name: "Owner", exact: true }),
+  ).toHaveValue("codex");
+  await expect(
+    dialog.getByRole("combobox", { name: "Stage", exact: true }),
+  ).toHaveValue("planning");
+  await expect(
+    dialog.getByRole("region", { name: "Workflow checklist" }),
+  ).toHaveCount(0);
   expect(mocked.current.agents[0].enabled).toBe(false);
 });
 

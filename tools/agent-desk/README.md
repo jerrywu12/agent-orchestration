@@ -102,11 +102,15 @@ project. Selecting a folder never initializes, clones, fetches, switches or edit
 The legacy native-picker endpoint returns an immediate unavailable response directing old
 clients to the in-app chooser; it never invokes a native dialog.
 
-Drop Markdown (`.md` or `.markdown`), TXT, DOC, DOCX or PDF files into **New ticket**, or use
-**Documents → Attach files** on an existing ticket. Agent Desk extracts text locally and keeps
-the uploaded bytes with the ticket. Remove an unwanted draft before attaching it. Save any
+Drop Markdown (`.md` or `.markdown`), TXT, DOC, DOCX, PDF, or image files (PNG, JPEG,
+GIF, WebP) into **New ticket**, or use **Documents → Attach files** on an existing ticket.
+Agent Desk extracts document text locally and keeps the uploaded bytes with the ticket.
+Images have no extracted text: they are validated by file signature, shown as inline
+thumbnails, listed as visual references in the agent task packet, and can be opened or
+downloaded at full size. Remove an unwanted draft before attaching it. Save any
 pending ticket edits before attaching or editing a document. Scanned PDFs need OCR elsewhere;
-empty, encrypted, unsupported or malformed documents show an error. Embedded macros are never
+empty, encrypted, unsupported or malformed files show an error (an image whose bytes do not
+match its extension is rejected). Embedded macros are never
 executed and remote document resources are rejected.
 
 **Read** opens the complete Markdown document with headings, lists, tables and code. **Edit**
@@ -117,8 +121,8 @@ their read-only extracted preview and download. Unsaved edits are protected when
 reloading. If another editor changed the document, your draft remains available; explicitly
 discard it before reloading the latest copy. Attachment changes also advance the ticket version.
 
-Limits are five combined documents per ticket, 10 MiB per file, 200,000 Markdown characters
-and 100,000 extracted characters per other file,
+Limits are five combined documents or images per ticket, 10 MiB per file, 200,000 Markdown characters
+and 100,000 extracted characters per other text file,
 200 PDF pages, 20 pending uploads, and 1 GiB total stored attachment data including text and
 metadata. Draft uploads expire after 24 hours. Parsing uses at most two workers with a
 20-second deadline and 128 MiB V8 heap limit per worker (not a total process-memory limit).
