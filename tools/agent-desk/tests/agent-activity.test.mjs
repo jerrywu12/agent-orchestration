@@ -509,9 +509,115 @@ test("bounds: 200/200/50/20 caps set truncated", async (t) => {
   assert.equal(res.truncated, true, "Truncated must be true when bounds exceeded");
 });
 
-test("lifecycle mgmt: overlapping refresh() coalesces; close() aborts in flight and stops timer", async () => {
-  const monitor = new AgentActivityMonitor({ auto: false });
-  assert.equal(typeof monitor.snapshot, "function");
-  const snap = monitor.snapshot();
-  assert.ok(snap);
+test("lifecycle mgmt: overlapping refresh() coalesces; close() aborts in flight and stops timer", async (t) => {
+  let callCount = 0;
+  let delayMs = 20;
+  let shouldFail = false;
+
+  const mockCollector = async ({ signal }) => {
+    callCount++;
+    if (signal?.aborted) throw new Error("aborted");
+    await new Promise((r) => setTimeout(r, delayMs));
+    if (signal?.aborted) throw new Error("aborted");
+    if (shouldFail) throw new Error("simulated failure");
+
+    return {
+      activeCount: 2,
+      state: "active",
+      tasks: [
+        {
+          id: "019f4b72",
+          agentId: "codex",
+          origin: "Codex",
+          description: "Test task",
+          workspace: "repo",
+          lifecycle: "active",
+        },
+      ],
+      workers: [
+        {
+          agentId: "claude",
+          agentName: "Claude Code",
+          pid: 999,
+          elapsedSeconds: 50,
+        },
+      ],
+      sleepPrevention: { state: "inactive", holders: [] },
+      sources: [
+        {
+          id: "codex-tasks",
+          label: "Codex tasks",
+          status: "observed",
+          reason: null,
+          retained: false,
+        },
+        {
+          id: "processes",
+          label: "Processes",
+          status: "observed",
+          reason: null,
+          retained: false,
+        },
+      ],
+      observedAt: new Date().toISOString(),
+      stale: false,
+      partial: false,
+      truncated: false,
+      refreshing: false,
+      notes: [],
+    };
+  };
+
+  const monitor = new AgentActivityMonitor({
+    auto: false,
+    collector: mockCollector,
+    refreshIntervalMs: 15000,
+    collectorTimeoutMs: 500,
+  });
+  t.after(() => monitor.close());
+
+  // 1. Initial snapshot
+  const initial = monitor.snapshot();
+  assert.equal(initial.observedAt, null);
+  assert.equal(initial.stale, false);
+  assert.equal(initial.refreshing, false);
+
+  // 2. Coalescing overlapping refresh()
+  const p1 = monitor.refresh();
+  const p2 = monitor.refresh();
+  assert.equal(p1, p2, "Concurrent refresh() must coalesce to the exact same promise");
+  assert.equal(monitor.snapshot().refreshing, true, "Snapshot reflects refreshing: true while in flight");
+
+  const snap1 = await p1;
+  assert.equal(callCount, 1, "Collector should have been called only once for coalesced refresh");
+  assert.equal(snap1.activeCount, 2);
+  assert.equal(snap1.state, "active");
+  assert.equal(snap1.stale, false);
+  assert.equal(snap1.refreshing, false);
+  assert.ok(snap1.observedAt !== null);
+
+  // 3. Retained stale on failure (FR-012)
+  shouldFail = true;
+  await monitor.refresh();
+  const retainedSnap = monitor.snapshot();
+  assert.equal(retainedSnap.stale, true, "Retained snapshot must be marked stale: true");
+  assert.equal(retainedSnap.activeCount, 2, "Prior activeCount must be retained");
+  assert.equal(retainedSnap.tasks.length, 1, "Prior tasks must be retained");
+  assert.ok(
+    retainedSnap.notes.some((n) => n.includes("could not be refreshed")),
+    "Fixed-wording note must be added",
+  );
+  assert.equal(
+    retainedSnap.sources.every((s) => s.retained === true),
+    true,
+    "Prior observed sources must be marked retained: true",
+  );
+
+  // 4. close() aborts in flight and stops timer
+  shouldFail = false;
+  delayMs = 200;
+  const inFlightPromise = monitor.refresh();
+  monitor.close();
+  assert.equal(monitor.closed, true);
+  await inFlightPromise;
 });

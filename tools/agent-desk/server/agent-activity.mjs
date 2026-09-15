@@ -609,12 +609,162 @@ export async function collectActivity(options = {}) {
 }
 
 export class AgentActivityMonitor {
-  constructor(options = {}) {}
+  constructor(options = {}) {
+    // Handle both new AgentActivityMonitor(options) and new AgentActivityMonitor(service, options)
+    const opts =
+      arguments.length > 1 && typeof arguments[1] === "object"
+        ? arguments[1]
+        : options;
+
+    const {
+      auto = true,
+      collector = collectActivity,
+      codexDir = join(homedir(), ".codex"),
+      runPs = defaultRunPs,
+      platform = hostPlatform(),
+      clock = Date.now,
+      refreshIntervalMs = ACTIVITY_LIMITS.refreshIntervalMs,
+      collectorTimeoutMs = ACTIVITY_LIMITS.collectorTimeoutMs,
+    } = opts;
+
+    this.collector = collector;
+    this.codexDir = codexDir;
+    this.runPs = runPs;
+    this.platform = platform;
+    this.clock = clock;
+    this.refreshIntervalMs = refreshIntervalMs;
+    this.collectorTimeoutMs = collectorTimeoutMs;
+
+    this.current = {
+      activeCount: 0,
+      state: "unobservable",
+      tasks: [],
+      workers: [],
+      sleepPrevention: { state: "inactive", holders: [] },
+      sources: [
+        {
+          id: "codex-tasks",
+          label: "Codex tasks",
+          status: "unobservable",
+          reason: null,
+          retained: false,
+        },
+        {
+          id: "processes",
+          label: "Processes",
+          status: "unobservable",
+          reason: null,
+          retained: false,
+        },
+      ],
+      observedAt: null,
+      stale: false,
+      partial: false,
+      truncated: false,
+      refreshing: false,
+      notes: [],
+    };
+    this.pending = null;
+    this.closed = false;
+    this.controllers = new Set();
+
+    if (auto) {
+      this.refresh();
+      this.timer = setInterval(() => this.refresh(), refreshIntervalMs);
+      this.timer.unref();
+    }
+  }
+
   snapshot() {
-    throw new Error("Not implemented");
+    return {
+      ...this.current,
+      refreshing: this.pending !== null,
+    };
   }
+
+  async bounded(task, timeout) {
+    const controller = new AbortController();
+    this.controllers.add(controller);
+    let abort;
+    const aborted = new Promise((_, reject) => {
+      abort = () => reject(new Error("Observation cancelled."));
+      controller.signal.addEventListener("abort", abort, { once: true });
+    });
+    const timer = setTimeout(() => controller.abort(), timeout);
+    try {
+      return await Promise.race([task(controller.signal), aborted]);
+    } finally {
+      clearTimeout(timer);
+      controller.signal.removeEventListener("abort", abort);
+      this.controllers.delete(controller);
+    }
+  }
+
   refresh() {
-    throw new Error("Not implemented");
+    if (this.closed) return Promise.resolve(this.snapshot());
+    if (this.pending) return this.pending;
+
+    this.pending = (async () => {
+      try {
+        await this.executeObservation();
+      } finally {
+        this.pending = null;
+      }
+      return this.snapshot();
+    })();
+    return this.pending;
   }
-  close() {}
+
+  async executeObservation() {
+    try {
+      const result = await this.bounded(
+        (signal) =>
+          this.collector({
+            codexDir: this.codexDir,
+            runPs: this.runPs,
+            platform: this.platform,
+            clock: this.clock,
+            signal,
+          }),
+        this.collectorTimeoutMs,
+      );
+      if (this.closed) return this.snapshot();
+      this.current = {
+        ...result,
+        stale: false,
+      };
+    } catch {
+      if (this.closed) return this.snapshot();
+      const existingNotes = Array.isArray(this.current.notes)
+        ? this.current.notes
+        : [];
+      const staleNote =
+        "Activity observation could not be refreshed. Last successful data is retained.";
+      const notes = existingNotes.includes(staleNote)
+        ? existingNotes
+        : [...existingNotes, staleNote].slice(0, ACTIVITY_LIMITS.maxNotes);
+
+      this.current = {
+        ...this.current,
+        stale: this.current.observedAt !== null,
+        notes,
+        sources: this.current.sources.map((s) => ({
+          ...s,
+          retained: s.status === "observed",
+        })),
+      };
+    }
+    return this.snapshot();
+  }
+
+  close() {
+    this.closed = true;
+    if (this.timer) {
+      clearInterval(this.timer);
+    }
+    for (const controller of this.controllers) {
+      controller.abort();
+    }
+    this.controllers.clear();
+  }
 }
