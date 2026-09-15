@@ -45,7 +45,7 @@ Two research findings shape the build and are not negotiable details (see [resea
 | Machine-local deployment is a separate explicit step from a source edit | PASS | Indicator removal is FR-022, gated on recorded parity evidence, out of the code change |
 | New feature contracts under `specs/` via Spec Kit | PASS | This artifact set |
 | Agent Desk verification uses code, scripts, API checks and automated DOM tests — never computer control or screenshots | PASS | All verification in [quickstart.md](./quickstart.md) is `node --test`, Playwright and `curl` |
-| Codex owns implementation and final verification | PASS | This plan is a handoff artifact; no implementation performed |
+| Implementation owned by the assigned executor, not the planning agent | PASS | This plan is a handoff artifact; no implementation performed. Jerry has explicitly assigned implementation to **Antigravity** for this feature rather than the usual Codex lane — permitted by `AGENTS.md` ("unless the user assigns work differently") and by `GEMINI.md` ("independent work explicitly assigned by the user"). See [handoff-antigravity.md](./handoff-antigravity.md) |
 
 **Result**: no violations, Complexity Tracking not required.
 
