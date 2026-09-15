@@ -25,6 +25,23 @@ export const REASONS = Object.freeze({
     "Host activity cannot be observed from inside a container.",
 });
 
+export function parseElapsedSeconds(raw) {
+  if (typeof raw !== "string") return null;
+  const trimmed = raw.trim();
+  if (!trimmed) return null;
+  const match = trimmed.match(/^(?:(?:(\d+)-)?(\d+):)?(\d{1,2}):(\d{2})$/);
+  if (!match) return null;
+  const [, daysStr, hoursStr, minsStr, secsStr] = match;
+  const days = daysStr !== undefined ? Number(daysStr) : 0;
+  const hours = hoursStr !== undefined ? Number(hoursStr) : 0;
+  const mins = Number(minsStr);
+  const secs = Number(secsStr);
+  if (mins >= 60 || secs >= 60) return null;
+  if (!Number.isSafeInteger(days) || !Number.isSafeInteger(hours)) return null;
+  const total = days * 86400 + hours * 3600 + mins * 60 + secs;
+  return Number.isSafeInteger(total) && total >= 0 ? total : null;
+}
+
 export async function collectActivity(options = {}) {
   throw new Error("Not implemented");
 }

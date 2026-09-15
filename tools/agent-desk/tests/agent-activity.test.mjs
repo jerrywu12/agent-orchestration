@@ -15,7 +15,19 @@ const {
 
 test("etime: MM:SS, HH:MM:SS, DD-HH:MM:SS, padded and malformed input", () => {
   assert.equal(typeof parseElapsedSeconds, "function");
+  assert.equal(parseElapsedSeconds("00:00"), 0);
   assert.equal(parseElapsedSeconds("01:23"), 83);
+  assert.equal(parseElapsedSeconds("  01:23  "), 83);
+  assert.equal(parseElapsedSeconds("12:34:56"), 45296);
+  assert.equal(parseElapsedSeconds("02-03:04:05"), 183845);
+  assert.equal(parseElapsedSeconds("1-00:00:00"), 86400);
+  assert.equal(parseElapsedSeconds("99:99"), null);
+  assert.equal(parseElapsedSeconds("12:60"), null);
+  assert.equal(parseElapsedSeconds("invalid"), null);
+  assert.equal(parseElapsedSeconds(""), null);
+  assert.equal(parseElapsedSeconds(null), null);
+  assert.equal(parseElapsedSeconds(123), null);
+  assert.equal(parseElapsedSeconds("-01:23"), null);
 });
 
 test("description: tabs/newlines/control chars stripped, capped at 60, empty -> Untitled task", () => {
