@@ -87,6 +87,11 @@ export function workspaceSegment(raw) {
   return cleaned || "—";
 }
 
+/**
+ * Classify Codex thread origin by shape only into the closed set:
+ * "Codex" | "Codex app" | "Automation/CLI" | "Subagent"
+ * Raw source values, subagent names, and paths are NEVER exposed (FR-005, R-004, FR-019).
+ */
 export function classifyOrigin(raw) {
   if (typeof raw !== "string" || !raw.trim()) return "Codex";
   const trimmed = raw.trim();
