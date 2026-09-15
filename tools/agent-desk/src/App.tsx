@@ -490,6 +490,7 @@ export default function App() {
           {...transition}
           state={state}
           integrations={desk.integrations}
+          refresh={desk.refresh}
           onClose={() => setTransition(null)}
           onResult={async (result) => {
             setTransition(null);

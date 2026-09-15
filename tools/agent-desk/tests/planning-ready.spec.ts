@@ -3,12 +3,13 @@ import { randomUUID } from "node:crypto";
 import type { DeskState } from "../src/types";
 
 const brief = { specification: "specs/fixture.md", acceptanceCriteria: "Independent test passes", scope: "One synthetic module", verification: "Run synthetic test", allowedPaths: "src/fixture.ts", conflictKeys: "none" };
-async function fixture(page: Page, options: { missing?: boolean; outcome?: "started" | "queued" | "failed"; stale?: boolean } = {}) {
+const incompleteBrief = { specification: "specs/fixture.md", acceptanceCriteria: "", scope: "", verification: "Run synthetic test", allowedPaths: "../outside/**", conflictKeys: "" };
+async function fixture(page: Page, options: { missing?: boolean; outcome?: "started" | "queued" | "failed"; stale?: boolean; resolvable?: boolean } = {}) {
   const state: DeskState = {
     projects: [{ id: "project", key: "PLAN", name: "Planning fixture", path: "/fixture" }],
     stages: ["backlog", "planning", "ready", "active", "review", "done"].map((role, i) => ({ id: role, role: role as DeskState["stages"][number]["role"], name: ["Backlog", "Planning", "Ready", "In progress", "In review", "Done"][i], position: i, projectId: "project" })),
     agents: [{ id: "codex", name: "Codex", adapter: "codex", enabled: true }, { id: "claude", name: "Claude", adapter: "claude", enabled: true }],
-    tickets: [{ id: "ticket", projectId: "project", number: 1, title: "Prepare synthetic feature", stageId: "backlog", priority: "none", version: 7, brief, createdAt: "2026-09-13T00:00:00Z", updatedAt: "2026-09-13T00:00:00Z" }],
+    tickets: [{ id: "ticket", projectId: "project", number: 1, title: "Prepare synthetic feature", stageId: "backlog", priority: "none", version: 7, brief: options.resolvable ? { ...incompleteBrief } : brief, createdAt: "2026-09-13T00:00:00Z", updatedAt: "2026-09-13T00:00:00Z" }],
     activity: [], sync: [], capabilities: { localMode: true }, serverTime: "2026-09-13T00:00:00Z",
   };
   const writes: { path: string; body: any }[] = [];
@@ -16,7 +17,17 @@ async function fixture(page: Page, options: { missing?: boolean; outcome?: "star
     const req = route.request(), path = new URL(req.url()).pathname;
     if (path === "/api/state") return route.fulfill({ json: state });
     if (path === "/api/integrations") return route.fulfill({ json: { github: { available: false }, agents: state.agents.map(a => ({ id: a.id, available: true })) } });
-    if (path.endsWith("/readiness")) return route.fulfill({ json: options.missing ? { ready: false, missing: ["specification", "allowedPaths"], holds: ["Unfinished dependency"], conflicts: [{ ticketId: "other", key: "PLAN-2", title: "Competing schema", reasons: ["Shared resource: schema"] }] } : { ready: true, missing: [], holds: [], conflicts: [] } });
+    if (path.endsWith("/readiness")) {
+      // Mirrors the server: unrecorded or unusable preparation leaves scope unknown, which conflicts with every reserved ticket.
+      if (options.resolvable) {
+        const recorded = state.tickets[0].brief as Record<string, string> | undefined;
+        const missing = Object.keys(brief).filter(key => !recorded?.[key]?.trim());
+        const invalidPaths = (recorded?.allowedPaths || "").split("\n").map(line => line.trim()).filter(Boolean).some(line => line.startsWith("/") || line.split("/").includes(".."));
+        const ready = !missing.length && !invalidPaths;
+        return route.fulfill({ json: ready ? { ready: true, missing: [], holds: [], conflicts: [] } : { ready: false, missing, holds: invalidPaths && !missing.includes("allowedPaths") ? ["Allowed paths must be relative paths or terminal /** patterns without traversal, repeated separators or symlink components."] : [], conflicts: [{ ticketId: "other", key: "PLAN-2", title: "Competing schema", reasons: ["Unknown reserved scope"] }] } });
+      }
+      return route.fulfill({ json: options.missing ? { ready: false, missing: ["specification", "allowedPaths"], holds: ["Unfinished dependency"], conflicts: [{ ticketId: "other", key: "PLAN-2", title: "Competing schema", reasons: ["Shared resource: schema"] }] } : { ready: true, missing: [], holds: [], conflicts: [] } });
+    }
     if (req.method() !== "GET") {
       const body = req.postDataJSON(); writes.push({ path, body });
       if (path.endsWith("/transition")) {
@@ -57,6 +68,44 @@ test("Ready reports missing preparation, dependency and competing ticket before 
   const dialog = page.getByRole("dialog", { name: "Move to Ready" });
   await dialog.getByLabel("Development agent").selectOption("codex");
   for (const text of ["Specification reference", "Allowed paths", "Unfinished dependency", "PLAN-2 · Competing schema", "Shared resource: schema"]) await expect(dialog).toContainText(text);
+  await expect(dialog.getByRole("button", { name: "Confirm and start", exact: true })).toBeDisabled();
+  expect(f.writes).toEqual([]);
+});
+
+test("Update Spec records missing preparation and admits the ticket after the recheck", async ({ page }) => {
+  const f = await fixture(page, { resolvable: true });
+  await page.getByRole("combobox", { name: "Stage for PLAN-1" }).selectOption("ready");
+  const dialog = page.getByRole("dialog", { name: "Move to Ready" });
+  await dialog.getByLabel("Development agent").selectOption("claude");
+  for (const text of ["Acceptance criteria", "Scope", "Shared resources", "Allowed paths must be relative paths", "PLAN-2 · Competing schema", "Unknown reserved scope"]) await expect(dialog).toContainText(text);
+  const confirm = dialog.getByRole("button", { name: "Confirm and start", exact: true });
+  await expect(confirm).toBeDisabled();
+  await dialog.getByRole("button", { name: "Update Spec", exact: true }).click();
+  await expect(dialog.getByRole("textbox", { name: "Specification", exact: true })).toHaveValue("specs/fixture.md");
+  await dialog.getByRole("textbox", { name: "Acceptance criteria", exact: true }).fill("Independent test passes");
+  await dialog.getByRole("textbox", { name: "Scope", exact: true }).fill("One synthetic module");
+  await dialog.getByRole("textbox", { name: "Allowed paths", exact: true }).fill("src/fixture.ts");
+  await dialog.getByRole("textbox", { name: "Shared resources", exact: true }).fill("none");
+  await dialog.getByRole("button", { name: "Save spec", exact: true }).click();
+  await expect(dialog).toContainText("Preparation complete. No conflicting work found.");
+  await expect(dialog.getByRole("button", { name: "Update Spec", exact: true })).toHaveCount(0);
+  expect(f.state.tickets[0].brief).toEqual(brief);
+  expect(f.writes).toEqual([{ path: "/api/tickets/ticket", body: { version: 7, brief } }]);
+  await expect(confirm).toBeEnabled();
+  await confirm.click();
+  await expect(page.getByRole("status").filter({ hasText: "Development agent started." })).toBeVisible();
+  expect(f.writes.at(-1)).toEqual({ path: "/api/tickets/ticket/transition", body: { version: 8, stageId: "ready", ownerId: "claude", confirmed: true } });
+});
+
+test("Update Spec keeps a concurrently changed ticket out of admission", async ({ page }) => {
+  const f = await fixture(page, { resolvable: true });
+  await page.getByRole("combobox", { name: "Stage for PLAN-1" }).selectOption("ready");
+  const dialog = page.getByRole("dialog", { name: "Move to Ready" });
+  await dialog.getByLabel("Development agent").selectOption("claude");
+  await dialog.getByRole("button", { name: "Update Spec", exact: true }).click();
+  f.state.tickets[0].version = 9;
+  await expect(dialog.getByRole("alert").filter({ hasText: "This ticket changed" })).toBeVisible();
+  await expect(dialog.getByRole("button", { name: "Save spec", exact: true })).toBeDisabled();
   await expect(dialog.getByRole("button", { name: "Confirm and start", exact: true })).toBeDisabled();
   expect(f.writes).toEqual([]);
 });

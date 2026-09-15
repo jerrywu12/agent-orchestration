@@ -38,6 +38,9 @@ Ready requires a specification reference, acceptance criteria, scope, verificati
 and shared-resource identifiers. Enter repository-relative paths/directories one per line; use shared
 behavior/API/schema names to detect conflicts across different files (`none` for no shared resources).
 Unfinished dependencies, blockers, parent tickets and missing preparation prevent admission.
+When the Ready dialog reports missing or unusable preparation, Update Spec records the task brief
+in place against the version the dialog holds and rechecks readiness; scope reserved by another
+ticket's execution is released on that ticket, not here.
 Conflict checks include Ready, In progress, unmerged In review and outstanding execution reservations
 in the same repository, including project aliases. Unknown competing scope is a visible hold.
 Queue and launch-failure reasons remain visible; a failed launch is never development completion.

@@ -1,6 +1,10 @@
 import { useEffect, useState } from "react";
+import { ClipboardList } from "lucide-react";
 import { api, errorMessage, pathId } from "../api";
+import type { TaskBrief } from "../intake-types";
+import { emptyBrief } from "../intake";
 import type { DeskState, Integrations, Stage, Ticket } from "../types";
+import { BriefFields } from "./WorkflowBrief";
 import { ErrorNotice, isActive, isExternalAgent, Modal, ticketKey } from "./shared";
 
 interface Readiness {
@@ -33,6 +37,7 @@ export function StageTransition({
   stage,
   state,
   integrations,
+  refresh,
   onClose,
   onResult,
 }: {
@@ -40,6 +45,7 @@ export function StageTransition({
   stage: Stage;
   state: DeskState;
   integrations: Integrations | null;
+  refresh: () => Promise<void>;
   onClose: () => void;
   onResult: (result: TransitionResult) => Promise<void>;
 }) {
@@ -50,8 +56,18 @@ export function StageTransition({
   const [busy, setBusy] = useState(false);
   const [loading, setLoading] = useState(!planning);
   const [retry, setRetry] = useState(0);
+  // The preparation edited here is the only brief write outside intake; it carries
+  // the version this dialog knows so a concurrent change cannot be overwritten.
+  const [version, setVersion] = useState(ticket.version);
+  const [editing, setEditing] = useState(false);
+  const [brief, setBrief] = useState<TaskBrief>(() => ({
+    ...emptyBrief(),
+    ...ticket.brief,
+  }));
+  const [saving, setSaving] = useState(false);
+  const [notice, setNotice] = useState("");
   const current = state.tickets.find((item) => item.id === ticket.id);
-  const stale = !!current && current.version !== ticket.version;
+  const stale = !!current && current.version !== version && !saving;
   const owner = state.agents.find((item) => item.id === ownerId);
   const availability = integrations?.agents.find((item) => item.id === ownerId);
   const external = isExternalAgent(owner);
@@ -76,6 +92,29 @@ export function StageTransition({
       cancelled = true;
     };
   }, [ticket.id, planning, retry]);
+  async function saveSpec() {
+    if (busy || saving) return;
+    setSaving(true);
+    setError("");
+    setNotice("");
+    try {
+      const saved = await api<Ticket>(
+        `/tickets/${pathId(ticket.id)}`,
+        "PATCH",
+        { version, brief },
+      );
+      setVersion(saved.version);
+      setBrief({ ...emptyBrief(), ...saved.brief });
+      setEditing(false);
+      setNotice("Spec saved. Readiness reflects the recorded preparation.");
+      setRetry((value) => value + 1);
+      await refresh();
+    } catch (failure) {
+      setError(errorMessage(failure));
+    } finally {
+      setSaving(false);
+    }
+  }
   async function confirm() {
     if (busy) return;
     setBusy(true);
@@ -85,7 +124,7 @@ export function StageTransition({
         `/tickets/${pathId(ticket.id)}/transition`,
         "POST",
         {
-          version: ticket.version,
+          version,
           stageId: stage.id,
           ownerId,
           confirmed: true,
@@ -103,7 +142,7 @@ export function StageTransition({
       title={planning ? "Start planning" : "Move to Ready"}
       subtitle={`${ticketKey(ticket, state.projects)} · ${ticket.title}`}
       onClose={() => {
-        if (!busy) onClose();
+        if (!busy && !saving) onClose();
       }}
     >
       <div className="dialog-form">
@@ -191,6 +230,67 @@ export function StageTransition({
                     </ul>
                   </div>
                 ))}
+                {!readiness.ready && (
+                  <div className="readiness-actions">
+                    <button
+                      type="button"
+                      className="button small-button"
+                      aria-expanded={editing}
+                      disabled={busy || saving}
+                      onClick={() => {
+                        setNotice("");
+                        setEditing((value) => !value);
+                      }}
+                    >
+                      <ClipboardList size={14} />
+                      {editing ? "Hide spec editor" : "Update Spec"}
+                    </button>
+                  </div>
+                )}
+                {editing && (
+                  <>
+                    <p className="field-hint">
+                      Record the preparation this ticket is missing, then save
+                      to recheck. Scope reserved by another ticket's execution
+                      is released there, not here.
+                    </p>
+                    <BriefFields
+                      value={brief}
+                      onChange={setBrief}
+                      disabled={busy || saving}
+                    />
+                    <div className="readiness-actions">
+                      <button
+                        type="button"
+                        className="button primary small-button"
+                        disabled={busy || saving || stale}
+                        onClick={() => void saveSpec()}
+                      >
+                        {saving ? "Saving…" : "Save spec"}
+                      </button>
+                      <button
+                        type="button"
+                        className="button small-button"
+                        disabled={busy || saving}
+                        onClick={() => {
+                          setBrief({
+                            ...emptyBrief(),
+                            ...(current?.brief ?? ticket.brief),
+                          });
+                          setEditing(false);
+                          setNotice("");
+                        }}
+                      >
+                        Discard spec edits
+                      </button>
+                    </div>
+                  </>
+                )}
+                {notice && (
+                  <p className="field-hint" role="status">
+                    {notice}
+                  </p>
+                )}
               </>
             ) : (
               <button
@@ -203,13 +303,18 @@ export function StageTransition({
           </section>
         )}
         <div className="dialog-footer">
-          <button className="button" disabled={busy} onClick={onClose}>
+          <button
+            className="button"
+            disabled={busy || saving}
+            onClick={onClose}
+          >
             Cancel
           </button>
           <button
             className="button primary"
             disabled={
               busy ||
+              saving ||
               loading ||
               stale ||
               !ownerId ||
