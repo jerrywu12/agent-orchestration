@@ -33,11 +33,41 @@ test("etime: MM:SS, HH:MM:SS, DD-HH:MM:SS, padded and malformed input", () => {
 test("description: tabs/newlines/control chars stripped, capped at 60, empty -> Untitled task", () => {
   assert.equal(typeof normalizeDescription, "function");
   assert.equal(normalizeDescription("  hello \n world\t "), "hello world");
+  assert.equal(normalizeDescription("Fix login | signup"), "Fix login signup");
+  assert.equal(normalizeDescription("\r\n\t\x00\x1f "), "Untitled task");
+  assert.equal(normalizeDescription(""), "Untitled task");
+  assert.equal(normalizeDescription(null), "Untitled task");
+  assert.equal(normalizeDescription(123), "Untitled task");
+  const longDesc = "a".repeat(100);
+  assert.equal(normalizeDescription(longDesc), "a".repeat(60));
+  assert.equal(normalizeDescription(longDesc).length, 60);
 });
 
 test("workspace: final path segment only; assert no / in any emitted workspace", () => {
   assert.equal(typeof workspaceSegment, "function");
+  const samples = [
+    "/Users/jerry/project",
+    "/Users/jerry/project/",
+    "/Users/jerry/agent-orchestrator/tools/agent-desk",
+    "project",
+    "/",
+    "",
+    "   ",
+    null,
+    undefined,
+    "/foo/bar/baz-repo",
+  ];
+  for (const sample of samples) {
+    const ws = workspaceSegment(sample);
+    assert.equal(typeof ws, "string");
+    assert.ok(!ws.includes("/"), `Workspace "${ws}" must not contain /`);
+    assert.ok(ws.length <= 60, "Workspace must be <= 60 chars");
+  }
   assert.equal(workspaceSegment("/Users/jerry/project"), "project");
+  assert.equal(workspaceSegment("/Users/jerry/project/"), "project");
+  assert.equal(workspaceSegment(""), "—");
+  assert.equal(workspaceSegment(null), "—");
+  assert.equal(workspaceSegment("/"), "—");
 });
 
 test("origin: vscode/exec/cli map correctly, structured JSON -> Subagent, unknown -> Codex, raw source never leaks", () => {

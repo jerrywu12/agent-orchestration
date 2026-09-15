@@ -42,6 +42,27 @@ export function parseElapsedSeconds(raw) {
   return Number.isSafeInteger(total) && total >= 0 ? total : null;
 }
 
+export function normalizeDescription(raw) {
+  if (typeof raw !== "string") return "Untitled task";
+  const cleaned = raw
+    .replace(/[|\r\n\t\x00-\x1f\x7f]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (!cleaned) return "Untitled task";
+  return cleaned.slice(0, 60);
+}
+
+export function workspaceSegment(raw) {
+  if (typeof raw !== "string") return "—";
+  const trimmed = raw.trim().replace(/[/\\]+$/, "");
+  if (!trimmed) return "—";
+  const segments = trimmed.split(/[/\\]/).filter(Boolean);
+  const last = segments.pop();
+  if (!last) return "—";
+  const cleaned = last.replace(/[\x00-\x1f\x7f]/g, "").trim().slice(0, 60);
+  return cleaned || "—";
+}
+
 export async function collectActivity(options = {}) {
   throw new Error("Not implemented");
 }
