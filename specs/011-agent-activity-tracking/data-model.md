@@ -29,7 +29,14 @@ The complete answer to "what agent work is in flight on this machine now".
 
 - `state === "idle"` ⟹ `activeCount === 0` **and** no source has `status: "unobservable"`.
 - `activeCount === 0` **and** some source unobservable ⟹ `state === "unobservable"`. A zero count must never be presented as "nothing is running" when something could not be read (SC-005).
+- `activeCount > 0` ⟹ `state === "active"`, **even when a source is unobservable**. Positively observed work is reported as active; the failed source is carried by `partial: true` and its `sources[]` entry, not by downgrading the state. Saying "cannot observe" while holding proof that a worker is running would understate what is known. *(Added 2026-09-15 — see "Amendment" below.)*
 - `stale === true` ⟹ `observedAt` refers to the last *successful* observation, not the failed attempt.
+
+**Amendment (2026-09-15, during implementation)**
+
+The original invariant list did not state what `state` should be when `activeCount > 0` **and** a source is unobservable. The worked "partial coverage" example in [contracts/activity-api.md](./contracts/activity-api.md) silently assumed `"unobservable"` while the first two invariants permitted `"active"`, so the contract was self-inconsistent rather than merely incomplete.
+
+Resolved in favour of `"active"`, and the contract example corrected to match. Rationale: `partial` and the per-source `reason` already carry the degradation without discarding a positive observation, and the invariant that actually protects the administrator — never reporting "nothing is running" when a source failed — is unaffected either way. Recorded here rather than patched silently, per `docs/SPEC_KIT_POLICY.md` ("if implementation reveals a gap, stop and revise the spec/plan explicitly").
 
 ---
 

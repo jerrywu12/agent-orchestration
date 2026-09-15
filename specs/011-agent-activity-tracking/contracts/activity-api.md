@@ -63,12 +63,12 @@ An unobservable source is **not** an error status. It is a `200` whose `sources[
 
 **Example — partial coverage (task source unreadable, processes fine)**
 
-Note `state` is `"unobservable"`, not `"idle"`, even though `tasks` is empty — the Codex process fallback found nothing but the source could not be confirmed (R-010).
+Note `state` is `"active"`, not `"idle"` and not `"unobservable"`: a worker was positively observed, so the snapshot reports active work, while `partial: true` and the `codex-tasks` entry in `sources[]` carry the failed read. `state` would be `"unobservable"` only if `activeCount` were also `0` — see the invariants and the 2026-09-15 amendment in [data-model.md](../data-model.md). *(This example previously showed `"unobservable"`, which contradicted those invariants; corrected 2026-09-15.)*
 
 ```json
 {
   "activeCount": 1,
-  "state": "unobservable",
+  "state": "active",
   "tasks": [],
   "workers": [
     { "agentId": "claude", "agentName": "Claude Code", "pid": 45012, "elapsedSeconds": 1874 }
