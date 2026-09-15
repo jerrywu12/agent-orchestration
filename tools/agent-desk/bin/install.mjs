@@ -13,6 +13,7 @@ import {
   rm,
   open,
 } from "node:fs/promises";
+import { existsSync } from "node:fs";
 import { homedir } from "node:os";
 import { parseDocument, isMap } from "yaml";
 import { resolve, dirname, join, isAbsolute, relative, sep } from "node:path";
@@ -398,7 +399,17 @@ function launchAgent(options) {
     AGENT_DESK_DATA_DIR: dataDir,
     PATH: `${dirname(node)}:${join(options.home, ".local/bin")}:/opt/homebrew/opt/gemini-cli/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin`,
   };
-  return `<?xml version="1.0" encoding="UTF-8"?>\n<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">\n<plist version="1.0"><dict>\n<key>Label</key><string>local.agent.agent-desk</string>\n<key>ProgramArguments</key><array><string>${xml(node)}</string><string>${xml(join(appPath, "server/http.mjs"))}</string></array>\n<key>WorkingDirectory</key><string>${xml(appPath)}</string>\n<key>EnvironmentVariables</key><dict>${Object.entries(
+  // Prefer the wrapper inside Agent Desk.app when the menu bar installer has
+  // created it. macOS groups background items by bundle, so running the server
+  // from inside the bundle collapses the server and the menu bar indicator into
+  // a single "Agent Desk" row in Login Items & Extensions instead of listing an
+  // opaque "node" item alongside it. Falls back to node directly when the
+  // bundle is absent, so a server-only install still works.
+  const bundled = join(dataDir, "Agent Desk.app/Contents/MacOS/AgentDeskServer");
+  const program = existsSync(bundled)
+    ? [xml(bundled)]
+    : [xml(node), xml(join(appPath, "server/http.mjs"))];
+  return `<?xml version="1.0" encoding="UTF-8"?>\n<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">\n<plist version="1.0"><dict>\n<key>Label</key><string>local.agent.agent-desk</string>\n<key>ProgramArguments</key><array>${program.map((p) => `<string>${p}</string>`).join("")}</array>\n<key>WorkingDirectory</key><string>${xml(appPath)}</string>\n<key>EnvironmentVariables</key><dict>${Object.entries(
     environment,
   )
     .map(([key, value]) => `<key>${key}</key><string>${xml(value)}</string>`)
