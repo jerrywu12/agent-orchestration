@@ -465,4 +465,102 @@ test.describe("Agent Activity Browser Specs", () => {
       "Codex task activity is unavailable; the count reflects processes only.",
     );
   });
+
+  test("sleep prevention active state renders holder list with distinct DOM structure", async ({
+    page,
+  }) => {
+    await setupPageRoutes(page, activeSnapshot());
+    await openMachine(page);
+
+    const sleepContainer = page.locator(
+      '[data-testid="activity-sleep-prevention"]',
+    );
+    await expect(sleepContainer).toBeVisible();
+    await expect(sleepContainer).toHaveAttribute("data-sleep-state", "active");
+    await expect(
+      sleepContainer.locator('[data-testid="activity-sleep-state"]'),
+    ).toHaveText("active");
+
+    // Holders list is structurally present
+    const holdersList = page.locator('[data-testid="activity-sleep-holders"]');
+    await expect(holdersList).toBeVisible();
+
+    // Holder count badge is structurally present
+    const countBadge = page.locator('[data-testid="activity-sleep-count"]');
+    await expect(countBadge).toBeVisible();
+    await expect(countBadge).toContainText("(1 holder)");
+
+    // Holder item with PID and formatted runtime
+    const holderRow = page.locator(
+      '[data-testid="activity-sleep-holder-2195"]',
+    );
+    await expect(holderRow).toBeVisible();
+    await expect(holderRow.locator(".activity-holder-pid")).toHaveText("2195");
+    await expect(holderRow.locator(".activity-holder-elapsed")).toHaveText(
+      "12h 58m",
+    );
+  });
+
+  test("sleep prevention inactive state renders distinct inactive structure without holders", async ({
+    page,
+  }) => {
+    await setupPageRoutes(page, idleSnapshot());
+    await openMachine(page);
+
+    const sleepContainer = page.locator(
+      '[data-testid="activity-sleep-prevention"]',
+    );
+    await expect(sleepContainer).toBeVisible();
+    await expect(sleepContainer).toHaveAttribute(
+      "data-sleep-state",
+      "inactive",
+    );
+    await expect(
+      sleepContainer.locator('[data-testid="activity-sleep-state"]'),
+    ).toHaveText("inactive");
+
+    // Holders list and count badge are structurally absent from the DOM
+    await expect(
+      page.locator('[data-testid="activity-sleep-holders"]'),
+    ).toHaveCount(0);
+    await expect(
+      page.locator('[data-testid="activity-sleep-count"]'),
+    ).toHaveCount(0);
+  });
+
+  test("sleep prevention with multiple holders renders each holder structurally", async ({
+    page,
+  }) => {
+    const multiSnapshot = activeSnapshot();
+    multiSnapshot.sleepPrevention = {
+      state: "active",
+      holders: [
+        { pid: 2195, elapsedSeconds: 46709 },
+        { pid: 3002, elapsedSeconds: 90 },
+      ],
+    };
+    await setupPageRoutes(page, multiSnapshot);
+    await openMachine(page);
+
+    const sleepContainer = page.locator(
+      '[data-testid="activity-sleep-prevention"]',
+    );
+    await expect(sleepContainer).toHaveAttribute("data-sleep-state", "active");
+
+    const countBadge = page.locator('[data-testid="activity-sleep-count"]');
+    await expect(countBadge).toContainText("(2 holders)");
+
+    await expect(
+      page.locator('[data-testid="activity-sleep-holder-2195"]'),
+    ).toBeVisible();
+    await expect(
+      page.locator('[data-testid="activity-sleep-holder-3002"]'),
+    ).toBeVisible();
+    await expect(
+      page
+        .locator('[data-testid="activity-sleep-holder-3002"]')
+        .locator(".activity-holder-elapsed"),
+    ).toHaveText("1m 30s");
+  });
 });
+

@@ -5002,6 +5002,16 @@ progress::-moz-progress-bar {
   border-color: #c7decb;
   color: var(--green);
 }
+.activity-sleep-prevention.state-inactive {
+  background: var(--surface);
+  border-color: var(--line);
+  color: var(--muted);
+}
+.activity-sleep-prevention.state-unobservable {
+  background: #fdf6ec;
+  border-color: #faecd8;
+  color: var(--warning);
+}
 .activity-sleep-header {
   display: flex;
   align-items: center;
@@ -5014,6 +5024,17 @@ progress::-moz-progress-bar {
 .activity-sleep-holders {
   margin: 6px 0 0 22px;
   padding: 0;
+  font-size: 12px;
+}
+.activity-holder-pid {
+  font-family: ui-monospace, SFMono-Regular, monospace;
+  font-size: 12px;
+  padding: 1px 4px;
+  background: rgba(0, 0, 0, 0.05);
+  border-radius: 3px;
+}
+.activity-holder-elapsed {
+  font-family: ui-monospace, SFMono-Regular, monospace;
   font-size: 12px;
 }
 .activity-notes {

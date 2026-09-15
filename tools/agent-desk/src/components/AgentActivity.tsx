@@ -9,7 +9,12 @@ import {
   Terminal,
 } from "lucide-react";
 import { api, errorMessage } from "../api";
-import type { ActivitySnapshot, ActiveTask, ActiveWorker } from "../activity-types";
+import type {
+  ActivitySnapshot,
+  ActiveTask,
+  ActiveWorker,
+  SleepHolder,
+} from "../activity-types";
 
 const ACTIVITY_POLL_INTERVAL = 15000;
 
@@ -415,33 +420,49 @@ export function AgentActivity() {
         <div
           className={`activity-sleep-prevention state-${snapshot.sleepPrevention.state}`}
           data-testid="activity-sleep-prevention"
+          data-sleep-state={snapshot.sleepPrevention.state}
         >
           <div className="activity-sleep-header">
             <Moon size={14} />
             <span>
               Sleep prevention:{" "}
-              <strong>{snapshot.sleepPrevention.state}</strong>
+              <strong data-testid="activity-sleep-state">
+                {snapshot.sleepPrevention.state}
+              </strong>
             </span>
-            {snapshot.sleepPrevention.holders.length > 0 && (
-              <span className="activity-sleep-count">
-                ({snapshot.sleepPrevention.holders.length}{" "}
-                {snapshot.sleepPrevention.holders.length === 1
-                  ? "holder"
-                  : "holders"}
-                )
-              </span>
-            )}
+            {snapshot.sleepPrevention.state === "active" &&
+              snapshot.sleepPrevention.holders.length > 0 && (
+                <span
+                  className="activity-sleep-count"
+                  data-testid="activity-sleep-count"
+                >
+                  ({snapshot.sleepPrevention.holders.length}{" "}
+                  {snapshot.sleepPrevention.holders.length === 1
+                    ? "holder"
+                    : "holders"}
+                  )
+                </span>
+              )}
           </div>
-          {snapshot.sleepPrevention.holders.length > 0 && (
-            <ul className="activity-sleep-holders">
-              {snapshot.sleepPrevention.holders.map((holder) => (
-                <li key={holder.pid}>
-                  PID <code>{holder.pid}</code> ·{" "}
-                  {formatElapsed(holder.elapsedSeconds)}
-                </li>
-              ))}
-            </ul>
-          )}
+          {snapshot.sleepPrevention.state === "active" &&
+            snapshot.sleepPrevention.holders.length > 0 && (
+              <ul
+                className="activity-sleep-holders"
+                data-testid="activity-sleep-holders"
+              >
+                {snapshot.sleepPrevention.holders.map((holder: SleepHolder) => (
+                  <li
+                    key={holder.pid}
+                    data-testid={`activity-sleep-holder-${holder.pid}`}
+                  >
+                    PID <code className="activity-holder-pid">{holder.pid}</code> ·{" "}
+                    <span className="activity-holder-elapsed">
+                      {formatElapsed(holder.elapsedSeconds)}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            )}
         </div>
       )}
 
