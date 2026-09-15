@@ -75,9 +75,74 @@ test("origin: vscode/exec/cli map correctly, structured JSON -> Subagent, unknow
   assert.equal(classifyOrigin("vscode"), "Codex app");
 });
 
-test("lifecycle: started -> active, complete -> excluded, never emitted -> excluded, beyond escalation -> indeterminate + partial", async () => {
-  const result = await collectActivity();
-  assert.ok(result);
+test("lifecycle: started -> active, complete -> excluded, never emitted -> excluded, beyond escalation -> indeterminate + partial", async (t) => {
+  const { mkdtempSync, rmSync } = await import("node:fs");
+  const { tmpdir } = await import("node:os");
+  const { join } = await import("node:path");
+  const { createTestCodexDb, createRollout } = await import(
+    "./fixtures/activity/build.mjs"
+  );
+
+  const testDir = mkdtempSync(join(tmpdir(), "agent-activity-lifecycle-"));
+  t.after(() => rmSync(testDir, { recursive: true, force: true }));
+
+  // 1. started -> active
+  const rActive = createRollout({
+    dir: testDir,
+    filename: "active.rollout",
+    markers: ["task_started"],
+  });
+  // 2. complete -> excluded
+  const rComplete = createRollout({
+    dir: testDir,
+    filename: "complete.rollout",
+    markers: ["task_started", "task_complete"],
+  });
+  // 3. never emitted -> excluded
+  const rNever = createRollout({
+    dir: testDir,
+    filename: "never.rollout",
+    markers: [],
+    prefixBytes: 500,
+  });
+  // 4. beyond escalation -> indeterminate (marker at start, followed by >4MiB padding)
+  const rBeyond = createRollout({
+    dir: testDir,
+    filename: "beyond.rollout",
+    markers: ["task_started"],
+    suffixBytes: 4.5 * 1024 * 1024,
+  });
+
+  createTestCodexDb({
+    dir: testDir,
+    filename: "state_5.sqlite",
+    threads: [
+      { id: "thread-active-01", rollout_path: rActive, title: "Active task" },
+      { id: "thread-comp-02", rollout_path: rComplete, title: "Complete task" },
+      { id: "thread-never-03", rollout_path: rNever, title: "Never task" },
+      { id: "thread-beyond-04", rollout_path: rBeyond, title: "Beyond task" },
+    ],
+  });
+
+  const res = await collectActivity({
+    codexDir: testDir,
+    runPs: () => "",
+  });
+
+  // Complete and Never-emitted must not be in tasks
+  assert.equal(res.tasks.some((tk) => tk.id.startsWith("thread-comp")), false);
+  assert.equal(res.tasks.some((tk) => tk.id.startsWith("thread-never")), false);
+
+  // Started must be active
+  const activeTask = res.tasks.find((tk) => tk.id.startsWith("thread-a"));
+  assert.ok(activeTask, "Active task should be present");
+  assert.equal(activeTask.lifecycle, "active");
+
+  // Beyond escalation must be indeterminate
+  const beyondTask = res.tasks.find((tk) => tk.id.startsWith("thread-b"));
+  assert.ok(beyondTask, "Beyond-escalation task should be present");
+  assert.equal(beyondTask.lifecycle, "indeterminate");
+  assert.equal(res.partial, true, "Partial must be true when indeterminate task exists");
 });
 
 test("workers: each of the five exclusions in data-model.md as a separate named case", async () => {
