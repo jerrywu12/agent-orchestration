@@ -62,6 +62,18 @@ All measurements below were taken on the target Mac (Darwin 25.6.0, Node v22.23.
 
 **Decision**: Detect sleep prevention by locating `caffeinate` processes that hold a system or idle assertion, and classify a hold as agent-linked when the holder is a known agent-linked wrapper or when its process ancestry reaches a tracked agent process. Do not match a hardcoded absolute binary path.
 
+> **Refinement (2026-09-15, before US2 implementation).** Wrapper recognition is the **primary and only currently-exercised** path on this Mac. Ancestry-to-a-tracked-agent is a fallback for other wrapper styles and has no live test data here. Measured ancestry is:
+>
+> ```text
+> launchd (1) → agent_caffeinate_watch.sh (1614) → caffeinate -is (2195)
+> ```
+>
+> The wrapper is a LaunchAgent (`com.jerry.agent-caffeinate`) with **ppid 1**, so a hold's ancestry reaches the *wrapper* and never reaches a tracked agent process. An implementation that only walked ancestry looking for an agent would detect nothing on this machine. Classify by recognizing the wrapper, and treat its `caffeinate` child as agent-linked by construction.
+>
+> The signal is genuinely informative rather than always-on: the wrapper polls every 30 s and holds the assertion *only* while a matching agent process exists, releasing it when agent work finishes. A long elapsed time means sustained agent activity, not a stuck hold.
+>
+> The wrapper's own detection list covers Claude, Gemini, Codex `exec`, Antigravity and ArkCLI, but **not** Cursor or Hermes — its notion of "agent work" is narrower than Agent Desk's tracked-agent set. The two are independent and must not be assumed equivalent.
+
 **Rationale**: This is a correctness fix, not a port. The superseded indicator matches the literal pattern `caffeinate -i /opt/homebrew/bin/codex`. On this Mac **that pattern currently matches zero processes**, so the indicator reports "Codex-linked sleep prevention: inactive" — while sleep prevention *is* in force, held by `caffeinate -is` (PID 2195) under `/Users/jerry/.local/bin/agent_caffeinate_watch.sh` (PID 1614), both running for ~13 hours. The indicator's panel has therefore been silently wrong for as long as the watch script has been the mechanism. Reproducing the regex would import a live defect into Agent Desk and would fail SC-010 parity in the correct direction — Agent Desk must be right, and the parity record must note this as a known, intentional divergence.
 
 **Alternatives considered**:
