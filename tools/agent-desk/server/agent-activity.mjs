@@ -1,4 +1,5 @@
 import { DatabaseSync } from "node:sqlite";
+import { execFile } from "node:child_process";
 import {
   existsSync,
   lstatSync,
@@ -38,6 +39,17 @@ export const REASONS = Object.freeze({
   CONTAINER_UNOBSERVABLE:
     "Host activity cannot be observed from inside a container.",
 });
+
+export const TRACKED_AGENTS = Object.freeze([
+  { id: "claude", name: "Claude Code", bin: "claude" },
+  { id: "gemini", name: "Gemini CLI", bin: "gemini" },
+  { id: "agy", name: "Antigravity CLI", bin: "agy" },
+  { id: "cursor", name: "Cursor Agent", bin: "cursor-agent" },
+  { id: "hermes", name: "Hermes", bin: "hermes" },
+  { id: "ollama", name: "Ollama", bin: "ollama" },
+  { id: "arkcli", name: "ArkCLI", bin: "arkcli" },
+  { id: "codex", name: "Codex", bin: "codex" },
+]);
 
 const REQUIRED_COLUMNS = [
   "id",
@@ -118,6 +130,121 @@ export function classifyOrigin(raw) {
     } catch {}
   }
   return "Codex";
+}
+
+export function defaultRunPs({ signal } = {}) {
+  return new Promise((resolve, reject) => {
+    execFile(
+      "/bin/ps",
+      ["-axo", "pid=,ppid=,etime=,command="],
+      {
+        encoding: "utf8",
+        timeout: 2500,
+        maxBuffer: ACTIVITY_LIMITS.psMaxBuffer,
+        signal,
+        windowsHide: true,
+      },
+      (error, stdout) => {
+        if (error) reject(error);
+        else resolve(stdout);
+      },
+    );
+  });
+}
+
+export function matchAgentWorker(command) {
+  if (typeof command !== "string") return null;
+
+  // Exclusion 1: Desktop application bundle
+  if (
+    /\.app\/Contents\//i.test(command) ||
+    /^\/Applications\/[^\/]+\.app\//i.test(command)
+  ) {
+    return null;
+  }
+  // Exclusion 2: IDE extensions directory
+  if (
+    /[/\\]\.?(?:vscode|cursor|windsurf)[/\\]extensions[/\\]/i.test(command) ||
+    /[/\\]extensions[/\\]/i.test(command)
+  ) {
+    return null;
+  }
+  // Exclusion 3: IDE language-server helper lacking agent's own flag
+  if (/language[-_]?server|languageserver|\blsp\b/i.test(command)) {
+    return null;
+  }
+  // Exclusion 4: Observer's own process / tooling
+  if (
+    /\bagent-desk\b|\bagent-activity\b|\bcodex-status\.5s\.sh\b/i.test(command)
+  ) {
+    return null;
+  }
+
+  // Match against tracked agents
+  for (const agent of TRACKED_AGENTS) {
+    const pattern = new RegExp(
+      `(?:^|[\\/\\\\])${agent.bin}(?:\\.js)?(?:\\s|$)`,
+    );
+    if (pattern.test(command)) {
+      return agent;
+    }
+  }
+  return null;
+}
+
+export function parseProcessList(
+  psOutput,
+  { codexTasksObservable = true } = {},
+) {
+  if (typeof psOutput !== "string")
+    return { workers: [], codexFallbackWorkers: [] };
+  const lines = psOutput.split(/\r?\n/);
+  const workers = [];
+  const codexFallbackWorkers = [];
+
+  for (const line of lines.slice(0, ACTIVITY_LIMITS.psMaxRows)) {
+    if (!line.trim()) continue;
+    const match = line.match(/^\s*(\d+)\s+(\d+)\s+([0-9:-]+)\s+(.+)$/);
+    if (!match) continue;
+    const pid = Number(match[1]);
+    const ppid = Number(match[2]);
+    const etimeStr = match[3];
+    const rawCommand = match[4];
+
+    if (!Number.isSafeInteger(pid) || pid <= 0) continue;
+    const elapsedSeconds = parseElapsedSeconds(etimeStr);
+    if (elapsedSeconds === null) continue;
+
+    const matched = matchAgentWorker(rawCommand);
+    if (!matched) continue;
+
+    // Command string discarded here — never reaches the snapshot (FR-019)
+    if (matched.id === "codex") {
+      codexFallbackWorkers.push({
+        agentId: matched.id,
+        agentName: matched.name,
+        pid,
+        elapsedSeconds,
+      });
+      if (!codexTasksObservable) {
+        workers.push({
+          agentId: matched.id,
+          agentName: matched.name,
+          pid,
+          elapsedSeconds,
+        });
+      }
+    } else {
+      workers.push({
+        agentId: matched.id,
+        agentName: matched.name,
+        pid,
+        elapsedSeconds,
+      });
+    }
+  }
+
+  return { workers, codexFallbackWorkers };
 }
 
 function scanRolloutMarker(filePath, windowBytes) {
@@ -349,16 +476,18 @@ export function readCodexTasks({
 export async function collectActivity(options = {}) {
   const {
     codexDir = join(homedir(), ".codex"),
-    runPs = () => "",
+    runPs = defaultRunPs,
     platform = hostPlatform(),
     clock = Date.now,
   } = options;
 
   const codexRes = readCodexTasks({ codexDir, clock });
+  const codexTasksObservable = codexRes.status === "observed";
 
   let psStatus = "observed";
   let psReason = null;
-  const workers = [];
+  let workers = [];
+  let codexFallbackWorkers = [];
 
   if (!["darwin", "linux"].includes(platform)) {
     psStatus = "unobservable";
@@ -369,6 +498,10 @@ export async function collectActivity(options = {}) {
       if (typeof output !== "string") {
         psStatus = "unobservable";
         psReason = REASONS.PROCESS_UNOBSERVABLE;
+      } else {
+        const parsed = parseProcessList(output, { codexTasksObservable });
+        workers = parsed.workers;
+        codexFallbackWorkers = parsed.codexFallbackWorkers;
       }
     } catch {
       psStatus = "unobservable";
@@ -377,6 +510,13 @@ export async function collectActivity(options = {}) {
   }
 
   const tasks = codexRes.tasks || [];
+  const notes = [];
+  if (!codexTasksObservable && codexFallbackWorkers.length > 0) {
+    notes.push(
+      "Codex task activity is unavailable; the count reflects processes only.",
+    );
+  }
+
   const partial =
     codexRes.status === "unobservable" ||
     psStatus === "unobservable" ||
@@ -391,6 +531,10 @@ export async function collectActivity(options = {}) {
   ) {
     state = "unobservable";
   }
+
+  const truncated =
+    tasks.length > ACTIVITY_LIMITS.maxTasks ||
+    workers.length > ACTIVITY_LIMITS.maxWorkers;
 
   return {
     activeCount: tasks.length + workers.length,
@@ -417,9 +561,9 @@ export async function collectActivity(options = {}) {
     observedAt: new Date(clock()).toISOString(),
     stale: false,
     partial,
-    truncated: false,
+    truncated,
     refreshing: false,
-    notes: [],
+    notes: notes.slice(0, ACTIVITY_LIMITS.maxNotes),
   };
 }
 
