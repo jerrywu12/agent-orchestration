@@ -224,9 +224,94 @@ test("lifecycle: started -> active, complete -> excluded, never emitted -> exclu
   assert.equal(res.partial, true, "Partial must be true when indeterminate task exists");
 });
 
-test("workers: each of the five exclusions in data-model.md as a separate named case", async () => {
-  const result = await collectActivity();
-  assert.ok(result);
+test("workers: each of the five exclusions in data-model.md as a separate named case", async (t) => {
+  const { mkdtempSync, rmSync } = await import("node:fs");
+  const { tmpdir } = await import("node:os");
+  const { join } = await import("node:path");
+  const { createTestCodexDb, makeSyntheticPsOutput } = await import(
+    "./fixtures/activity/build.mjs"
+  );
+
+  const testDir = mkdtempSync(join(tmpdir(), "agent-activity-workers-"));
+  t.after(() => rmSync(testDir, { recursive: true, force: true }));
+
+  createTestCodexDb({
+    dir: testDir,
+    filename: "state_5.sqlite",
+    threads: [],
+  });
+
+  const psOutput = makeSyntheticPsOutput([
+    // Valid background workers
+    { pid: 101, ppid: 1, etime: "02:00", command: "/usr/local/bin/claude" },
+    { pid: 102, ppid: 1, etime: "00:45", command: "/Users/jerry/.local/bin/agy" },
+
+    // Exclusion 1: Desktop application bundle
+    {
+      pid: 201,
+      ppid: 1,
+      etime: "10:00",
+      command: "/Applications/Claude.app/Contents/MacOS/Claude",
+    },
+    // Exclusion 2: IDE extensions directory
+    {
+      pid: 202,
+      ppid: 1,
+      etime: "05:00",
+      command:
+        "/Users/jerry/.vscode/extensions/anthropic.claude-1.0.0/bin/claude",
+    },
+    // Exclusion 3: Language-server helper lacking agent's own flag
+    {
+      pid: 203,
+      ppid: 1,
+      etime: "05:00",
+      command: "/usr/local/bin/claude-language-server",
+    },
+    // Exclusion 4: Observer's own process / tooling
+    {
+      pid: 204,
+      ppid: 1,
+      etime: "01:00",
+      command: "node tools/agent-desk/server/http.mjs",
+    },
+    // Exclusion 5: Codex counted as tasks, not processes
+    {
+      pid: 205,
+      ppid: 1,
+      etime: "03:00",
+      command: "/opt/homebrew/bin/codex",
+    },
+  ]);
+
+  const res = await collectActivity({
+    codexDir: testDir,
+    runPs: () => psOutput,
+  });
+
+  const workerPids = res.workers.map((w) => w.pid);
+
+  // Assert valid workers are included
+  assert.ok(workerPids.includes(101), "Claude CLI worker must be included");
+  assert.ok(workerPids.includes(102), "Antigravity CLI worker must be included");
+
+  // Assert the 5 exclusions
+  assert.ok(!workerPids.includes(201), "Exclusion 1: Desktop app bundle must be excluded");
+  assert.ok(!workerPids.includes(202), "Exclusion 2: IDE extensions directory must be excluded");
+  assert.ok(!workerPids.includes(203), "Exclusion 3: Language-server helper must be excluded");
+  assert.ok(!workerPids.includes(204), "Exclusion 4: Observer's own process must be excluded");
+  assert.ok(!workerPids.includes(205), "Exclusion 5: Codex process must be excluded when task source is observable");
+
+  // Worker fields check
+  const claude = res.workers.find((w) => w.pid === 101);
+  assert.equal(claude.agentId, "claude");
+  assert.equal(claude.agentName, "Claude Code");
+  assert.equal(claude.elapsedSeconds, 120);
+
+  const agy = res.workers.find((w) => w.pid === 102);
+  assert.equal(agy.agentId, "agy");
+  assert.equal(agy.agentName, "Antigravity CLI");
+  assert.equal(agy.elapsedSeconds, 45);
 });
 
 test("degradation: missing source, bad schema, locked DB, ps failure -> correct reason, retained prior values, state never idle", async () => {
