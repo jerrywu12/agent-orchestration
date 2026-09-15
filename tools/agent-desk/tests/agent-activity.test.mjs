@@ -426,11 +426,87 @@ test("invariants: idle only when all sources observed; zero + unobservable -> un
   assert.equal(resUnobs.activeCount, 0);
   assert.equal(resUnobs.state, "unobservable");
   assert.notEqual(resUnobs.state, "idle");
+
+  // Codex process fallback when task source is unobservable (R-010)
+  const { makeSyntheticPsOutput } = await import("./fixtures/activity/build.mjs");
+  const psCodex = makeSyntheticPsOutput([
+    { pid: 501, ppid: 1, etime: "01:30", command: "/opt/homebrew/bin/codex" },
+  ]);
+  const resFallback = await collectActivity({
+    codexDir: join(testDir, "nonexistent"),
+    runPs: () => psCodex,
+  });
+  assert.equal(resFallback.activeCount, 1);
+  assert.equal(resFallback.workers.length, 1);
+  assert.equal(resFallback.workers[0].pid, 501);
+  assert.equal(resFallback.state, "active");
+  assert.equal(resFallback.partial, true);
+  assert.ok(
+    resFallback.notes.some((n) =>
+      n.includes("Codex task activity is unavailable; the count reflects processes only."),
+    ),
+  );
+
+  // Container unobservable (FR-017)
+  const resContainer = await collectActivity({
+    codexDir: testDir,
+    isContainer: true,
+  });
+  assert.equal(resContainer.state, "unobservable");
+  assert.equal(
+    resContainer.sources.every((s) => s.reason === REASONS.CONTAINER_UNOBSERVABLE),
+    true,
+  );
 });
 
-test("bounds: 200/200/50/20 caps set truncated", async () => {
-  const result = await collectActivity();
-  assert.ok(result);
+test("bounds: 200/200/50/20 caps set truncated", async (t) => {
+  const { mkdtempSync, rmSync } = await import("node:fs");
+  const { tmpdir } = await import("node:os");
+  const { join } = await import("node:path");
+  const { createTestCodexDb, createRollout, makeSyntheticPsOutput } = await import(
+    "./fixtures/activity/build.mjs"
+  );
+
+  const testDir = mkdtempSync(join(tmpdir(), "agent-activity-bounds-"));
+  t.after(() => rmSync(testDir, { recursive: true, force: true }));
+
+  const rollout = createRollout({
+    dir: testDir,
+    filename: "active.rollout",
+    markers: ["task_started"],
+  });
+
+  // Seed 205 threads
+  const threads = [];
+  for (let i = 0; i < 205; i++) {
+    threads.push({
+      id: `task-${String(i).padStart(4, "0")}-uuid`,
+      rollout_path: rollout,
+      title: `Task number ${i}`,
+    });
+  }
+  createTestCodexDb({ dir: testDir, filename: "state_5.sqlite", threads });
+
+  // Seed 205 workers
+  const psRows = [];
+  for (let i = 0; i < 205; i++) {
+    psRows.push({
+      pid: 1000 + i,
+      ppid: 1,
+      etime: "01:00",
+      command: "/usr/local/bin/claude",
+    });
+  }
+  const psOutput = makeSyntheticPsOutput(psRows);
+
+  const res = await collectActivity({
+    codexDir: testDir,
+    runPs: () => psOutput,
+  });
+
+  assert.equal(res.tasks.length, 200, "Tasks must be capped at 200");
+  assert.equal(res.workers.length, 200, "Workers must be capped at 200");
+  assert.equal(res.truncated, true, "Truncated must be true when bounds exceeded");
 });
 
 test("lifecycle mgmt: overlapping refresh() coalesces; close() aborts in flight and stops timer", async () => {

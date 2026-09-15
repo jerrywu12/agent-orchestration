@@ -473,13 +473,54 @@ export function readCodexTasks({
   }
 }
 
+function isContainerHost() {
+  try {
+    return existsSync("/.dockerenv") || existsSync("/run/.containerenv");
+  } catch {
+    return false;
+  }
+}
+
 export async function collectActivity(options = {}) {
   const {
     codexDir = join(homedir(), ".codex"),
     runPs = defaultRunPs,
     platform = hostPlatform(),
     clock = Date.now,
+    isContainer = false,
   } = options;
+
+  if (isContainer || isContainerHost()) {
+    return {
+      activeCount: 0,
+      state: "unobservable",
+      tasks: [],
+      workers: [],
+      sleepPrevention: { state: "inactive", holders: [] },
+      sources: [
+        {
+          id: "codex-tasks",
+          label: "Codex tasks",
+          status: "unobservable",
+          reason: REASONS.CONTAINER_UNOBSERVABLE,
+          retained: false,
+        },
+        {
+          id: "processes",
+          label: "Processes",
+          status: "unobservable",
+          reason: REASONS.CONTAINER_UNOBSERVABLE,
+          retained: false,
+        },
+      ],
+      observedAt: new Date(clock()).toISOString(),
+      stale: false,
+      partial: true,
+      truncated: false,
+      refreshing: false,
+      notes: [],
+    };
+  }
 
   const codexRes = readCodexTasks({ codexDir, clock });
   const codexTasksObservable = codexRes.status === "observed";
