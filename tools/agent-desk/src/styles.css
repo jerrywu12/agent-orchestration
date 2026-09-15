@@ -3814,6 +3814,12 @@ progress::-moz-progress-bar {
   line-height: 1.65;
   resize: vertical;
 }
+.readiness-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 12px;
+}
 .intake-section-title {
   display: flex;
   align-items: center;

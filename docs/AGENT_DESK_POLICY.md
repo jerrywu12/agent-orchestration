@@ -64,6 +64,20 @@ Originals and extracted text remain private to the service and authorized ticket
 they are not automatically published to GitHub. Folder registration discovers an existing
 repository without modifying it; runner readiness checks still apply before Start.
 
+**Update the supplied document; never author a parallel one.** When a ticket supplies a
+specification, plan or design, that document is the work item's canonical text. Extend it in
+place — add a clearly marked review, amendment or status section and leave the author's
+existing sections unedited — rather than writing a fresh document that restates it. A supplied
+document that already carries goal, current state, workstreams, acceptance criteria, sequencing
+and risks **is** the plan; do not offer to write another one, and name only the genuinely
+missing pieces. Before proposing any new document, state what the supplied one already covers.
+
+Attachments are immutable, so landing one in a repository necessarily makes a copy. Treat the
+repository path as canonical from that moment: say so on the ticket with its path and merge SHA,
+and update the requester's working copy in the same turn so the two cannot drift. Two live
+versions of one specification is the failure this rule exists to prevent — later readers cannot
+tell which one binds.
+
 A parent stays open until all children are done. New planner-created children remain in Planning
 until individually admitted; creating a child never confirms its execution. After planning the parent may use an
 active stage as a container without its own executor or branch; delivery evidence
