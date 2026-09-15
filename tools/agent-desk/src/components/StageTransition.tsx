@@ -1,9 +1,10 @@
-import { useEffect, useState } from "react";
-import { ClipboardList } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { ClipboardList, Radio } from "lucide-react";
 import { api, errorMessage, pathId } from "../api";
 import type { TaskBrief } from "../intake-types";
 import { emptyBrief } from "../intake";
 import type { DeskState, Integrations, Stage, Ticket } from "../types";
+import { ExecutionTracking } from "./ExecutionTracking";
 import { BriefFields } from "./WorkflowBrief";
 import { ErrorNotice, isActive, isExternalAgent, Modal, ticketKey } from "./shared";
 
@@ -66,8 +67,13 @@ export function StageTransition({
   }));
   const [saving, setSaving] = useState(false);
   const [notice, setNotice] = useState("");
+  const [inspecting, setInspecting] = useState(false);
   const current = state.tickets.find((item) => item.id === ticket.id);
   const stale = !!current && current.version !== version && !saving;
+  // The reservation is read from the refreshed record so a release performed here
+  // clears the hold; the server still decides whether a claim may be released.
+  const execution = (current ?? ticket).execution;
+  const held = isActive(execution);
   const owner = state.agents.find((item) => item.id === ownerId);
   const availability = integrations?.agents.find((item) => item.id === ownerId);
   const external = isExternalAgent(owner);
@@ -92,6 +98,18 @@ export function StageTransition({
       cancelled = true;
     };
   }, [ticket.id, planning, retry]);
+  // The release is recorded on the execution, so the reservation clearing is what
+  // reports it here; the tracking panel unmounts with the hold it resolved.
+  const wasHeld = useRef(held);
+  useEffect(() => {
+    if (wasHeld.current && !held) {
+      setInspecting(false);
+      setNotice(
+        "The prior claim is released. Existing work and session history are preserved.",
+      );
+    }
+    wasHeld.current = held;
+  }, [held]);
   async function saveSpec() {
     if (busy || saving) return;
     setSaving(true);
@@ -158,11 +176,38 @@ export function StageTransition({
             latest version.
           </ErrorNotice>
         )}
-        {isActive(ticket.execution) && (
-          <ErrorNotice>
-            An existing execution owns this ticket. Checkpoint and release it
-            before changing its stage.
-          </ErrorNotice>
+        {held && (
+          <>
+            <ErrorNotice>
+              An existing execution owns this ticket. Checkpoint and release it
+              before changing its stage.
+            </ErrorNotice>
+            <div className="readiness-actions">
+              <button
+                type="button"
+                className="button small-button"
+                aria-expanded={inspecting}
+                disabled={busy || saving}
+                onClick={() => setInspecting((value) => !value)}
+              >
+                <Radio size={14} />
+                {inspecting ? "Hide execution trace" : "Release claim"}
+              </button>
+            </div>
+            {inspecting && (
+              <ExecutionTracking
+                ticketId={ticket.id}
+                executionId={execution?.id}
+                disabled={busy || saving}
+                refresh={refresh}
+              />
+            )}
+          </>
+        )}
+        {notice && (
+          <p className="field-hint" role="status">
+            {notice}
+          </p>
         )}
         <label>
           {planning ? "Planning agent" : "Development agent"}
@@ -286,11 +331,6 @@ export function StageTransition({
                     </div>
                   </>
                 )}
-                {notice && (
-                  <p className="field-hint" role="status">
-                    {notice}
-                  </p>
-                )}
               </>
             ) : (
               <button
@@ -319,7 +359,7 @@ export function StageTransition({
               stale ||
               !ownerId ||
               unavailable ||
-              isActive(ticket.execution) ||
+              held ||
               (!planning && !readiness?.ready)
             }
             onClick={() => void confirm()}

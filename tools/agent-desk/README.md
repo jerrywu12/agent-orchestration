@@ -72,7 +72,10 @@ empty note records a default confirmation in the activity log.
 This revokes only the old board reservation, fences its late reports and preserves
 its worktree/history. It does not kill unknown processes or automatically run a
 replacement. Tracked live or freshly reporting executions refuse takeover.
-The bulk results panel exposes **Take over** directly for each needs-takeover row.
+The Planning and Ready dialogs expose **Release claim** beside the reservation hold; it opens
+the same Execution tracking panel and the same guarded takeover, and clears the hold in place
+when the claim is released. A live or freshly reporting claim keeps the hold and offers no
+takeover. The bulk results panel exposes **Take over** directly for each needs-takeover row.
 Its confirmation is pinned to that exact old execution. After release, **Run Agent**
 starts only that ticket; it waits if the remaining batch still has active work.
 An awaiting-review result states whether no agent is running, another execution is
