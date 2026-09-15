@@ -314,14 +314,118 @@ test("workers: each of the five exclusions in data-model.md as a separate named 
   assert.equal(agy.elapsedSeconds, 45);
 });
 
-test("degradation: missing source, bad schema, locked DB, ps failure -> correct reason, retained prior values, state never idle", async () => {
-  const result = await collectActivity();
-  assert.ok(result);
+test("degradation: missing source, bad schema, locked DB, ps failure -> correct reason, retained prior values, state never idle", async (t) => {
+  const { mkdtempSync, rmSync, writeFileSync } = await import("node:fs");
+  const { tmpdir } = await import("node:os");
+  const { join } = await import("node:path");
+  const { DatabaseSync } = await import("node:sqlite");
+  const { createTestCodexDb } = await import("./fixtures/activity/build.mjs");
+
+  const testDir = mkdtempSync(join(tmpdir(), "agent-activity-degrade-"));
+  t.after(() => rmSync(testDir, { recursive: true, force: true }));
+
+  // 1. Missing source (empty directory with no state_<N>.sqlite)
+  const emptyDir = join(testDir, "empty");
+  await (await import("node:fs/promises")).mkdir(emptyDir, { recursive: true });
+  const resMissing = await collectActivity({
+    codexDir: emptyDir,
+    runPs: () => "",
+  });
+  const codexSrc1 = resMissing.sources.find((s) => s.id === "codex-tasks");
+  assert.equal(codexSrc1.status, "unobservable");
+  assert.equal(codexSrc1.reason, REASONS.SOURCE_NOT_FOUND);
+  assert.equal(resMissing.partial, true);
+  assert.equal(resMissing.state, "unobservable"); // must NEVER be idle!
+
+  // 2. Bad schema (missing columns in threads table)
+  const badSchemaDir = join(testDir, "bad-schema");
+  await (await import("node:fs/promises")).mkdir(badSchemaDir, { recursive: true });
+  const badDbPath = join(badSchemaDir, "state_5.sqlite");
+  const badDb = new DatabaseSync(badDbPath);
+  badDb.exec("CREATE TABLE threads (id TEXT PRIMARY KEY);");
+  badDb.close();
+  const resBadSchema = await collectActivity({
+    codexDir: badSchemaDir,
+    runPs: () => "",
+  });
+  const codexSrc2 = resBadSchema.sources.find((s) => s.id === "codex-tasks");
+  assert.equal(codexSrc2.status, "unobservable");
+  assert.equal(codexSrc2.reason, REASONS.UNRECOGNIZED_FORMAT);
+  assert.equal(resBadSchema.state, "unobservable");
+
+  // 3. Unreadable DB (corrupt or locked)
+  const corruptDir = join(testDir, "corrupt");
+  await (await import("node:fs/promises")).mkdir(corruptDir, { recursive: true });
+  writeFileSync(join(corruptDir, "state_5.sqlite"), "not a sqlite database");
+  const resCorrupt = await collectActivity({
+    codexDir: corruptDir,
+    runPs: () => "",
+  });
+  const codexSrc3 = resCorrupt.sources.find((s) => s.id === "codex-tasks");
+  assert.equal(codexSrc3.status, "unobservable");
+  assert.equal(codexSrc3.reason, REASONS.READ_FAILED);
+  assert.equal(resCorrupt.state, "unobservable");
+
+  // 4. ps failure (e.g. throws or non-zero or malformed)
+  const goodCodexDir = join(testDir, "good-codex");
+  await (await import("node:fs/promises")).mkdir(goodCodexDir, { recursive: true });
+  createTestCodexDb({ dir: goodCodexDir, filename: "state_5.sqlite" });
+  const resPsFail = await collectActivity({
+    codexDir: goodCodexDir,
+    runPs: () => {
+      throw new Error("ps command failed");
+    },
+  });
+  const psSrc = resPsFail.sources.find((s) => s.id === "processes");
+  assert.equal(psSrc.status, "unobservable");
+  assert.equal(psSrc.reason, REASONS.PROCESS_UNOBSERVABLE);
+  assert.equal(resPsFail.partial, true);
+  assert.equal(resPsFail.state, "unobservable");
+
+  // 5. Unsupported platform
+  const resPlatform = await collectActivity({
+    codexDir: goodCodexDir,
+    platform: "win32",
+    runPs: () => "",
+  });
+  const psSrcWin = resPlatform.sources.find((s) => s.id === "processes");
+  assert.equal(psSrcWin.status, "unobservable");
+  assert.equal(psSrcWin.reason, REASONS.PLATFORM_UNSUPPORTED);
+  assert.equal(resPlatform.state, "unobservable");
 });
 
-test("invariants: idle only when all sources observed; zero + unobservable -> unobservable", async () => {
-  const result = await collectActivity();
-  assert.ok(result);
+test("invariants: idle only when all sources observed; zero + unobservable -> unobservable", async (t) => {
+  const { mkdtempSync, rmSync } = await import("node:fs");
+  const { tmpdir } = await import("node:os");
+  const { join } = await import("node:path");
+  const { createTestCodexDb } = await import("./fixtures/activity/build.mjs");
+
+  const testDir = mkdtempSync(join(tmpdir(), "agent-activity-invariants-"));
+  t.after(() => rmSync(testDir, { recursive: true, force: true }));
+
+  createTestCodexDb({ dir: testDir, filename: "state_5.sqlite" });
+
+  // When all sources observed and 0 items -> idle
+  const resIdle = await collectActivity({
+    codexDir: testDir,
+    runPs: () => "",
+  });
+  assert.equal(resIdle.activeCount, 0);
+  assert.equal(resIdle.state, "idle");
+  assert.equal(resIdle.partial, false);
+  assert.equal(
+    resIdle.sources.every((s) => s.status === "observed"),
+    true,
+  );
+
+  // When task source is unobservable, even with 0 items -> state is "unobservable", NEVER "idle"
+  const resUnobs = await collectActivity({
+    codexDir: join(testDir, "nonexistent"),
+    runPs: () => "",
+  });
+  assert.equal(resUnobs.activeCount, 0);
+  assert.equal(resUnobs.state, "unobservable");
+  assert.notEqual(resUnobs.state, "idle");
 });
 
 test("bounds: 200/200/50/20 caps set truncated", async () => {
