@@ -70,9 +70,88 @@ test("workspace: final path segment only; assert no / in any emitted workspace",
   assert.equal(workspaceSegment("/"), "—");
 });
 
-test("origin: vscode/exec/cli map correctly, structured JSON -> Subagent, unknown -> Codex, raw source never leaks", () => {
+test("origin: vscode/exec/cli map correctly, structured JSON -> Subagent, unknown -> Codex, raw source never leaks", async (t) => {
   assert.equal(typeof classifyOrigin, "function");
   assert.equal(classifyOrigin("vscode"), "Codex app");
+  assert.equal(classifyOrigin("exec"), "Automation/CLI");
+  assert.equal(classifyOrigin("cli"), "Codex");
+
+  const subagentPayload = JSON.stringify({
+    subagent: {
+      parent_thread_id: "019f4b72-1234-5678-9abc-def012345678",
+      agent_path: "/root/phase_a_migration_w0_doubt",
+      agent_nickname: "doubt-worker",
+    },
+  });
+  assert.equal(classifyOrigin(subagentPayload), "Subagent");
+
+  const subagentPayload2 = JSON.stringify({
+    parent_thread_id: "019f4b72-1234",
+    agent_path: "/root/task",
+  });
+  assert.equal(classifyOrigin(subagentPayload2), "Subagent");
+
+  assert.equal(classifyOrigin("unknown_custom_source"), "Codex");
+  assert.equal(classifyOrigin(""), "Codex");
+  assert.equal(classifyOrigin(null), "Codex");
+  assert.equal(classifyOrigin(123), "Codex");
+
+  // Snapshot leakage test
+  const { mkdtempSync, rmSync } = await import("node:fs");
+  const { tmpdir } = await import("node:os");
+  const { join } = await import("node:path");
+  const { createTestCodexDb, createRollout } = await import(
+    "./fixtures/activity/build.mjs"
+  );
+
+  const testDir = mkdtempSync(join(tmpdir(), "agent-activity-origin-"));
+  t.after(() => rmSync(testDir, { recursive: true, force: true }));
+
+  const rollout = createRollout({
+    dir: testDir,
+    filename: "sub.rollout",
+    markers: ["task_started"],
+  });
+
+  createTestCodexDb({
+    dir: testDir,
+    filename: "state_5.sqlite",
+    threads: [
+      {
+        id: "019f4b72-aaaa-bbbb-cccc-dddddddddddd",
+        rollout_path: rollout,
+        source: subagentPayload,
+        title: "Subagent test work",
+      },
+    ],
+  });
+
+  const res = await collectActivity({
+    codexDir: testDir,
+    runPs: () => "",
+  });
+
+  assert.equal(res.tasks.length, 1);
+  assert.equal(res.tasks[0].origin, "Subagent");
+  assert.equal(res.tasks[0].id, "019f4b72");
+
+  const snapshotJson = JSON.stringify(res);
+  assert.ok(
+    !snapshotJson.includes("phase_a_migration_w0_doubt"),
+    "agent_path must not appear anywhere in snapshot",
+  );
+  assert.ok(
+    !snapshotJson.includes("doubt-worker"),
+    "agent_nickname must not appear anywhere in snapshot",
+  );
+  assert.ok(
+    !snapshotJson.includes("019f4b72-1234-5678-9abc-def012345678"),
+    "parent_thread_id must not appear anywhere in snapshot",
+  );
+  assert.ok(
+    !snapshotJson.includes(subagentPayload),
+    "raw source must not appear anywhere in snapshot",
+  );
 });
 
 test("lifecycle: started -> active, complete -> excluded, never emitted -> excluded, beyond escalation -> indeterminate + partial", async (t) => {
