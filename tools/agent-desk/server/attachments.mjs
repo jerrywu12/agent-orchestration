@@ -73,7 +73,7 @@ export class Attachments {
       fail(
         422,
         "ATTACHMENT_TEXT",
-        "The document must contain readable text: at most 200,000 characters for Markdown or 100,000 for other formats.",
+        `The document must contain readable text: at most ${DOCUMENT_LIMITS.maxMarkdownChars.toLocaleString("en-US")} characters for Markdown or ${DOCUMENT_LIMITS.maxTextChars.toLocaleString("en-US")} for other formats.`,
       );
     return this.store.transaction(() => {
       this.prune();

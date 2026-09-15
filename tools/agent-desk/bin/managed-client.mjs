@@ -17,7 +17,9 @@ import { fileURLToPath } from "node:url";
 import { setTimeout as delay } from "node:timers/promises";
 
 export const requestLimit = 64 * 1024;
-export const responseLimit = 2 * 1024 * 1024;
+// get_task returns the extracted text of up to five attachments, so this must
+// stay above five documents at the Markdown character cap in worst-case UTF-8.
+export const responseLimit = 24 * 1024 * 1024;
 export function bridgeError(code, message) {
   return Object.assign(Error(message), { code });
 }
@@ -53,17 +55,21 @@ export function readBounded(path, limit) {
         "BRIDGE_FILE",
         "Mailbox messages must be bounded regular files.",
       );
-    const bytes = Buffer.alloc(limit + 1);
+    // One byte past the observed size still detects a file that grew or
+    // exceeds the limit, without allocating the whole limit for small messages.
+    const bytes = Buffer.alloc(Math.min(limit, stat.size) + 1);
     let size = 0,
       read;
-    while ((read = readSync(fd, bytes, size, bytes.length - size, null)) > 0) {
+    while (
+      size < bytes.length &&
+      (read = readSync(fd, bytes, size, bytes.length - size, null)) > 0
+    )
       size += read;
-      if (size > limit)
-        throw bridgeError(
-          "BRIDGE_FILE",
-          "Mailbox message exceeds its size limit.",
-        );
-    }
+    if (size > limit || size > stat.size)
+      throw bridgeError(
+        "BRIDGE_FILE",
+        "Mailbox message exceeds its size limit.",
+      );
     return bytes.subarray(0, size).toString("utf8");
   } catch (error) {
     if (error.code === "ENOENT") throw error;
