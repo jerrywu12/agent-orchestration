@@ -10,6 +10,8 @@ export const emptyBrief = (): TaskBrief => ({
   verification: "",
 });
 export const MAX_DOCUMENT_BYTES = 10 * 1024 * 1024;
+// Mirrors DOCUMENT_LIMITS.maxMarkdownChars in server/document-processor.mjs.
+export const MAX_MARKDOWN_CHARS = 1000000;
 export const DOCUMENT_ACCEPT = ".md,.markdown,.txt,.doc,.docx,.pdf";
 
 // Extraction and the native chooser have longer bounded lifetimes than ordinary mutations.

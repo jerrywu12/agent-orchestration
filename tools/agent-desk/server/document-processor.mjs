@@ -4,15 +4,15 @@ import { Worker } from "node:worker_threads";
 
 export const DOCUMENT_LIMITS = Object.freeze({
   maxFileBytes: 10 * 1024 * 1024,
-  maxTextChars: 100000,
-  maxMarkdownChars: 200000,
+  maxTextChars: 500000,
+  maxMarkdownChars: 1000000,
   maxPdfPages: 200,
   maxArchiveEntries: 1000,
   maxArchiveBytes: 32 * 1024 * 1024,
   maxArchiveEntryBytes: 16 * 1024 * 1024,
   timeoutMs: 20000,
   maxConcurrent: 2,
-  workerHeapMb: 128,
+  workerHeapMb: 256,
 });
 
 const messages = Object.freeze({

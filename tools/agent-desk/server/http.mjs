@@ -276,9 +276,9 @@ export function createAppServer({
         const input = ["POST", "PATCH", "PUT"].includes(method)
           ? await body(
               req,
-              resource === "attachments" && !key
-                ? 14 * 1024 * 1024
-                : 1024 * 1024,
+              // Uploads carry base64 bytes; Markdown edits carry the full
+              // extracted text, which may now approach the same size.
+              resource === "attachments" ? 14 * 1024 * 1024 : 1024 * 1024,
             )
           : {};
         if (actor.role === "agent" && method === "GET") {

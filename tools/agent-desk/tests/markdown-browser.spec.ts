@@ -3,6 +3,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import type { DeskState, Ticket } from "../src/types";
 import type { Attachment } from "../src/intake-types";
+import { MAX_MARKDOWN_CHARS } from "../src/intake";
 
 const hash = (text: string) => createHash("sha256").update(text).digest("hex");
 const source =
@@ -490,7 +491,7 @@ test("Markdown source keeps over-limit text intact and disables invalid saves", 
     name: "Markdown source",
     exact: true,
   });
-  const tooLong = "a".repeat(200000) + "Z";
+  const tooLong = "a".repeat(MAX_MARKDOWN_CHARS) + "Z";
   await editor.fill(tooLong);
   await expect(editor).toHaveValue(tooLong);
   await expect(

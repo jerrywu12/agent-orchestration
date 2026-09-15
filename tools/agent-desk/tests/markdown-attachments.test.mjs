@@ -6,7 +6,10 @@ import { join } from "node:path";
 import { createHash } from "node:crypto";
 import { Store } from "../server/store.mjs";
 import { Service } from "../server/service.mjs";
-import { processDocument } from "../server/document-processor.mjs";
+import {
+  DOCUMENT_LIMITS,
+  processDocument,
+} from "../server/document-processor.mjs";
 import { createAppServer } from "../server/http.mjs";
 const hash = (text) => createHash("sha256").update(text).digest("hex");
 const data = (text = "# Specification\n", name = "spec.md") => ({
@@ -42,11 +45,14 @@ test("Markdown preserves whitespace/full text and has a separate bounded ceiling
     assert.equal(result.text, source);
     assert.equal(result.sha256, hash(source));
   }
+  // A full spec well past the old 200,000-character ceiling still processes.
+  const long = "# Spec\n\n" + "x".repeat(500000) + "\n";
+  assert.equal((await processDocument({ name: "big.md", bytes: Buffer.from(long) })).text, long);
   await assert.rejects(
     () =>
       processDocument({
         name: "large.md",
-        bytes: Buffer.from("x".repeat(200001)),
+        bytes: Buffer.from("x".repeat(DOCUMENT_LIMITS.maxMarkdownChars + 1)),
       }),
     code("document_limit"),
   );
@@ -54,7 +60,7 @@ test("Markdown preserves whitespace/full text and has a separate bounded ceiling
     () =>
       processDocument({
         name: "large.txt",
-        bytes: Buffer.from("x".repeat(100001)),
+        bytes: Buffer.from("x".repeat(DOCUMENT_LIMITS.maxTextChars + 1)),
       }),
     code("document_limit"),
   );
@@ -210,7 +216,12 @@ test("Markdown save atomically updates copy, context, hash and ticket version; s
       }),
     code("VERSION_CONFLICT"),
   );
-  for (const text of ["", "x".repeat(200001), "bad\0text", "\ud800"])
+  for (const text of [
+    "",
+    "x".repeat(DOCUMENT_LIMITS.maxMarkdownChars + 1),
+    "bad\0text",
+    "\ud800",
+  ])
     assert.throws(() =>
       service.updateMarkdown(a.id, { expectedSha256: saved.sha256, text }),
     );

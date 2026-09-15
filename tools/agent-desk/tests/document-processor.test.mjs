@@ -131,7 +131,8 @@ test("blank/scanned PDF and encrypted PDF or DOC have actionable safe errors", a
 
 test("file, character and PDF page limits reject excess without partial text", async () => {
   assert.equal(DOCUMENT_LIMITS.maxFileBytes, 10 * 1024 * 1024);
-  assert.equal(DOCUMENT_LIMITS.maxTextChars, 100000);
+  assert.equal(DOCUMENT_LIMITS.maxTextChars, 500000);
+  assert.equal(DOCUMENT_LIMITS.maxMarkdownChars, 1000000);
   await rejected("large.txt", Buffer.alloc(21, 65), "document_limit", {
     limits: { maxFileBytes: 20 },
   });

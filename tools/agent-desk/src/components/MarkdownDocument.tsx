@@ -11,7 +11,7 @@ import Markdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { X } from "lucide-react";
 import { api, ApiError, errorMessage, pathId } from "../api";
-import { downloadDocument } from "../intake";
+import { downloadDocument, MAX_MARKDOWN_CHARS } from "../intake";
 import type { Attachment } from "../intake-types";
 
 const safeUrl = (url: string) => (/^(https?:\/\/|#)/i.test(url) ? url : "");
@@ -106,7 +106,7 @@ export default function MarkdownDocument({
       disabled ||
       !dirty ||
       !draft.trim() ||
-      draft.length > 200000 ||
+      draft.length > MAX_MARKDOWN_CHARS ||
       conflict
     )
       return;
@@ -202,7 +202,7 @@ export default function MarkdownDocument({
             disabled ||
             !dirty ||
             !draft.trim() ||
-            draft.length > 200000 ||
+            draft.length > MAX_MARKDOWN_CHARS ||
             conflict
           }
           onClick={() => void save()}
@@ -283,10 +283,13 @@ export default function MarkdownDocument({
             />
             <span
               className={
-                draft.length > 200000 ? "intake-warning" : "field-hint"
+                draft.length > MAX_MARKDOWN_CHARS
+                  ? "intake-warning"
+                  : "field-hint"
               }
             >
-              {draft.length.toLocaleString()} / 200,000 characters
+              {draft.length.toLocaleString()} /{" "}
+              {MAX_MARKDOWN_CHARS.toLocaleString()} characters
               {dirty ? " · Unsaved changes" : ""}
             </span>
           </label>
