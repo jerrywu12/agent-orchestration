@@ -11,6 +11,7 @@ const {
   AgentActivityMonitor,
   ACTIVITY_LIMITS,
   REASONS,
+  matchAgentWorker,
 } = activityModule;
 
 test("etime: MM:SS, HH:MM:SS, DD-HH:MM:SS, padded and malformed input", () => {
@@ -884,3 +885,31 @@ test("sleep prevention: caps holders at maxHolders (50) and sets truncated", asy
 });
 
 
+
+// Regression: parity capture against the superseded SwiftBar plugin (T025)
+// exposed two false negatives. Both command lines below are real, taken from
+// the target Mac at the time of the failed parity run.
+test("workers: real-world shapes the T025 parity capture caught as false negatives", async () => {
+  const claudeCli =
+    "/Users/jerry/Library/Application Support/Claude/claude-code/2.1.270/claude.app/Contents/MacOS/claude --output-format stream-json";
+  const antigravityWorker =
+    "/Applications/Antigravity IDE.app/Contents/Resources/app/extensions/antigravity/bin/language_server_macos_arm --csrf_token abc123";
+
+  // A CLI shipped as an .app bundle under Application Support is a worker, not
+  // a desktop app. Exclusion 1 is scoped to /Applications on purpose.
+  assert.equal(matchAgentWorker(claudeCli)?.id, "claude");
+
+  // The Antigravity agent runs as its language server binary without
+  // --enable_lsp, inside the IDE bundle and extensions directory.
+  assert.equal(matchAgentWorker(antigravityWorker)?.id, "agy");
+
+  // The exclusions these two must not weaken.
+  assert.equal(matchAgentWorker("/Applications/Claude.app/Contents/MacOS/Claude"), null);
+  assert.equal(
+    matchAgentWorker(
+      "/Applications/Antigravity IDE.app/Contents/Resources/app/extensions/antigravity/bin/language_server_macos_arm --enable_lsp",
+    ),
+    null,
+  );
+  assert.equal(matchAgentWorker("/usr/local/bin/claude-language-server"), null);
+});

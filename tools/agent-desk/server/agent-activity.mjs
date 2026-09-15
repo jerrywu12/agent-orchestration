@@ -155,22 +155,34 @@ export function defaultRunPs({ signal } = {}) {
 export function matchAgentWorker(command) {
   if (typeof command !== "string") return null;
 
-  // Exclusion 1: Desktop application bundle
-  if (
-    /\.app\/Contents\//i.test(command) ||
-    /^\/Applications\/[^\/]+\.app\//i.test(command)
-  ) {
+  // An agent language server running WITHOUT --enable_lsp is the agent worker
+  // itself, not an editor helper, so it is matched rather than excluded. This
+  // check precedes the bundle and extensions exclusions because the worker lives
+  // inside the IDE's own bundle and extensions directory.
+  // Matched on the specific Antigravity binary name, not "language server"
+  // generally: an editor's own LSP helper (e.g. claude-language-server) is a
+  // helper and stays excluded.
+  const agentLanguageServer =
+    /\blanguage_server_macos_arm\b/i.test(command) &&
+    !/--enable_lsp\b/.test(command);
+
+  // Exclusion 1: installed desktop application bundle. Scoped to /Applications
+  // on purpose: agent CLIs are now shipped as .app bundles under Application
+  // Support (e.g. Claude Code), and those are workers, not desktop apps.
+  if (!agentLanguageServer && /^\/Applications\/[^/]+\.app\//i.test(command)) {
     return null;
   }
   // Exclusion 2: IDE extensions directory
   if (
-    /[/\\]\.?(?:vscode|cursor|windsurf)[/\\]extensions[/\\]/i.test(command) ||
-    /[/\\]extensions[/\\]/i.test(command)
+    !agentLanguageServer &&
+    (/[/\\]\.?(?:vscode|cursor|windsurf)[/\\]extensions[/\\]/i.test(command) ||
+      /[/\\]\.antigravity-ide[/\\]extensions[/\\]/i.test(command))
   ) {
     return null;
   }
-  // Exclusion 3: IDE language-server helper lacking agent's own flag
-  if (/language[-_]?server|languageserver|\blsp\b/i.test(command)) {
+  // Exclusion 3: editor language-server helper, i.e. one started with the
+  // editor's own --enable_lsp flag. The flag's presence marks the LSP role.
+  if (/language[-_]?server|languageserver|\blsp\b/i.test(command) && !agentLanguageServer) {
     return null;
   }
   // Exclusion 4: Observer's own process / tooling
@@ -178,6 +190,13 @@ export function matchAgentWorker(command) {
     /\bagent-desk\b|\bagent-activity\b|\bcodex-status\.5s\.sh\b/i.test(command)
   ) {
     return null;
+  }
+
+  // The Antigravity agent worker runs as its language server binary, whose name
+  // does not contain the CLI's own binary name, so it is matched explicitly.
+  if (agentLanguageServer) {
+    const antigravity = TRACKED_AGENTS.find((a) => a.id === "agy");
+    if (antigravity) return antigravity;
   }
 
   // Match against tracked agents
