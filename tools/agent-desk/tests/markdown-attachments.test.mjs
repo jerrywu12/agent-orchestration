@@ -6,7 +6,10 @@ import { join } from "node:path";
 import { createHash } from "node:crypto";
 import { Store } from "../server/store.mjs";
 import { Service } from "../server/service.mjs";
-import { processDocument } from "../server/document-processor.mjs";
+import {
+  processDocument,
+  DOCUMENT_LIMITS,
+} from "../server/document-processor.mjs";
 import { createAppServer } from "../server/http.mjs";
 const hash = (text) => createHash("sha256").update(text).digest("hex");
 const data = (text = "# Specification\n", name = "spec.md") => ({
@@ -30,7 +33,7 @@ function fixture(t, path = ":memory:") {
   return { store, service, ticket };
 }
 const code = (expected) => (error) => error.code === expected;
-test("Markdown preserves whitespace/full text and has a separate bounded ceiling", async () => {
+test("Markdown preserves whitespace/full text and stays bounded", async () => {
   const source =
     "  # Heading\r\n\r\n    indented code\n\n" + "x".repeat(148160) + "\n";
   for (const name of ["spec.md", "SPEC.MARKDOWN"]) {
@@ -42,27 +45,29 @@ test("Markdown preserves whitespace/full text and has a separate bounded ceiling
     assert.equal(result.text, source);
     assert.equal(result.sha256, hash(source));
   }
-  await assert.rejects(
-    () =>
-      processDocument({
-        name: "large.md",
-        bytes: Buffer.from("x".repeat(200001)),
-      }),
-    code("document_limit"),
-  );
-  await assert.rejects(
-    () =>
-      processDocument({
-        name: "large.txt",
-        bytes: Buffer.from("x".repeat(100001)),
-      }),
-    code("document_limit"),
-  );
+  // Markdown and plain text share one ceiling that matches the 15 MiB byte cap.
+  for (const name of ["large.md", "large.txt"])
+    await assert.rejects(
+      () =>
+        processDocument({
+          name,
+          bytes: Buffer.alloc(DOCUMENT_LIMITS.maxFileBytes + 1, 0x78),
+        }),
+      code("document_limit"),
+    );
   await assert.rejects(
     () =>
       processDocument(
         { name: "small.md", bytes: Buffer.from("x".repeat(101)) },
         { limits: { maxMarkdownChars: 100 } },
+      ),
+    code("document_limit"),
+  );
+  await assert.rejects(
+    () =>
+      processDocument(
+        { name: "small.txt", bytes: Buffer.from("x".repeat(101)) },
+        { limits: { maxTextChars: 100 } },
       ),
     code("document_limit"),
   );
@@ -189,10 +194,7 @@ test("Markdown save atomically updates copy, context, hash and ticket version; s
   assert.equal(saved.size, Buffer.byteLength(text));
   assert.deepEqual(original.bytes, data().bytes);
   assert.equal(service.attachments.original(a.id).bytes.toString(), text);
-  assert.equal(
-    service.getTicket(ticket.id).attachmentContext[0].text,
-    text,
-  );
+  assert.equal(service.getTicket(ticket.id).attachmentContext[0].text, text);
   assert.equal(service.getTicket(ticket.id).version, bound.version + 1);
   assert.throws(
     () =>
@@ -210,7 +212,12 @@ test("Markdown save atomically updates copy, context, hash and ticket version; s
       }),
     code("VERSION_CONFLICT"),
   );
-  for (const text of ["", "x".repeat(200001), "bad\0text", "\ud800"])
+  for (const text of [
+    "",
+    "x".repeat(DOCUMENT_LIMITS.maxMarkdownChars + 1),
+    "bad\0text",
+    "\ud800",
+  ])
     assert.throws(() =>
       service.updateMarkdown(a.id, { expectedSha256: saved.sha256, text }),
     );
@@ -346,12 +353,7 @@ test("new attachment mutations are admin-only, scoped reads retain full Markdown
     version: service.getTicket(ticket.id).version,
     ownerId: "codex",
   });
-  r = await call(
-    "GET",
-    `/tickets/${ticket.id}`,
-    undefined,
-    "synthetic-agent",
-  );
+  r = await call("GET", `/tickets/${ticket.id}`, undefined, "synthetic-agent");
   assert.equal(r.status, 200);
   assert.equal((await r.json()).attachmentContext[0].text, "# API saved");
   r = await call(

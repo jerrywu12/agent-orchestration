@@ -1,6 +1,9 @@
 import { createHash } from "node:crypto";
 import { fail, id } from "./store.mjs";
-import { DOCUMENT_LIMITS, validateMarkdownText } from "./document-processor.mjs";
+import {
+  DOCUMENT_LIMITS,
+  validateMarkdownText,
+} from "./document-processor.mjs";
 const DAY = 24 * 60 * 60 * 1000;
 export class Attachments {
   constructor(
@@ -54,12 +57,12 @@ export class Attachments {
     if (
       !Buffer.isBuffer(bytes) ||
       !bytes.length ||
-      bytes.length > 10 * 1024 ** 2
+      bytes.length > DOCUMENT_LIMITS.maxFileBytes
     )
       fail(
         413,
         "ATTACHMENT_SIZE",
-        "Each document must be between 1 byte and 10 MiB.",
+        "Each document must be between 1 byte and 15 MiB.",
       );
     if (
       !result ||
@@ -73,7 +76,7 @@ export class Attachments {
       fail(
         422,
         "ATTACHMENT_TEXT",
-        "The document must contain readable text: at most 200,000 characters for Markdown or 100,000 for other formats.",
+        "The document must contain readable text of at most 15,728,640 characters.",
       );
     return this.store.transaction(() => {
       this.prune();
@@ -243,7 +246,7 @@ export class Attachments {
     }
     const bytes = Buffer.from(text, "utf8");
     if (bytes.length > DOCUMENT_LIMITS.maxFileBytes)
-      fail(413, "ATTACHMENT_SIZE", "Each document must be at most 10 MiB.");
+      fail(413, "ATTACHMENT_SIZE", "Each document must be at most 15 MiB.");
     this.prune();
     const usage = this.store.db
       .prepare(

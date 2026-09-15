@@ -129,9 +129,26 @@ test("blank/scanned PDF and encrypted PDF or DOC have actionable safe errors", a
   );
 });
 
+test("documents far larger than the former character caps now extract whole", async () => {
+  // A 444 KiB Markdown specification used to fail the 200,000 character cap.
+  const markdown = "# Specification\n\n" + "word ".repeat(91000);
+  const bytes = Buffer.from(markdown);
+  assert.ok(bytes.length > 444 * 1024);
+  assert.equal(
+    (await processDocument({ name: "spec.md", bytes })).text.length,
+    markdown.length,
+  );
+  const plain = Buffer.from("a".repeat(500000));
+  assert.equal(
+    (await processDocument({ name: "notes.txt", bytes: plain })).text.length,
+    500000,
+  );
+});
+
 test("file, character and PDF page limits reject excess without partial text", async () => {
-  assert.equal(DOCUMENT_LIMITS.maxFileBytes, 10 * 1024 * 1024);
-  assert.equal(DOCUMENT_LIMITS.maxTextChars, 100000);
+  assert.equal(DOCUMENT_LIMITS.maxFileBytes, 15 * 1024 * 1024);
+  assert.equal(DOCUMENT_LIMITS.maxTextChars, 15 * 1024 * 1024);
+  assert.equal(DOCUMENT_LIMITS.maxMarkdownChars, 15 * 1024 * 1024);
   await rejected("large.txt", Buffer.alloc(21, 65), "document_limit", {
     limits: { maxFileBytes: 20 },
   });

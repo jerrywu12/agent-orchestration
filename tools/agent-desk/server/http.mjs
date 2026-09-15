@@ -20,6 +20,10 @@ import {
   pickProjectFolder,
 } from "./project-folders.mjs";
 import { MachineMonitor } from "./machine-monitor.mjs";
+import {
+  DOCUMENT_LIMITS,
+  MAX_UPLOAD_BODY_BYTES,
+} from "./document-processor.mjs";
 const appRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const mime = {
   ".html": "text/html; charset=utf-8",
@@ -276,9 +280,8 @@ export function createAppServer({
         const input = ["POST", "PATCH", "PUT"].includes(method)
           ? await body(
               req,
-              resource === "attachments" && !key
-                ? 14 * 1024 * 1024
-                : 1024 * 1024,
+              // Uploads carry base64 bytes; Markdown saves carry the whole document.
+              resource === "attachments" ? MAX_UPLOAD_BODY_BYTES : 1024 * 1024,
             )
           : {};
         if (actor.role === "agent" && method === "GET") {
@@ -327,11 +330,11 @@ export function createAppServer({
                 "ATTACHMENT_DATA",
                 "Expected canonical base64 document data.",
               );
-            if (!bytes.length || bytes.length > 10 * 1024 * 1024)
+            if (!bytes.length || bytes.length > DOCUMENT_LIMITS.maxFileBytes)
               fail(
                 413,
                 "ATTACHMENT_SIZE",
-                "Each document must be between 1 byte and 10 MiB.",
+                "Each document must be between 1 byte and 15 MiB.",
               );
             const controller = new AbortController();
             documentJobs.add(controller);
@@ -612,8 +615,11 @@ export function createAppServer({
         )
           return json(service.transition(key, input));
         if (
-          resource === "tickets" && key && action === "attachments" &&
-          parts.length === 4 && method === "POST"
+          resource === "tickets" &&
+          key &&
+          action === "attachments" &&
+          parts.length === 4 &&
+          method === "POST"
         )
           return json(service.attachDocuments(key, input));
         if (resource === "tickets" && !key && method === "POST")
@@ -736,15 +742,9 @@ export async function startServer({
   } catch (e) {
     if (e.code !== "ENOENT") throw e;
     agentTokens = Object.fromEntries(
-      [
-        "codex",
-        "claude",
-        "gemini",
-        "cursor",
-        "hermes",
-        "ollama",
-        "arkcli",
-      ].map((a) => [a, randomBytes(32).toString("hex")]),
+      ["codex", "claude", "gemini", "cursor", "hermes", "ollama", "arkcli"].map(
+        (a) => [a, randomBytes(32).toString("hex")],
+      ),
     );
     writeFileSync(tokenPath, JSON.stringify(agentTokens), {
       mode: 0o600,
