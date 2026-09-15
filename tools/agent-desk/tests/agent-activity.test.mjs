@@ -621,3 +621,87 @@ test("lifecycle mgmt: overlapping refresh() coalesces; close() aborts in flight 
   assert.equal(monitor.closed, true);
   await inFlightPromise;
 });
+
+test("invariant amendment: activeCount > 0 yields state 'active' even when a source is unobservable", async (t) => {
+  // Reference: specs/011-agent-activity-tracking/data-model.md (amendment 2026-09-15)
+  // "activeCount > 0 ⟹ state === 'active', even when a source is unobservable.
+  // Positively observed work is reported as active; the failed source is carried by
+  // partial: true and its sources[] entry, not by downgrading the state."
+  const { mkdtempSync, rmSync } = await import("node:fs");
+  const { tmpdir } = await import("node:os");
+  const { join } = await import("node:path");
+  const { makeSyntheticPsOutput } = await import("./fixtures/activity/build.mjs");
+
+  const tempDir = mkdtempSync(join(tmpdir(), "agent-activity-invariant-active-"));
+  t.after(() => rmSync(tempDir, { recursive: true, force: true }));
+
+  // Task source is unobservable (nonexistent directory -> NO_SOURCE)
+  const unobservableCodexDir = join(tempDir, "nonexistent-codex-dir");
+
+  // Positively observed worker process (e.g. Claude Code worker)
+  const psOutput = makeSyntheticPsOutput([
+    {
+      pid: 45012,
+      ppid: 1,
+      etime: "31:14",
+      command: "/usr/local/bin/claude",
+    },
+  ]);
+
+  const snapshot = await collectActivity({
+    codexDir: unobservableCodexDir,
+    runPs: () => psOutput,
+  });
+
+  // Assertions required by the invariant:
+  // 1. state === "active" (NOT "unobservable", NOT "idle")
+  assert.equal(
+    snapshot.state,
+    "active",
+    "State must be 'active' when activeCount > 0 despite unobservable source",
+  );
+  assert.notEqual(
+    snapshot.state,
+    "unobservable",
+    "State must NOT be downgraded to 'unobservable'",
+  );
+  assert.notEqual(snapshot.state, "idle", "State must NOT be 'idle'");
+
+  // 2. activeCount > 0
+  assert.ok(
+    snapshot.activeCount > 0,
+    `activeCount must be > 0 (got ${snapshot.activeCount})`,
+  );
+  assert.equal(
+    snapshot.workers.length,
+    1,
+    "Positively observed worker must be included",
+  );
+  assert.equal(snapshot.workers[0].pid, 45012);
+
+  // 3. partial === true
+  assert.equal(
+    snapshot.partial,
+    true,
+    "Partial must be true because task source could not be observed",
+  );
+
+  // 4. the codex-tasks entry in sources[] has status 'unobservable' with a non-null reason from the closed set
+  const codexTaskSource = snapshot.sources.find((s) => s.id === "codex-tasks");
+  assert.ok(codexTaskSource, "codex-tasks entry must exist in sources[]");
+  assert.equal(
+    codexTaskSource.status,
+    "unobservable",
+    "codex-tasks source status must be 'unobservable'",
+  );
+  assert.ok(
+    codexTaskSource.reason !== null,
+    "codex-tasks source reason must be non-null",
+  );
+  assert.ok(
+    Object.values(REASONS).includes(codexTaskSource.reason),
+    `Reason "${codexTaskSource.reason}" must be drawn from the closed REASONS set`,
+  );
+  assert.equal(codexTaskSource.reason, REASONS.SOURCE_NOT_FOUND);
+});
+
