@@ -218,8 +218,19 @@ export function isCaffeinateProcess(command) {
 
 export function isAgentCaffeinateWrapper(command) {
   if (typeof command !== "string") return false;
-  return /\bagent_caffeinate_watch(?:\.sh)?\b|\bcom\.jerry\.agent-caffeinate\b/i.test(
-    command,
+  // The first pattern is the retired standalone LaunchAgent, kept so an older
+  // machine that still runs it is still reported correctly. The second is
+  // Agent Desk's own server, which now holds the assertion itself: its
+  // caffeinate child is agent-linked by construction. Without this the server
+  // would hold a hold it then failed to report, because the worker matcher
+  // deliberately excludes Agent Desk's own processes as observer tooling.
+  return (
+    /\bagent_caffeinate_watch(?:\.sh)?\b|\bcom\.jerry\.agent-caffeinate\b/i.test(
+      command,
+    ) ||
+    /\bAgentDeskServer\b|agent-desk[/\\](?:app[/\\])?server[/\\]http\.mjs/i.test(
+      command,
+    )
   );
 }
 
@@ -261,7 +272,7 @@ export function isAgentLinkedCaffeinate(proc, processMap) {
 
 export function parseProcessList(
   psOutput,
-  { codexTasksObservable = true } = {},
+  { codexTasksObservable = true, ownHolderPids = [] } = {},
 ) {
   if (typeof psOutput !== "string")
     return { workers: [], codexFallbackWorkers: [], sleepHolders: [] };
@@ -322,7 +333,11 @@ export function parseProcessList(
   const sleepHolders = [];
   for (const proc of processes) {
     if (isCaffeinateProcess(proc.rawCommand)) {
-      if (isAgentLinkedCaffeinate(proc, processMap)) {
+      // Agent Desk's own hold is known by pid, not inferred from a command
+      // line: the server's argv is whatever launched it (often a relative
+      // path), so pattern matching its own process is unreliable.
+      const own = new Set(ownHolderPids).has(proc.pid);
+      if (own || isAgentLinkedCaffeinate(proc, processMap)) {
         // Discard rawCommand — only pid and elapsedSeconds (FR-019)
         sleepHolders.push({
           pid: proc.pid,
@@ -576,6 +591,7 @@ export async function collectActivity(options = {}) {
     platform = hostPlatform(),
     clock = Date.now,
     isContainer = false,
+    ownHolderPids = [],
   } = options;
 
   if (isContainer || isContainerHost()) {
@@ -629,7 +645,10 @@ export async function collectActivity(options = {}) {
         psStatus = "unobservable";
         psReason = REASONS.PROCESS_UNOBSERVABLE;
       } else {
-        const parsed = parseProcessList(output, { codexTasksObservable });
+        const parsed = parseProcessList(output, {
+          codexTasksObservable,
+          ownHolderPids,
+        });
         workers = parsed.workers;
         codexFallbackWorkers = parsed.codexFallbackWorkers;
         sleepHolders = parsed.sleepHolders || [];
@@ -726,6 +745,9 @@ export class AgentActivityMonitor {
       clock = Date.now,
       refreshIntervalMs = ACTIVITY_LIMITS.refreshIntervalMs,
       collectorTimeoutMs = ACTIVITY_LIMITS.collectorTimeoutMs,
+      // Late-bound so the sleep coordinator, which needs this monitor to exist
+      // first, can register the pid of the assertion it holds.
+      ownHolderPids = () => [],
     } = opts;
 
     this.collector = collector;
@@ -735,6 +757,7 @@ export class AgentActivityMonitor {
     this.clock = clock;
     this.refreshIntervalMs = refreshIntervalMs;
     this.collectorTimeoutMs = collectorTimeoutMs;
+    this.ownHolderPids = ownHolderPids;
 
     this.current = {
       activeCount: 0,
@@ -825,6 +848,7 @@ export class AgentActivityMonitor {
             runPs: this.runPs,
             platform: this.platform,
             clock: this.clock,
+            ownHolderPids: this.ownHolderPids(),
             signal,
           }),
         this.collectorTimeoutMs,

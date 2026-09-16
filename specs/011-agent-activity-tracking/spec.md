@@ -166,3 +166,46 @@ Before the standalone menu bar indicator is removed from this Mac, the administr
 - **D-002**: Requires Agent Desk's existing machine observation surface, including its agent recognition, refresh scheduling and degradation behaviour.
 - **D-003**: Requires read access to the Mac's process metadata and to the Codex task source, both owned by other software and read strictly read-only.
 - **D-004**: Story 3 requires the superseded indicator to still be installed at verification time.
+
+---
+
+## Addendum: User Story 4 — Keep the Mac awake for agent work, but let the screen lock (Priority: P1)
+
+**Added 2026-09-16.** Feature 011 originally *observed* sleep prevention held by an external tool. That tool — a standalone LaunchAgent carrying its own hardcoded agent list — was retired on 2026-09-15, leaving nothing holding the machine awake. Agent Desk already performs the detection, so it now owns the hold too: one list to keep correct instead of two that drift.
+
+The administrator can leave a long agent run unattended. The Mac stays awake so work continues, while the display still sleeps and the screen still locks on its normal schedule.
+
+**Why this priority**: without it, an unattended overnight run is interrupted by system sleep. Holding the display on instead would leave the machine unlocked, which is not an acceptable trade.
+
+**Independent Test**: drive the coordinator with fixture snapshots and an injected spawn; assert when a hold is taken, when it is released, and that the display is never held.
+
+**Acceptance Scenarios**
+
+1. **Given** agent work is in flight, **When** the machine would otherwise idle-sleep, **Then** system sleep is prevented and the work continues.
+2. **Given** a hold is in force, **When** the display idle timeout elapses, **Then** the display sleeps and the screen locks as normal.
+3. **Given** the last agent work finishes, **When** the next observation runs, **Then** the hold is released and normal power behaviour resumes.
+4. **Given** only helper daemons are running (an MCP server, a model runtime), **When** keep-awake is evaluated, **Then** no hold is taken — a helper that is merely alive is not work in flight.
+5. **Given** activity cannot be observed, or the last observation is stale, **When** keep-awake is evaluated, **Then** no hold is taken. Uncertainty resolves toward normal power behaviour, never toward holding the machine awake.
+6. **Given** Agent Desk is holding an assertion, **When** activity is reported, **Then** its own hold appears as an observed holder, so the decision and the observation agree.
+7. **Given** the server stops by any route, including a `SIGTERM` from `launchd`, **When** it exits, **Then** the assertion is released and no holder is orphaned.
+
+### Requirements
+
+- **FR-023**: The system MUST prevent idle system sleep while agent work is in flight, and MUST NOT prevent display sleep. Screen locking must remain governed by the machine's own settings.
+- **FR-024**: Keep-awake MUST count only agents that represent work in flight. A helper daemon spawned by, or serving, another agent MUST NOT justify a hold.
+- **FR-025**: A hold MUST NOT be taken or extended on an observation older than a bounded staleness window, and a single continuous hold MUST be bounded.
+- **FR-026**: The assertion MUST be released when work ends, when keep-awake is disabled, and when the server exits by any route.
+- **FR-027**: The system MUST report its own hold as an observed holder, and MUST report the keep-awake decision separately from the observation of holds on the machine.
+- **FR-028**: Keep-awake MUST be disableable without disabling activity observation.
+
+### Success Criteria
+
+- **SC-012**: An unattended agent run survives the system idle-sleep timeout, and the screen is locked when the administrator returns.
+- **SC-013**: With only helper daemons running, no hold is taken — verified against the live composition that motivated this, where Hermes MCP servers outnumbered real workers.
+- **SC-014**: No assertion outlives the server process, verified by stopping it with `SIGTERM`.
+- **SC-015**: The reported keep-awake holder and the reported observed holder agree.
+
+### Assumptions
+
+- **A-010**: Screen locking is already configured on the machine (display sleep plus a password requirement). Keep-awake does not configure it and must never weaken it.
+- **A-011**: Preventing system sleep is sufficient for unattended work. Preventing disk or network sleep is out of scope.
