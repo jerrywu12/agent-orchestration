@@ -98,6 +98,7 @@ export function createAppServer({
   machineMonitor = null,
   agentStatusMonitor = null,
   activityMonitor = null,
+  sleepCoordinator = null,
   documentProcessor = async (input, options) =>
     (await import("./document-processor.mjs")).processDocument(input, options),
 }) {
@@ -478,11 +479,24 @@ export function createAppServer({
               "ACTIVITY_UNAVAILABLE",
               "Activity monitoring is unavailable.",
             );
+          // keepAwake reports Agent Desk's own hold. It is reported separately
+          // from sleepPrevention, which observes holds on the machine: this is
+          // the decision, that is the observation, and conflating them would
+          // hide a disagreement between the two.
+          const withKeepAwake = () => ({
+            ...activityMonitor.snapshot(),
+            keepAwake: sleepCoordinator
+              ? sleepCoordinator.state()
+              : { enabled: false, holding: false, pid: null, heldSince: null,
+                  reason: "Keep-awake is unavailable.",
+                  preventsDisplaySleep: false, agents: [] },
+          });
           if (path === "/api/activity" && method === "GET")
-            return json(activityMonitor.snapshot());
+            return json(withKeepAwake());
           if (path === "/api/activity/refresh" && method === "POST") {
             activityMonitor.refresh();
-            return json(activityMonitor.snapshot(), 202);
+            sleepCoordinator?.evaluate();
+            return json(withKeepAwake(), 202);
           }
           fail(404, "NOT_FOUND", "Activity endpoint not found.");
         }
@@ -745,6 +759,7 @@ export function createAppServer({
     machineMonitor?.close();
     agentStatusMonitor?.close();
     activityMonitor?.close();
+    sleepCoordinator?.close();
     for (const res of clients) res.end();
   });
   return server;
@@ -753,6 +768,7 @@ export async function startServer({
   machineOptions = {},
   agentStatusOptions = {},
   activityOptions = {},
+  keepAwakeOptions = {},
 } = {}) {
   const host = process.env.AGENT_DESK_HOST ?? "127.0.0.1";
   const port = Number(process.env.AGENT_DESK_PORT ?? 4310);
@@ -800,6 +816,19 @@ export async function startServer({
   });
   const { AgentActivityMonitor } = await import("./agent-activity.mjs");
   const activityMonitor = new AgentActivityMonitor(activityOptions);
+  const { SleepCoordinator } = await import("./sleep-coordinator.mjs");
+  const sleepCoordinator = new SleepCoordinator({
+    activityMonitor,
+    enabled: process.env.AGENT_DESK_KEEP_AWAKE !== "0",
+    ...keepAwakeOptions,
+  });
+  // Report Agent Desk's own assertion as an observed hold. Registered by pid
+  // rather than matched by command line, because the server's argv is whatever
+  // launched it and is not a reliable self-identifier.
+  activityMonitor.ownHolderPids = () => {
+    const pid = sleepCoordinator.state().pid;
+    return pid ? [pid] : [];
+  };
   const server = createAppServer({
     service,
     runner,
@@ -810,6 +839,7 @@ export async function startServer({
     machineMonitor,
     agentStatusMonitor,
     activityMonitor,
+    sleepCoordinator,
   });
   await new Promise((r, reject) => {
     server.once("error", reject);
@@ -819,6 +849,7 @@ export async function startServer({
     machineMonitor.close();
     agentStatusMonitor.close();
     activityMonitor.close();
+    sleepCoordinator.close();
     legacyObserver.close();
     runner.coordinator.close();
     clearInterval(syncManager.timer);
@@ -833,6 +864,7 @@ export async function startServer({
     machineMonitor,
     agentStatusMonitor,
     activityMonitor,
+    sleepCoordinator,
   };
 }
 if (
