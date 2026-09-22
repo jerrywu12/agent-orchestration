@@ -669,6 +669,14 @@ export function createAppServer({
           return json(service.updateTicket(key, input));
         if (resource === "tickets" && key && !action && method === "GET")
           return json(service.getTicket(key));
+        if (
+          resource === "tickets" &&
+          key &&
+          parts.length === 4 &&
+          action === "repair-launch-intent" &&
+          method === "POST"
+        )
+          return json(service.repairLaunchIntent(key, input));
         if (resource === "tickets" && action === "start" && method === "POST")
           return json(runner.start(key), 201);
         if (resource === "tickets" && action === "stop" && method === "POST")

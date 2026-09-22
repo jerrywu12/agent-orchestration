@@ -1750,3 +1750,57 @@ test("takeover completion shows current recovery state and separates old session
     }),
   ).toBeDisabled();
 });
+
+test("unknown launch status is not mislabeled as a failed launch and clears after repair", async ({
+  page,
+  request,
+}) => {
+  const p = await (
+    await request.post("/api/projects", {
+      data: {
+        name: "Launch repair fixture",
+        key: `L${randomUUID().slice(0, 7)}`,
+        repo: `fixture/${randomUUID()}`,
+      },
+    })
+  ).json();
+  const state = await (await request.get("/api/state")).json();
+  const done = state.stages.find(
+    (s: any) => s.projectId === p.id && s.role === "done",
+  );
+  const ticket = await (
+    await request.post("/api/tickets", {
+      data: {
+        projectId: p.id,
+        title: `Malformed launch ${randomUUID()}`,
+        stageId: done.id,
+      },
+    })
+  ).json();
+  let malformed = true;
+  await page.route("**/api/state", async (route) => {
+    const response = await route.fetch();
+    const body = await response.json();
+    body.tickets = body.tickets.map((t: any) =>
+      t.id === ticket.id
+        ? { ...t, launchIntent: malformed ? { ...ticket } : null }
+        : t,
+    );
+    await route.fulfill({ response, json: body });
+  });
+  await page.goto("/");
+  const row = page.getByRole("article", {
+    name: `${p.key}-${ticket.number} ${ticket.title}`,
+    exact: true,
+  });
+  await expect(
+    row.getByText("Launch status unavailable", { exact: true }),
+  ).toBeVisible();
+  await expect(row.getByText("Launch failed", { exact: true })).toHaveCount(0);
+  malformed = false;
+  await page.reload();
+  await expect(row).toBeVisible();
+  await expect(
+    row.getByText("Launch status unavailable", { exact: true }),
+  ).toHaveCount(0);
+});
