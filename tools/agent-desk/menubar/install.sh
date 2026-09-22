@@ -107,7 +107,7 @@ node_bin=""
 if [ -f "$SERVER_PLIST" ]; then
   node_bin="$(/usr/libexec/PlistBuddy -c 'Print :ProgramArguments:0' "$SERVER_PLIST" 2>/dev/null || true)"
 fi
-if [ -z "$node_bin" ] || [ ! -x "$node_bin" ]; then
+if [ -z "$node_bin" ] || [ ! -x "$node_bin" ] || [ "$node_bin" = "$MACOS_DIR/AgentDeskServer" ]; then
   node_bin="$(command -v node || true)"
 fi
 if [ -z "$node_bin" ]; then
