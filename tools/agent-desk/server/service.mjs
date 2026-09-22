@@ -93,6 +93,33 @@ export class Service extends EventEmitter {
     return {
       ...this.decorate(this.require("ticket", key)),
       attachmentContext: this.attachments.list(key, true),
+      coordination: this.coordinationContext(key),
+    };
+  }
+  coordinationContext(key) {
+    const ticket = this.require("ticket", key);
+    const children = this.store.list("ticket", ticket.projectId)
+      .filter((candidate) => candidate.parentId === key);
+    return {
+      role: children.length ? "coordinator" : "implementer",
+      implementationHold: children.length
+        ? "Parent containers with children cannot launch implementation. Inspect and claim the relevant child separately; parent assignment does not reassign children."
+        : null,
+      children: children.slice(0, 100).map((candidate) => {
+        const active = this.store.active(candidate.id);
+        return {
+          id: candidate.id,
+          number: candidate.number,
+          title: candidate.title,
+          ownerId: candidate.ownerId,
+          stage: this.require("stage", candidate.stageId).name,
+          archived: candidate.archived,
+          execution: active
+            ? { agentId: active.agentId, state: active.state, reserved: true }
+            : null,
+        };
+      }),
+      childrenTruncated: children.length > 100,
     };
   }
   createProject(input) {

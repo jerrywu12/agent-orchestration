@@ -306,3 +306,23 @@ test("image attachments upload, serve inline and bind to a ticket", async (t) =>
     404,
   );
 });
+
+test("assigned parent exposes bounded child ownership before claim without widening child access", async (t) => {
+  const { url, service } = await app(t, { agentTokens: { codex: "parent-token" } });
+  const project = service.createProject({ name: "Coordinator", repo: "fixture/coordinator" });
+  const stage = service.store.list("stage", project.id).find(s => s.role === "planning");
+  const parent = service.createTicket({ projectId: project.id, title: "Rollout", ownerId: "codex", stageId: stage.id });
+  const child = service.createTicket({ projectId: project.id, title: "Phase", ownerId: "claude", parentId: parent.id, description: "PRIVATE CHILD BODY", stageId: stage.id });
+  const headers = { authorization: "Bearer parent-token", "content-type": "application/json" };
+  const response = await fetch(`${url}/api/tickets/${parent.id}`, { headers });
+  assert.equal(response.status, 200);
+  const result = await response.json();
+  assert.equal(result.coordination.children[0].ownerId, "claude");
+  assert.equal(result.coordination.role, "coordinator");
+  assert.ok(!JSON.stringify(result).includes("PRIVATE CHILD BODY"));
+  assert.equal((await fetch(`${url}/api/tickets/${child.id}`, { headers })).status, 403);
+  assert.equal((await fetch(`${url}/api/tickets/${child.id}/claim`, { method: "POST", headers, body: JSON.stringify({ agentId: "codex", sessionId: "wrong-owner" }) })).status, 403);
+  service.updateTicket(parent.id, { version: parent.version, ownerId: "hermes" });
+  assert.equal(service.getTicket(child.id).ownerId, "claude");
+  assert.equal((await fetch(`${url}/api/tickets/${parent.id}`, { headers })).status, 403);
+});

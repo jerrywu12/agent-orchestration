@@ -1013,3 +1013,17 @@ for (const width of [320, 1440, 1920]) {
       ).toBeGreaterThanOrEqual(150);
   });
 }
+
+test("parent detail distinguishes coordinator from child owner and stage", async ({ page }) => {
+  const current = structuredClone(fixtureState);
+  current.agents.push({ id: "arkcli", name: "ArkCLI", enabled: true, adapter: "external" });
+  current.tickets[0].ownerId = "codex";
+  current.tickets.push({ ...current.tickets[0], id: "phase", number: 21, title: "Expression phase", parentId: "ticket", ownerId: "arkcli" });
+  await page.route("**/api/state", route => route.fulfill({ json: current }));
+  await page.route("**/api/integrations", route => route.fulfill({ json: { github: { available: false }, agents: [] } }));
+  await page.goto("/");
+  await page.getByText("Read the complete ticket identifier", { exact: true }).click();
+  await expect(page.getByRole("combobox", { name: "Coordinator", exact: true })).toHaveValue("codex");
+  await expect(page.getByText("This parent coordinates the rollout.", { exact: false })).toBeVisible();
+  await expect(page.getByRole("button", { name: /SMARTSTO-21.*Expression phase.*ArkCLI.*Ready/ })).toBeVisible();
+});
