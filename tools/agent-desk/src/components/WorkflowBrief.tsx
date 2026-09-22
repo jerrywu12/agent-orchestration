@@ -132,6 +132,9 @@ export function WorkflowBrief({
   });
   const held = isActive(ticket.execution);
   const holds = [
+    state.tickets.some((item) => item.parentId === ticket.id)
+      ? "Parent container: implementation belongs on separately assigned child tickets."
+      : "",
     !owner
       ? "No owner assigned."
       : !owner.enabled

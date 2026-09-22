@@ -253,7 +253,7 @@ export function TicketDetails({
               disabled={!!busy}
             />
             <label>
-              Owner
+              {state.tickets.some((item) => item.parentId === ticket.id) ? "Coordinator" : "Owner"}
               <select
                 value={draft.ownerId || ""}
                 disabled={active}
@@ -380,6 +380,10 @@ export function TicketDetails({
         {state.tickets.some((item) => item.parentId === ticket.id) && (
           <section className="detail-section">
             <h3>Child tickets</h3>
+            <p className="field-hint">
+              This parent coordinates the rollout. Start implementation on a child ticket.
+              Changing the coordinator does not reassign children or release their sessions.
+            </p>
             {state.tickets
               .filter((item) => item.parentId === ticket.id)
               .map((item) => (
@@ -395,6 +399,11 @@ export function TicketDetails({
                     {ticketKey(item, state.projects)}
                   </span>
                   {item.title}
+                  <span>
+                    {" — "}{state.agents.find((agent) => agent.id === item.ownerId)?.name || "Unassigned"}
+                    {" · "}{state.stages.find((stage) => stage.id === item.stageId)?.name}
+                    {isActive(item.execution) ? " · Session reserved" : ""}
+                  </span>
                 </button>
               ))}
           </section>
