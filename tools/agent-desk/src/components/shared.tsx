@@ -78,6 +78,35 @@ export function isStale(execution?: Execution | null) {
       Date.now() - Date.parse(execution?.heartbeatAt || "") > 90000)
   );
 }
+// Execution state and reporting freshness are independent: an external native
+// session can keep working between reports. Never turn heartbeat age into state.
+export function ExecutionStatus({ execution }: { execution?: Execution | null }) {
+  if (!isActive(execution) || !execution) return null;
+  const overdue = isStale(execution);
+  const state = execution.state || "unknown";
+  const title = [
+    `Last reported state: ${state}.`,
+    execution.external ? "Externally managed session." : "Managed session.",
+    overdue
+      ? "Heartbeat overdue (missing, invalid, or older than 90 seconds); this does not mean the session stopped. Ownership is retained."
+      : "Heartbeat is current.",
+    execution.summary || "",
+  ].filter(Boolean).join(" ");
+  return (
+    <span
+      className={`status-chip ${overdue ? "warning" : "active"}`}
+      data-execution-status={state}
+      title={title}
+    >
+      <CircleDot size={11} />
+      <span>
+        {capitalize(state.replaceAll("_", " "))}
+        {typeof execution.progress === "number" ? ` · ${execution.progress}%` : ""}
+        {overdue ? " · Heartbeat overdue" : ""}
+      </span>
+    </span>
+  );
+}
 export function colorStyle(color?: string | null): CSSProperties {
   return {
     "--item-color":
