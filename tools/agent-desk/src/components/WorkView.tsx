@@ -1449,7 +1449,9 @@ export function WorkView({
                                   >
                                     {ticket.launchIntent.status === "queued"
                                       ? "Queued"
-                                      : "Launch failed"}
+                                      : ticket.launchIntent.status === "failed"
+                                        ? "Launch failed"
+                                        : "Launch status unavailable"}
                                   </span>
                                 )}
                               {ticket.resumeReason && (

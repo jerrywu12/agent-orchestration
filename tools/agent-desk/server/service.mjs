@@ -516,6 +516,74 @@ export class Service extends EventEmitter {
       return decorated;
     });
   }
+  repairLaunchIntent(key, input) {
+    return this.store.transaction(() => {
+      const ticket = this.require("ticket", key);
+      const reason = text(input.reason, "Repair reason", 2000);
+      if (
+        !Number.isSafeInteger(input.version) ||
+        !Number.isSafeInteger(input.launchIntentVersion) ||
+        input.launchIntentVersion < 1
+      )
+        fail(
+          422,
+          "VERSION_REQUIRED",
+          "Provide ticket and launch intent versions.",
+        );
+      if (ticket.version !== input.version)
+        fail(
+          409,
+          "VERSION_CONFLICT",
+          "The ticket changed. Reload before repairing.",
+        );
+      if (this.store.active(key))
+        fail(
+          409,
+          "ACTIVE_EXECUTION",
+          "An active execution must retain its launch metadata.",
+        );
+      if (this.require("stage", ticket.stageId).role !== "done")
+        fail(
+          409,
+          "STAGE_HOLD",
+          "Only completed tickets support malformed launch repair.",
+        );
+      const intent = this.store.get("launch-intent", key);
+      if (!intent) return { outcome: "unchanged", ticket: this.getTicket(key) };
+      if (intent.version !== input.launchIntentVersion)
+        fail(
+          409,
+          "VERSION_CONFLICT",
+          "The launch intent changed. Reload before repairing.",
+        );
+      if (["queued", "started", "failed"].includes(intent.status))
+        fail(
+          409,
+          "VALID_LAUNCH_INTENT",
+          "Valid launch records cannot be erased by repair.",
+        );
+      const repair = this.store.put("launch-intent-repair", {
+        id: id(),
+        ticketId: key,
+        projectId: ticket.projectId,
+        original: intent,
+        reason,
+        repairedAt: now(),
+      });
+      this.store.delete("launch-intent", key);
+      this.store.activity(
+        key,
+        "launch_intent_repaired",
+        `Archived malformed launch record as ${repair.id}. ${reason}`,
+      );
+      this.changed();
+      return {
+        outcome: "repaired",
+        repairId: repair.id,
+        ticket: this.getTicket(key),
+      };
+    });
+  }
   readiness(key) {
     return inspectReadiness(this, this.require("ticket", key));
   }

@@ -316,3 +316,17 @@ version and authorization checks apply. MCP `desk_update_task` accepts
 `changes.effort`, and `desk_create_subtask` accepts `effort`, under their existing
 active execution/session guards. Effort remains local planning metadata and does
 not publish GitHub labels or alter execution ownership.
+
+### Repair malformed launch metadata
+
+An administrator can repair a completed ticket whose retained launch record has
+an unknown or missing status with `POST /api/tickets/:id/repair-launch-intent`.
+Read the current ticket first; send its `version`, the retained
+`launchIntent.version` as `launchIntentVersion`, and a nonempty audit `reason`.
+The operation checks both versions atomically, refuses active executions and
+valid `queued`, `started`, or `failed` records, and archives the original record
+under `launch-intent-repair` before removing the malformed intent. Ticket fields,
+execution history, ownership and delivery status remain unchanged; no agent starts.
+A retry with the same ticket version after removal returns `outcome: unchanged`.
+Scoped agent credentials cannot call this administrator operation. Unknown launch
+statuses display as unavailable until repaired, rather than claiming a launch failed.
