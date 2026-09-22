@@ -11,7 +11,6 @@ import {
   Archive,
   ChevronDown,
   ChevronRight,
-  CircleDot,
   Filter,
   GitPullRequest,
   LayoutGrid,
@@ -49,7 +48,7 @@ import {
   EmptyState,
   ErrorNotice,
   isActive,
-  isStale,
+  ExecutionStatus,
   Modal,
   priorities,
   PriorityIcon,
@@ -1304,8 +1303,6 @@ export function WorkView({
                       const stage = state.stages.find(
                         (item) => item.id === ticket.stageId,
                       );
-                      const running = isActive(ticket.execution);
-                      const stale = isStale(ticket.execution);
                       return view === "board" ? (
                         <article
                           className="board-ticket"
@@ -1366,21 +1363,7 @@ export function WorkView({
                                 : "Blocked"}
                             </span>
                           )}
-                          {running && (
-                            <span
-                              className={`status-chip ${stale ? "warning" : "active"}`}
-                            >
-                              <CircleDot size={11} />
-                              {stale
-                                ? "Heartbeat stale"
-                                : ticket.execution?.external
-                                  ? "External session"
-                                  : "Running"}
-                              {typeof ticket.execution?.progress === "number"
-                                ? ` · ${ticket.execution.progress}%`
-                                : ""}
-                            </span>
-                          )}
+                          <ExecutionStatus execution={ticket.execution} />
                           <span className="effort-value" title={effortHelp}>Effort: {ticket.effort ?? "Unset"}</span>
                           <div className="board-ticket-footer">
                             <span className="label-list">
@@ -1475,29 +1458,7 @@ export function WorkView({
                                   </span>
                                 </span>
                               )}
-                              {running && (
-                                <span
-                                  className={`status-chip ${stale ? "warning" : "active"}`}
-                                  title={
-                                    stale
-                                      ? "Heartbeat is older than two minutes; ownership is retained."
-                                      : ticket.execution?.summary ||
-                                        "Active execution"
-                                  }
-                                >
-                                  <CircleDot size={11} />
-                                  <span>
-                                    {stale
-                                      ? "Stale"
-                                      : ticket.execution?.external
-                                        ? "External"
-                                        : typeof ticket.execution?.progress ===
-                                            "number"
-                                          ? `${ticket.execution.progress}%`
-                                          : "Running"}
-                                  </span>
-                                </span>
-                              )}
+                              <ExecutionStatus execution={ticket.execution} />
                               {safeUrl(ticket.execution?.prUrl) && (
                                 <a
                                   href={safeUrl(ticket.execution?.prUrl)}

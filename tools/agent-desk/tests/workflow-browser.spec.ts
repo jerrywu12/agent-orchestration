@@ -471,3 +471,63 @@ for (const width of [320, 768, 1440]) {
     ).toBeLessThanOrEqual(width);
   });
 }
+
+for (const external of [true, false]) {
+  test(`running ${external ? "external" : "managed"} execution keeps state when heartbeat is overdue`, async ({ page }) => {
+    const state = workspace();
+    const ticket = state.tickets[0];
+    ticket.stageId = "stage-3";
+    ticket.blockedReason = "";
+    ticket.execution = {
+      id: "execution", ticketId: ticket.id, agentId: "codex",
+      sessionId: "active-native-session", state: "running", external,
+      heartbeatAt: "2026-09-13T11:49:00.000Z",
+    };
+    const mock = await mockWorkflow(page, state);
+    await page.goto("/");
+    for (const view of ["List view", "Board view"]) {
+      await page.getByRole("button", { name: view, exact: true }).click();
+      const badge = page.locator('[data-execution-status="running"]');
+      await expect(badge).toContainText("Running");
+      await expect(badge).toContainText("Heartbeat overdue");
+      await expect(badge).toHaveAttribute("title", /Last reported state: running/);
+      await expect(badge).toHaveAttribute("title", /does not mean the session stopped/);
+      await expect(page.getByText("Stale", { exact: true })).toHaveCount(0);
+    }
+    expect(mock.writes).toEqual([]);
+  });
+}
+
+for (const scenario of [
+  { name: "fresh", heartbeatAt: now, state: "running", overdue: false },
+  { name: "missing", heartbeatAt: undefined, state: "running", overdue: true },
+  { name: "invalid", heartbeatAt: "invalid", state: "running", overdue: true },
+  { name: "suspended", heartbeatAt: now, state: "suspended", overdue: false },
+  { name: "released", heartbeatAt: now, state: "running", overdue: false, releasedAt: now },
+]) {
+  test(`execution badge handles ${scenario.name} reporting without inventing activity`, async ({ page }) => {
+    const state = workspace();
+    const ticket = state.tickets[0];
+    ticket.execution = {
+      id: "execution", ticketId: ticket.id, agentId: "codex",
+      sessionId: "retained-session", external: true,
+      state: scenario.state, heartbeatAt: scenario.heartbeatAt,
+      releasedAt: scenario.releasedAt,
+    };
+    const mock = await mockWorkflow(page, state);
+    await page.goto("/");
+    for (const view of ["List view", "Board view"]) {
+      await page.getByRole("button", { name: view, exact: true }).click();
+      const badge = page.locator("[data-execution-status]");
+      if (scenario.releasedAt) {
+        await expect(badge).toHaveCount(0);
+      } else {
+        await expect(badge).toHaveAttribute("data-execution-status", scenario.state);
+        await expect(badge).toContainText(scenario.state === "suspended" ? "Suspended" : "Running");
+        if (scenario.overdue) await expect(badge).toContainText("Heartbeat overdue");
+        else await expect(badge).not.toContainText("Heartbeat overdue");
+      }
+    }
+    expect(mock.writes).toEqual([]);
+  });
+}
