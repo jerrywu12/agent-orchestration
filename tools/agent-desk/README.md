@@ -206,15 +206,21 @@ agent-desk-mcp --agent codex
 ```
 
 The stdio MCP server exposes `desk_list_tasks`, `desk_get_task`, `desk_claim_task`,
-`desk_report_progress`, `desk_get_resolution_context`, `desk_update_task` and
-`desk_create_subtask`. Organization tools require the exact active assigned execution/session.
+`desk_report_progress`, `desk_get_resolution_context`, `desk_update_task`,
+`desk_create_subtask` and `desk_deliver_task`. Organization tools require the exact active assigned execution/session.
 Updates require a current version and evidence/reorganization reason; new subtasks inherit
-project and owner and start Planning. Prepare and admit children separately. These tools cannot steal a
+project and owner and start Planning. Organization tools cannot steal a
 reservation, reassign, archive or mark Done. Installed per-agent connectors load their scoped token from the
 private data directory; never paste tokens in prompts or commit them. Remote clients use
 `AGENT_DESK_URL=https://...` and `AGENT_DESK_TOKEN` from secure environment configuration.
 Report start, state change, checkpoint and completion with the exact execution/session IDs.
 A stale heartbeat never releases ownership. `complete` means awaiting review, not merged.
+Once independent review, gates, PR merge, and merged-runtime verification are complete,
+the assigned agent may call `desk_deliver_task` for its latest released In review
+execution, submitting the reviewer identity and exact reviewed head. The service checks
+the recorded PR against GitHub and records the merge SHA and agent-submitted review,
+gate, and runtime attestations before moving the ticket to Done. GitHub verification failures
+leave the ticket In review.
 
 Source wrappers accept `AGENT_DESK_TICKET_ID`; without a linked ID they report their board
 visibility limit. Configure fresh scheduled/queue work with its assigned ticket; do not guess

@@ -111,6 +111,25 @@ export const definitions = [
     ),
   },
   {
+    name: "desk_deliver_task",
+    description:
+      "Mark an assigned, completed In review execution Done only after Agent Desk verifies its recorded PR is merged on GitHub. Supply current version, independent reviewer identity and exact reviewed head, plus review, gate and merged-runtime attestations. Ordinary agent updates cannot mark Done.",
+    inputSchema: object(
+      {
+        ticketId: str,
+        executionId: str,
+        sessionId: str,
+        version: { type: "integer", minimum: 1 },
+        reviewerId: str,
+        reviewedHeadSha: str,
+        reviewEvidence: str,
+        verificationEvidence: str,
+        runtimeEvidence: str,
+      },
+      ["ticketId", "executionId", "sessionId", "version", "reviewerId", "reviewedHeadSha", "reviewEvidence", "verificationEvidence", "runtimeEvidence"],
+    ),
+  },
+  {
     name: "desk_report_progress",
     description:
       "Report verified progress for your exact execution. Increasing seq and unique eventId required; retries reuse both. complete means awaiting review, not delivered. checkpoint must record saved state and relinquishes execution.",
@@ -174,11 +193,16 @@ async function invoke(name, input = {}) {
       config,
     );
   }
-  if (name === "desk_update_task" || name === "desk_create_subtask") {
+  if (name === "desk_update_task" || name === "desk_create_subtask" || name === "desk_deliver_task") {
     const { ticketId, ...payload } = input;
+    const action = {
+      desk_update_task: "agent-update",
+      desk_create_subtask: "subtasks",
+      desk_deliver_task: "deliver",
+    }[name];
     return request(
       name === "desk_update_task" ? "PATCH" : "POST",
-      `/api/tickets/${encodeURIComponent(ticketId)}/${name === "desk_update_task" ? "agent-update" : "subtasks"}`,
+      `/api/tickets/${encodeURIComponent(ticketId)}/${action}`,
       { ...payload, agentId: config.agentId },
       config,
     );
