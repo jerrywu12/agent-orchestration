@@ -410,7 +410,7 @@ export class Service extends EventEmitter {
       return attachment;
     });
   }
-  updateTicket(key, input, { confirmedTransition = false, resumeReason } = {}) {
+  updateTicket(key, input, { confirmedTransition = false, resumeReason, deliveryEvidence } = {}) {
     return this.store.transaction(() => {
       const previous = this.require("ticket", key);
       if (!Number.isSafeInteger(input.version))
@@ -423,6 +423,7 @@ export class Service extends EventEmitter {
         );
       const next = { ...previous };
       if (resumeReason !== undefined) next.resumeReason = resumeReason;
+      if (deliveryEvidence !== undefined) next.delivery = deliveryEvidence;
       for (const k of [
         "title",
         "description",
@@ -1095,6 +1096,99 @@ export class Service extends EventEmitter {
         version: input.version,
       });
       this.store.activity(key, "agent_reorganized", reason, input.agentId);
+      return result;
+    });
+  }
+  deliveryContext(key, input) {
+    const ticket = this.require("ticket", key);
+    if (!ticket.ownerId || ticket.ownerId !== input.agentId)
+      fail(403, "OWNER_MISMATCH", "This ticket is not assigned to your agent.");
+    if (!Number.isSafeInteger(input.version) || input.version < 1)
+      fail(422, "VERSION_REQUIRED", "Provide the ticket version.");
+    if (input.version !== ticket.version)
+      fail(409, "VERSION_CONFLICT", "This ticket changed. Reload before delivery.");
+    if (ticket.archived || !this.require("agent", input.agentId).enabled)
+      fail(409, "DELIVERY_HOLD", "Archived work or disabled agents cannot deliver tickets.");
+    if (this.store.active(key))
+      fail(409, "ACTIVE_EXECUTION", "Finish and release the execution before delivery.");
+    if (this.require("stage", ticket.stageId).role !== "review")
+      fail(409, "REVIEW_REQUIRED", "The ticket must be in review before delivery.");
+    if (this.resolutionNeeded(ticket))
+      fail(409, "DELIVERY_HOLD", "Resolve blockers and dependencies before delivery.");
+    const execution = this.store.latest(key);
+    if (
+      !execution ||
+      execution.id !== input.executionId ||
+      execution.agentId !== input.agentId ||
+      execution.sessionId !== input.sessionId ||
+      execution.state !== "awaiting_review" ||
+      !execution.releasedAt
+    )
+      fail(403, "SESSION_MISMATCH", "The latest completed assigned execution is required.");
+    if ((execution.heldSessions ?? []).some((session) => !session.releasedAt))
+      fail(409, "HELD_SESSIONS", "Reconcile held sessions before delivery.");
+    const reviewerId = text(input.reviewerId, "Independent reviewer identity", 200);
+    if (reviewerId.toLowerCase() === input.agentId.toLowerCase())
+      fail(422, "REVIEWER_REQUIRED", "The reviewer must differ from the implementing agent.");
+    if (!/^[a-f0-9]{40}$/i.test(input.reviewedHeadSha ?? ""))
+      fail(422, "REVIEW_HEAD_REQUIRED", "Provide the exact reviewed PR head SHA.");
+    if (input.reviewedHeadSha.toLowerCase() !== execution.headSha?.toLowerCase())
+      fail(409, "REVIEW_HEAD_MISMATCH", "Independent review must cover the completed PR head.");
+    const reviewEvidence = text(input.reviewEvidence, "Independent review evidence", 2000);
+    const verificationEvidence = text(input.verificationEvidence, "Verification evidence", 2000);
+    const runtimeEvidence = text(input.runtimeEvidence, "Merged runtime evidence", 2000);
+    const match = /^https:\/\/github\.com\/([\w.-]+\/[\w.-]+)\/pull\/(\d+)$/.exec(execution.prUrl ?? "");
+    const project = this.require("project", ticket.projectId);
+    if (!match || match[1].toLowerCase() !== project.repo?.toLowerCase())
+      fail(409, "PR_MISMATCH", "The completed execution needs a PR in this project repository.");
+    if (!/^[a-f0-9]{40}$/i.test(execution.headSha ?? ""))
+      fail(409, "HEAD_REQUIRED", "The completed execution needs an exact PR head SHA.");
+    return {
+      ticket,
+      execution,
+      repo: project.repo,
+      number: Number(match[2]),
+      reviewerId,
+      reviewEvidence,
+      verificationEvidence,
+      runtimeEvidence,
+    };
+  }
+  deliver(key, input, pullRequest) {
+    return this.store.transaction(() => {
+      const context = this.deliveryContext(key, input);
+      const { ticket, execution } = context;
+      if (
+        pullRequest?.merged !== true ||
+        !Number.isFinite(Date.parse(pullRequest.mergedAt ?? "")) ||
+        !/^[a-f0-9]{40}$/i.test(pullRequest.mergeCommitSha ?? "")
+      )
+        fail(409, "PR_NOT_MERGED", "GitHub must confirm a merged PR and merge commit.");
+      if (
+        pullRequest.repo?.toLowerCase() !== context.repo.toLowerCase() ||
+        pullRequest.number !== context.number ||
+        pullRequest.url !== execution.prUrl ||
+        pullRequest.headSha?.toLowerCase() !== execution.headSha.toLowerCase()
+      )
+        fail(409, "PR_MISMATCH", "GitHub PR does not match the completed execution.");
+      const stage = this.store.list("stage", ticket.projectId).find((candidate) => candidate.role === "done");
+      const delivery = {
+        agentId: input.agentId,
+        executionId: execution.id,
+        sessionId: execution.sessionId,
+        prUrl: execution.prUrl,
+        headSha: execution.headSha,
+        mergeCommitSha: pullRequest.mergeCommitSha,
+        mergedAt: pullRequest.mergedAt,
+        reviewerId: context.reviewerId,
+        reviewedHeadSha: input.reviewedHeadSha,
+        reviewEvidence: context.reviewEvidence,
+        verificationEvidence: context.verificationEvidence,
+        runtimeEvidence: context.runtimeEvidence,
+        deliveredAt: now(),
+      };
+      const result = this.updateTicket(key, { version: ticket.version, stageId: stage.id }, { deliveryEvidence: delivery });
+      this.store.activity(key, "agent_delivered", `${execution.prUrl} merged at ${pullRequest.mergeCommitSha}; reviewed and verified.`, input.agentId);
       return result;
     });
   }

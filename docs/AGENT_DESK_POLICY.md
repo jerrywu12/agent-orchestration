@@ -95,6 +95,15 @@ The assigned active execution can use desk_get_resolution_context, desk_update_t
 project/owner boundaries and require separate claims for children; they cannot steal
 reservations, archive tickets or mark Done. Ordinary claims and automatic starts still
 honor Backlog, dependency and blocker holds.
+After a completed execution is released into In review, its assigned agent may use
+`desk_deliver_task` with the exact execution/session, current ticket version,
+independent reviewer identity, exact reviewed head, and review, gate, and
+merged-runtime attestations. Agent Desk verifies the recorded execution PR is
+merged in the project repository with the exact reported head; review and test
+details are submitted by the assigned agent and retained for audit, not independently
+verified by the service. A live, foreign, blocked, dependency-held, or unmerged
+execution cannot use this delivery action. The ordinary organization tools remain
+unable to mark Done.
 
 ## Mandatory dependency, duplicate and conflict review
 
