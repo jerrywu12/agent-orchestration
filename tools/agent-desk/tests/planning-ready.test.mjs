@@ -491,6 +491,119 @@ test("external agent confirms into Planning cleanly without launch supervisor or
   assert.match(intent.reason, /external/i);
 });
 
+test("admin can confirm a managed agent for an existing external session without spawning another agent", (t) => {
+  const { service, store, stage, make } = setup(t);
+  const ticket = make({ stageId: stage("backlog"), ownerId: "codex", brief });
+  let runnerInvoked = false;
+  service.runner = {
+    children: new Map(),
+    availability: () => [{ id: "codex", available: false, reason: "Local model unavailable" }],
+    start: () => { runnerInvoked = true; throw new Error("Must not spawn a second Codex task"); },
+  };
+  const result = service.transition(ticket.id, {
+    version: ticket.version,
+    stageId: stage("ready"),
+    ownerId: "codex",
+    confirmed: true,
+    executionMode: "external",
+  });
+  assert.equal(result.outcome, "awaiting_claim");
+  assert.equal(runnerInvoked, false);
+  assert.equal(store.get("launch-intent", ticket.id).status, "awaiting_claim");
+  assert.throws(() => service.transition(ticket.id, {
+    version: service.getTicket(ticket.id).version,
+    stageId: stage("ready"), ownerId: "codex", confirmed: true,
+  }), (error) => error.code === "EXTERNAL_CLAIM_PENDING");
+  const claim = service.claim(ticket.id, {
+    agentId: "codex", sessionId: "existing-codex-session", external: true,
+    branch: "codex/existing", worktreePath: "/tmp/existing",
+  });
+  assert.equal(claim.purpose, "implementation");
+  assert.equal(claim.sessionId, "existing-codex-session");
+  assert.equal(service.getTicket(ticket.id).stageId, stage("active"));
+  assert.equal(store.get("launch-intent", ticket.id).status, "started");
+  assert.equal(store.get("launch-intent", ticket.id).executionId, claim.id);
+  assert.equal(store.get("launch-intent", ticket.id).sessionId, claim.sessionId);
+});
+
+test("unclaimed external admission must return to Backlog before it can be confirmed again", (t) => {
+  const { service, store, stage, make } = setup(t);
+  const ticket = make({ stageId: stage("backlog"), ownerId: "codex", brief });
+  service.runner = { availability: () => [], start: () => { throw new Error("no duplicate launch"); } };
+  const input = { stageId: stage("ready"), ownerId: "codex", confirmed: true, executionMode: "external" };
+  service.transition(ticket.id, { ...input, version: ticket.version });
+  assert.throws(() => service.transition(ticket.id, {
+    ...input, version: service.getTicket(ticket.id).version,
+  }), (error) => error.code === "EXTERNAL_CLAIM_PENDING");
+  service.updateTicket(ticket.id, {
+    version: service.getTicket(ticket.id).version, stageId: stage("backlog"),
+  });
+  assert.equal(store.get("launch-intent", ticket.id).status, "cancelled");
+  assert.equal(service.transition(ticket.id, {
+    ...input, version: service.getTicket(ticket.id).version,
+  }).outcome, "awaiting_claim");
+});
+
+test("external claim rejects changed owner and scope after confirmation", (t) => {
+  const { service, stage, make } = setup(t);
+  service.runner = { availability: () => [], start: () => { throw new Error("no launch"); } };
+  const ticket = make({ stageId: stage("backlog"), ownerId: "codex", brief });
+  service.transition(ticket.id, {
+    version: ticket.version, stageId: stage("ready"), ownerId: "codex",
+    confirmed: true, executionMode: "external",
+  });
+  service.updateTicket(ticket.id, {
+    version: service.getTicket(ticket.id).version, ownerId: "claude",
+  });
+  assert.throws(() => service.claim(ticket.id, {
+    agentId: "claude", sessionId: "other-agent", external: true,
+  }), (error) => error.code === "EXTERNAL_INTENT_CHANGED");
+  assert.equal(service.store.active(ticket.id), null);
+
+  service.updateTicket(ticket.id, {
+    version: service.getTicket(ticket.id).version, stageId: stage("backlog"),
+  });
+  service.updateTicket(ticket.id, {
+    version: service.getTicket(ticket.id).version, ownerId: "codex",
+  });
+  service.transition(ticket.id, {
+    version: service.getTicket(ticket.id).version, stageId: stage("ready"),
+    ownerId: "codex", confirmed: true, executionMode: "external",
+  });
+  service.updateTicket(ticket.id, {
+    version: service.getTicket(ticket.id).version,
+    brief: { ...brief, allowedPaths: "src/b/**" },
+  });
+  assert.throws(() => service.claim(ticket.id, {
+    agentId: "codex", sessionId: "changed-scope", external: true,
+  }), (error) => error.code === "EXTERNAL_INTENT_CHANGED");
+  assert.throws(() => service.claim(ticket.id, {
+    agentId: "codex", sessionId: "managed", external: false,
+  }), (error) => error.code === "EXTERNAL_INTENT_CHANGED");
+  assert.equal(service.store.active(ticket.id), null);
+});
+
+test("HTTP external-session override remains admin-only", async (t) => {
+  const { service, stage, make } = setup(t);
+  const ticket = make({ stageId: stage("backlog"), ownerId: "codex", brief });
+  const runner = { availability: () => [], start: () => { throw new Error("must not launch"); } };
+  const server = createAppServer({
+    service, runner, adminToken: "admin-fixture", agentTokens: { codex: "agent-fixture" },
+  });
+  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+  t.after(() => { server.closeAllConnections(); server.close(); });
+  const input = { version: ticket.version, stageId: stage("ready"), ownerId: "codex", confirmed: true, executionMode: "external" };
+  const url = `http://127.0.0.1:${server.address().port}/api/tickets/${ticket.id}/transition`;
+  const send = (token) => fetch(url, {
+    method: "POST", headers: { authorization: `Bearer ${token}`, "content-type": "application/json" },
+    body: JSON.stringify(input),
+  });
+  assert.equal((await send("agent-fixture")).status, 403);
+  const response = await send("admin-fixture");
+  assert.equal(response.status, 200);
+  assert.equal((await response.json()).outcome, "awaiting_claim");
+});
+
 test("Gemini/Antigravity agent invokes runner.start when confirmed into Planning", (t) => {
   const { service, store, stage, make } = setup(t);
   const ticket = make({ stageId: stage("backlog"), ownerId: "gemini" });
@@ -636,4 +749,3 @@ test("planning with remaining blocker or unfinished dependency remains in Planni
   assert.equal(runnerInvoked, false);
   assert.equal(service.require("ticket", ticket.id).stageId, stage("planning"));
 });
-

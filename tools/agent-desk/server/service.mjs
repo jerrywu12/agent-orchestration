@@ -487,6 +487,14 @@ export class Service extends EventEmitter {
         this.store.enqueue(key);
       }
       const result = this.store.put("ticket", next, input.version);
+      const unclaimedIntent = this.store.get("launch-intent", key);
+      if (role === "backlog" && next.stageId !== previous.stageId && unclaimedIntent?.status === "awaiting_claim")
+        this.store.put("launch-intent", {
+          ...unclaimedIntent,
+          status: "cancelled",
+          reason: "External admission was returned to Backlog before a session claimed it.",
+          updatedAt: now(),
+        });
       const changes = [
         "title",
         "stageId",
@@ -621,7 +629,11 @@ export class Service extends EventEmitter {
           "CONFIRMATION_REQUIRED",
           "Explicit confirmation is required.",
         );
+      if (input.executionMode !== undefined && input.executionMode !== "external")
+        fail(422, "EXECUTION_MODE", "Only an existing external session may be selected explicitly.");
       const previous = this.require("ticket", key);
+      if (this.store.get("launch-intent", key)?.status === "awaiting_claim")
+        fail(409, "EXTERNAL_CLAIM_PENDING", "The confirmed external session must claim or be reconciled before another launch.");
       if (input.version !== previous.version)
         fail(
           409,
@@ -634,7 +646,9 @@ export class Service extends EventEmitter {
       const agent = this.require("agent", input.ownerId);
       if (!agent.enabled)
         fail(422, "AGENT_DISABLED", "This agent is disabled.");
+      const existingExternal = input.executionMode === "external";
       const isExternal =
+        existingExternal ||
         agent.adapter === "external" || agent.capabilities?.execute === false;
       const availability = this.runner
         ?.availability?.()
@@ -688,8 +702,10 @@ export class Service extends EventEmitter {
         purpose: stage.role === "planning" ? "planning" : "implementation",
         confirmed: true,
         fingerprint: this.launchFingerprint(result),
-        status: isExternal ? "started" : "queued",
-        reason: isExternal
+        status: existingExternal ? "awaiting_claim" : isExternal ? "started" : "queued",
+        reason: existingExternal
+          ? "Awaiting the assigned agent's exact existing session claim."
+          : isExternal
           ? "External agent; start in client or report through CLI/MCP."
           : undefined,
         createdAt: now(),
@@ -697,11 +713,12 @@ export class Service extends EventEmitter {
       return result;
     });
     if (
+      input.executionMode === "external" ||
       this.require("agent", input.ownerId).adapter === "external" ||
       this.require("agent", input.ownerId).capabilities?.execute === false
     ) {
       this.changed();
-      return { ticket: this.getTicket(key), outcome: "started" };
+      return { ticket: this.getTicket(key), outcome: input.executionMode === "external" ? "awaiting_claim" : "started" };
     }
     const result = this.dispatchIntent(key);
     this.changed();
@@ -851,6 +868,13 @@ export class Service extends EventEmitter {
         );
       }
       const ticket = this.ready(key, input.agentId, { resolveBlockers });
+      const pendingExternalIntent = this.store.get("launch-intent", key);
+      if (pendingExternalIntent?.status === "awaiting_claim" &&
+          (input.external !== true ||
+            pendingExternalIntent.ownerId !== input.agentId ||
+            pendingExternalIntent.stageId !== ticket.stageId ||
+            pendingExternalIntent.fingerprint !== this.launchFingerprint(ticket)))
+        fail(409, "EXTERNAL_INTENT_CHANGED", "The external admission changed; return it to Backlog and confirm the current owner and scope again.");
       const purpose = resolveBlockers
         ? "resolve_blockers"
         : this.require("stage", ticket.stageId).role === "planning"
@@ -908,11 +932,12 @@ export class Service extends EventEmitter {
     // The claim and its pending requests commit together. A fast external/direct
     // run may finish before the next drain; its authorization must not replay.
     const intent = this.store.get("launch-intent", execution.ticketId);
-    if (intent?.status === "queued")
+    if (["queued", "awaiting_claim"].includes(intent?.status))
       this.store.put("launch-intent", {
         ...intent,
         status: "started",
         executionId: execution.id,
+        sessionId: execution.sessionId,
         code: undefined,
         reason: "Confirmed work has an execution.",
         updatedAt: now(),

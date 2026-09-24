@@ -193,7 +193,15 @@ review never overrides them. No new AI service is launched for manual intake.
    Do not use a new wrapper to resume an existing executor.
 
 Assignment alone does not launch work. A move to Planning or Ready prompts for an owner;
-confirmation authorizes that agent to start or queue. Planning executions remain in Planning.
+confirmation authorizes that agent to start or queue. A coordinator confirming an
+already running native session may set `executionMode: "external"` on the admin
+transition, then the assigned agent claims with its exact session ID. This
+suppresses a duplicate managed launch for that transition without changing the
+agent's registered adapter or permissions. The admission remains awaiting claim
+until that exact agent session claims; a second launch is refused while pending.
+If the existing session cannot claim, the coordinator verifies it is stopped and
+returns the unclaimed ticket to Backlog before confirming again. Planning
+executions remain in Planning.
 Ready admission requires complete preparation, leaf scope, resolved blockers/dependencies and
 no overlapping development. Actual implementation start moves to In progress. Queued and failed
 launches remain visible. Stage metadata, imports and migration never authorize a launch.
