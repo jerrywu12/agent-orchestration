@@ -73,6 +73,7 @@ export interface GitHubLink {
   conflict?: unknown;
 }
 export interface Ticket {
+  planningAssignment?: { stageId: string; ownerId: string } | null;
   launchIntent?: {
     status: "queued" | "started" | "failed";
     purpose: "planning" | "implementation";

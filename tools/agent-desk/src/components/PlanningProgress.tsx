@@ -4,8 +4,19 @@ import type { RunResult } from "../bulk-types";
 import { ErrorNotice, isActive, ticketKey } from "./shared";
 import { heartbeatStale, RunProgress } from "./RunProgress";
 
-export function planningIsWorking(ticket: Ticket, now = Date.now()) {
+function currentPlanningExecution(ticket: Ticket) {
   const execution = ticket.execution;
+  if (execution?.purpose !== "planning") return null;
+  const stageChangedAt = Date.parse(ticket.stageChangedAt || "");
+  const startedAt = Date.parse(execution.startedAt || "");
+  if (Number.isFinite(stageChangedAt) &&
+      (!Number.isFinite(startedAt) || startedAt < stageChangedAt))
+    return null;
+  return execution;
+}
+
+export function planningIsWorking(ticket: Ticket, now = Date.now()) {
+  const execution = currentPlanningExecution(ticket);
   const historicalStart = ticket.launchIntent;
   if (historicalStart?.purpose === "planning" && historicalStart.status === "started" &&
       historicalStart.executionId !== execution?.id)
@@ -13,7 +24,7 @@ export function planningIsWorking(ticket: Ticket, now = Date.now()) {
   const heartbeat = Date.parse(execution?.heartbeatAt || "");
   return (
     execution?.purpose === "planning" &&
-    ["running", "external"].includes(execution.state) &&
+    execution.state === "running" &&
     !execution.releasedAt &&
     !execution.stale &&
     Number.isFinite(heartbeat) &&
@@ -47,8 +58,7 @@ function projection(ticket: Ticket): RunResult | null {
         intent.reason ||
         "Planning agent failed to start. Open the ticket to inspect the launch failure.",
     };
-  const execution =
-    ticket.execution?.purpose === "planning" ? ticket.execution : null;
+  const execution = currentPlanningExecution(ticket);
   if (historicalStart &&
       (!historicalStart.executionId || historicalStart.executionId !== execution?.id))
     return {

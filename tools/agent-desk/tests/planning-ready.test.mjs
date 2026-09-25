@@ -251,7 +251,7 @@ test("held parent stays active when its only existing child finishes", (t) => {
   assert.equal(released.version, service.getTicket(parent.id).version);
 });
 
-test("confirmed external planning admission survives parent rollup until its exact claim", (t) => {
+test("confirmed parent Planning assignment survives rollup until its exact claim", (t) => {
   const { service, stage, make } = setup(t);
   const parent = make({ stageId: stage("active"), blockedReason: "C1 contract review" });
   const child = make({ parentId: parent.id, stageId: stage("active") });
@@ -264,9 +264,9 @@ test("confirmed external planning admission survives parent rollup until its exa
     stageId: stage("planning"),
     ownerId: "codex",
     confirmed: true,
-    executionMode: "external",
   });
-  assert.equal(admitted.outcome, "awaiting_claim");
+  assert.equal(admitted.outcome, "moved");
+  assert.equal(admitted.ticket.launchIntent, null);
   service.syncAllParentContainers();
   assert.equal(service.getTicket(parent.id).stageId, stage("planning"));
   const claim = service.claim(parent.id, {
@@ -287,7 +287,7 @@ test("confirmed external planning admission survives parent rollup until its exa
   assert.equal(service.getTicket(parent.id).stageId, stage("active"));
 });
 
-test("external adapter planning intent binds its claim and releases parent rollup on checkpoint", (t) => {
+test("external agent Planning assignment holds parent until checkpoint", (t) => {
   const { service, store, stage, make } = setup(t);
   const parent = make({ stageId: stage("active"), ownerId: "hermes", blockedReason: "Contract review" });
   const child = make({ parentId: parent.id, stageId: stage("active") });
@@ -299,7 +299,8 @@ test("external adapter planning intent binds its claim and releases parent rollu
     ownerId: "hermes",
     confirmed: true,
   });
-  assert.equal(admitted.outcome, "started");
+  assert.equal(admitted.outcome, "moved");
+  assert.equal(admitted.ticket.launchIntent, null);
   service.syncAllParentContainers();
   assert.equal(service.getTicket(parent.id).stageId, stage("planning"));
   const claim = service.claim(parent.id, {
@@ -307,7 +308,7 @@ test("external adapter planning intent binds its claim and releases parent rollu
     sessionId: "hermes-planning",
     external: true,
   });
-  assert.equal(store.get("launch-intent", parent.id).executionId, claim.id);
+  assert.equal(store.get("launch-intent", parent.id), null);
   service.event(claim.id, {
     agentId: "hermes",
     sessionId: claim.sessionId,
@@ -330,7 +331,6 @@ test("reconciled external planning claim immediately releases parent rollup", (t
     stageId: stage("planning"),
     ownerId: "codex",
     confirmed: true,
-    executionMode: "external",
   });
   const claim = service.claim(parent.id, {
     agentId: "codex",

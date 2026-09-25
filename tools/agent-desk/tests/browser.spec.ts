@@ -187,6 +187,9 @@ test("independent agent progress reaches the board without a launch control", as
   const key = `${project.key}-${ticket.number}`;
   const article = page.getByRole("article", { name: `${key} ${ticket.title}` });
   await expect(page.getByRole("button", { name: "Run Agent", exact: true })).toHaveCount(0);
+  const directRefused = await request.post(`/api/tickets/${ticket.id}/start`, { data: {} });
+  expect(directRefused.status()).toBe(410);
+  expect((await directRefused.json()).error.code).toBe("TRACKING_ONLY");
   const refused = await request.post("/api/runs", { data: { ticketIds: [ticket.id], requestId: randomUUID(), concurrency: 1 } });
   expect(refused.status()).toBe(410);
   expect((await refused.json()).error.code).toBe("TRACKING_ONLY");
@@ -198,6 +201,48 @@ test("independent agent progress reaches the board without a launch control", as
   await expect(article.locator('[data-execution-status="running"]')).toContainText("55%");
   const current = await request.get(`/api/tickets/${ticket.id}`);
   expect((await current.json()).execution.summary).toBe("Verifying the regression tests");
+});
+
+test("Planning shows current assignment separately from old and unverified sessions", async ({ page, request }) => {
+  const { project, stages } = await projectFixture(request, "Planning evidence");
+  const planningId = stages.find((stage) => stage.role === "planning")!.id;
+  const old = await ticketFixture(request, project, planningId, { ownerId: "codex" });
+  const imported = await ticketFixture(request, project, planningId, { ownerId: "claude" });
+  const snapshot = await state(request);
+  const currentStageAt = new Date(Date.now() - 30_000).toISOString();
+  snapshot.tickets = [
+    {
+      ...old,
+      stageChangedAt: currentStageAt,
+      execution: {
+        id: "old-planning-session", ticketId: old.id, agentId: "codex", sessionId: "old-session",
+        purpose: "planning", state: "checkpointed", summary: "Prior planning checkpoint",
+        startedAt: new Date(Date.now() - 86_400_000).toISOString(),
+        heartbeatAt: new Date(Date.now() - 86_400_000).toISOString(),
+        releasedAt: new Date(Date.now() - 86_300_000).toISOString(),
+      },
+    },
+    {
+      ...imported,
+      stageChangedAt: currentStageAt,
+      execution: {
+        id: "imported-planning-session", ticketId: imported.id, agentId: "claude", sessionId: "native-session",
+        purpose: "planning", state: "external", external: true,
+        summary: "Imported session; progress unverified",
+        startedAt: new Date(Date.now() - 20_000).toISOString(),
+        heartbeatAt: new Date().toISOString(),
+      },
+    },
+  ];
+  await page.route("**/api/state", (route) => route.fulfill({ json: snapshot }));
+  await page.goto("/");
+  const outcomes = page.getByRole("list", { name: "Planning ticket outcomes" });
+  const oldRow = outcomes.getByRole("listitem").filter({ hasText: `${project.key}-${old.number}` });
+  const importedRow = outcomes.getByRole("listitem").filter({ hasText: `${project.key}-${imported.number}` });
+  await expect(oldRow).toContainText("Awaiting agent update");
+  await expect(oldRow).not.toContainText("Prior planning checkpoint");
+  await expect(importedRow).toContainText("Needs attention · inspect execution");
+  await expect(importedRow).not.toContainText("Planning agent working");
 });
 
 async function expectNoDocumentOverflow(page: Page, width: number) {

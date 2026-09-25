@@ -464,6 +464,15 @@ export class Service extends EventEmitter {
         next.brief = this.normalizeBrief(input.brief);
       this.validateTicket(next);
       const role = this.require("stage", next.stageId).role;
+      if (next.stageId !== previous.stageId || next.ownerId !== previous.ownerId)
+        next.planningAssignment = null;
+      if (role === "planning" &&
+          (confirmedTransition ||
+            (previous.planningAssignment && next.stageId === previous.stageId)))
+        next.planningAssignment = {
+          stageId: next.stageId,
+          ownerId: next.ownerId,
+        };
       // Completion supersedes the old resume request, including on legacy records
       // being reopened. The execution and checkpoint history remain untouched.
       if (
@@ -682,6 +691,11 @@ export class Service extends EventEmitter {
         },
         { confirmedTransition: true },
       );
+      const priorIntent = this.store.get("launch-intent", key);
+      if (priorIntent) {
+        this.store.activity(key, "launch_intent_superseded", `Historical ${priorIntent.status} launch intent superseded by a tracking-only stage confirmation.`);
+        this.store.delete("launch-intent", key);
+      }
       this.store.activity(key, "stage_confirmed", `Moved to ${stage.name}; assigned agent ${agent.id}. Agent Desk did not launch an agent.`);
       return result;
     });
@@ -797,6 +811,12 @@ export class Service extends EventEmitter {
         external: !!input.external,
         releasedAt: null,
       });
+      if (purpose === "planning" && ticket.planningAssignment)
+        this.store.put("ticket", {
+          ...ticket,
+          planningAssignment: null,
+          updatedAt: now(),
+        }, ticket.version);
       // A new independently claimed session supersedes a historical launch
       // display record; its telemetry must describe this exact execution.
       if (this.store.get("launch-intent", key)?.status === "started")
@@ -830,16 +850,7 @@ export class Service extends EventEmitter {
     // The claim and its pending requests commit together. A fast external/direct
     // run may finish before the next drain; its authorization must not replay.
     const intent = this.store.get("launch-intent", execution.ticketId);
-    const ticket = this.require("ticket", execution.ticketId);
-    const unboundExternalPlanning =
-      intent?.status === "started" &&
-      intent.purpose === "planning" &&
-      execution.purpose === "planning" &&
-      !intent.executionId &&
-      intent.ownerId === execution.agentId &&
-      intent.stageId === ticket.stageId &&
-      intent.fingerprint === this.launchFingerprint(ticket);
-    if (["queued", "awaiting_claim"].includes(intent?.status) || unboundExternalPlanning)
+    if (["queued", "awaiting_claim"].includes(intent?.status))
       this.store.put("launch-intent", {
         ...intent,
         status: "started",
@@ -1354,15 +1365,10 @@ export class Service extends EventEmitter {
 
     const parentActive = this.store.active(parent.id);
     if (parentActive && parentActive.purpose === "planning") return;
-    const planningIntent = this.store.get("launch-intent", parent.id);
     if (
       this.require("stage", parent.stageId).role === "planning" &&
-      planningIntent?.purpose === "planning" &&
-      (["queued", "awaiting_claim"].includes(planningIntent.status) ||
-        (planningIntent.status === "started" && !planningIntent.executionId)) &&
-      planningIntent.stageId === parent.stageId &&
-      planningIntent.ownerId === parent.ownerId &&
-      planningIntent.fingerprint === this.launchFingerprint(parent)
+      parent.planningAssignment?.stageId === parent.stageId &&
+      parent.planningAssignment?.ownerId === parent.ownerId
     ) return;
 
     const stages = this.store.list("stage", parent.projectId);

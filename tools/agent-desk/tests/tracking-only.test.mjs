@@ -102,6 +102,24 @@ test("restart retires legacy queued admissions without touching prior executions
   assert.equal(f.starts(), 0);
 });
 
+test("new Planning confirmation supersedes an old failed launch status", (t) => {
+  const f = fixture(t);
+  f.store.put("launch-intent", {
+    id: f.ticket.id, ticketId: f.ticket.id, ownerId: "codex",
+    stageId: f.stage("planning"), purpose: "planning", confirmed: true,
+    status: "failed", reason: "Old launcher failed", createdAt: new Date().toISOString(),
+  });
+  const moved = f.service.transition(f.ticket.id, {
+    version: f.ticket.version,
+    stageId: f.stage("planning"),
+    ownerId: "codex",
+    confirmed: true,
+  });
+  assert.equal(moved.outcome, "moved");
+  assert.equal(moved.ticket.launchIntent, null);
+  assert.ok(f.store.activities().some((entry) => entry.kind === "launch_intent_superseded"));
+});
+
 test("direct and batch launch entry points refuse work in tracking-only mode", (t) => {
   const f = fixture(t);
   const runner = new Runner(f.service, { dataDir: "/tmp/agent-desk-tracking-test", url: "http://127.0.0.1:1" });
