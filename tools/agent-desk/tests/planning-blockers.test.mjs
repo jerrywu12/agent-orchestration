@@ -73,7 +73,7 @@ test("planning packet directs proactive evidence-based blocker resolution before
   assert.match(packet, /do not take over another agent.s reservation/i);
   assert.match(
     packet,
-    /does not authorize production implementation or Ready admission/,
+    /does not authorize production implementation or a direct stage update to Ready/,
   );
 });
 test("blocked Planning claim runs and assigned evidence-bearing updates can resolve its blocker", (t) => {

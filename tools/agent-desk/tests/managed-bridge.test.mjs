@@ -43,7 +43,7 @@ function fixture(t, options = {}) {
       conflictKeys: "none",
     },
     ownerId: "codex",
-    stageId: store.list("stage", project.id).find((s) => s.role === "ready").id,
+    stageId: store.list("stage", project.id).find((s) => s.role === (options.stageRole ?? "ready")).id,
   });
   const execution = service.claim(ticket.id, {
     agentId: "codex",
@@ -164,6 +164,17 @@ test("report replay retains one sequence and explicit terminal result; released 
     f.request("report_progress", { ...input, summary: "changed replay" }),
     { code: "EVENT_CONFLICT" },
   );
+  await assert.rejects(f.request("get_task"), { code: "SESSION_MISMATCH" });
+});
+
+test("managed planner receives Ready admission after its claim releases", async (t) => {
+  const f = fixture(t, { stageRole: "planning" });
+  await f.request("get_task");
+  const input = { type: "complete", summary: "Plan finished", eventId: randomUUID() };
+  const first = await f.request("report_progress", input);
+  assert.equal(first.planningAdmission.source.stage, "ready");
+  assert.equal(first.planningAdmission.tickets[0].stage, "ready");
+  assert.deepEqual((await f.request("report_progress", input)).planningAdmission, first.planningAdmission);
   await assert.rejects(f.request("get_task"), { code: "SESSION_MISMATCH" });
 });
 

@@ -132,7 +132,7 @@ export const definitions = [
   {
     name: "desk_report_progress",
     description:
-      "Report verified progress for your exact execution. Increasing seq and unique eventId required; retries reuse both. complete means awaiting review, not delivered. checkpoint must record saved state and relinquishes execution.",
+      "Report verified progress for your exact execution. Increasing seq and unique eventId required; retries reuse both. For planning, complete releases the claim and returns planningAdmission with each prepared ticket's stage and any readiness holds. For implementation, complete moves work to In review, never Done. checkpoint records saved unfinished work and releases the claim.",
     inputSchema: object(
       {
         executionId: str,
