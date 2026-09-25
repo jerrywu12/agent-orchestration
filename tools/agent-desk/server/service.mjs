@@ -830,7 +830,16 @@ export class Service extends EventEmitter {
     // The claim and its pending requests commit together. A fast external/direct
     // run may finish before the next drain; its authorization must not replay.
     const intent = this.store.get("launch-intent", execution.ticketId);
-    if (["queued", "awaiting_claim"].includes(intent?.status))
+    const ticket = this.require("ticket", execution.ticketId);
+    const unboundExternalPlanning =
+      intent?.status === "started" &&
+      intent.purpose === "planning" &&
+      execution.purpose === "planning" &&
+      !intent.executionId &&
+      intent.ownerId === execution.agentId &&
+      intent.stageId === ticket.stageId &&
+      intent.fingerprint === this.launchFingerprint(ticket);
+    if (["queued", "awaiting_claim"].includes(intent?.status) || unboundExternalPlanning)
       this.store.put("launch-intent", {
         ...intent,
         status: "started",
@@ -1345,6 +1354,16 @@ export class Service extends EventEmitter {
 
     const parentActive = this.store.active(parent.id);
     if (parentActive && parentActive.purpose === "planning") return;
+    const planningIntent = this.store.get("launch-intent", parent.id);
+    if (
+      this.require("stage", parent.stageId).role === "planning" &&
+      planningIntent?.purpose === "planning" &&
+      (["queued", "awaiting_claim"].includes(planningIntent.status) ||
+        (planningIntent.status === "started" && !planningIntent.executionId)) &&
+      planningIntent.stageId === parent.stageId &&
+      planningIntent.ownerId === parent.ownerId &&
+      planningIntent.fingerprint === this.launchFingerprint(parent)
+    ) return;
 
     const stages = this.store.list("stage", parent.projectId);
     const stageMap = new Map(stages.map((s) => [s.id, s]));
@@ -1560,10 +1579,13 @@ export class Service extends EventEmitter {
         this.syncParentContainerStage(t.parentId);
       }
     }
+    if (result.releasedAt && result.purpose === "planning" && ticketId) {
+      this.syncParentContainerStage(ticketId);
+    }
     return result;
   }
   reconcileExternal(key, input) {
-    return this.store.transaction(() => {
+    const result = this.store.transaction(() => {
       const execution =
         this.store.execution(key) ??
         fail(404, "NOT_FOUND", "Execution not found.");
@@ -1628,6 +1650,10 @@ export class Service extends EventEmitter {
       this.changed();
       return result;
     });
+    if (result.releasedAt && result.purpose === "planning") {
+      this.syncParentContainerStage(result.ticketId);
+    }
+    return result;
   }
   handoff(key, input) {
     const ticket = this.require("ticket", key);
