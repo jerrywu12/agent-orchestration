@@ -33,8 +33,8 @@ assignments, dependencies, execution reservations and GitHub intent are retained
 | --- | --- | --- |
 | `backlog` | Backlog | Captured work; an authorized assigned agent may claim a bounded resolution or triage pass in its own client. |
 | `planning` | Planning | An assigned planner prepares the specification and independent implementation tickets. |
-| `ready` | Ready | Buildable, conflict-checked work admitted for a confirmed owner; waiting work shows its queue reason. |
-| `active` | In progress | An executor or active child work owns the remaining scope. |
+| `ready` | Ready | Prepared, conflict-checked leaf work waiting for its assigned implementation agent to claim an exact session. |
+| `active` | In progress | An implementation agent has claimed work, or a child has started implementation. |
 | `review` | In review | Reviewable result exists; include its PR/artifact and verification evidence. |
 | `done` | Done | Acceptance and delivery verified; code changes require merge evidence. |
 
@@ -79,7 +79,7 @@ versions of one specification is the failure this rule exists to prevent — lat
 tell which one binds.
 
 A parent stays open until all children are done. New planner-created children remain in Planning
-until individually admitted; creating a child never confirms its execution. After planning the parent may use an
+until individually admitted; creating a child never confirms its execution. A parent with only Ready children stays in Planning until a child starts implementation. After implementation starts the parent may use an
 active stage as a container without its own executor or branch; delivery evidence
 is its children's verified results. It need not pass through PR review itself.
 Backward moves require reasons: review defects return to execution; changed
@@ -195,8 +195,11 @@ review never overrides them. No new AI service is launched for manual intake.
 Assignment and stage changes do not launch work. Moving to Planning or Ready records
 the accountable owner and stage, with readiness checks for Ready. The assigned AI
 starts in its own client, claims the exact native session through Agent Desk, and
-reports progress, checkpoints, completion, and blockers. A Planning completion
-report may advance a prepared ticket to Ready; an implementation claim moves Ready
+reports progress, checkpoints, completion, and blockers. A planner reports `complete`
+when preparation is finished, then checks the returned `planningAdmission` result. Agent Desk
+checks readiness and advances eligible leaves to Ready; incomplete or held work remains
+in Planning with missing fields, holds and a conflict count in that result. A planner reports `checkpoint` only for unfinished
+work or a handoff. An implementation claim moves Ready
 to In progress, and a completed implementation report moves it to In review.
 The agent must report verified stage changes promptly and must not infer that a
 board move started a process. Planning executions remain in Planning while active.

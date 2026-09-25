@@ -51,5 +51,5 @@ test("review instructions retain managed scoped helper and terminal reporting co
   assert.match(text, /MANDATORY DEPENDENCY REVIEW/);
   assert.match(text, /get_resolution_context/);
   assert.match(text, /checkpoint rather than silently wait/);
-  assert.match(text, /does not authorize production implementation or Ready admission/);
+  assert.match(text, /does not authorize production implementation or a direct stage update to Ready/);
 });

@@ -125,6 +125,8 @@ export function inspectReadiness(service, ticket) {
     return scopeSnapshot(t, p, identities.get(p.id));
   };
   const scope = snapshot(ticket);
+  if (!ticket.ownerId || !store.get("agent", ticket.ownerId)?.enabled)
+    holds.push("Assign an enabled implementation agent before Ready admission.");
   if (!scope.repositories.length)
     holds.push("Configure a repository or project path.");
   if (scope.invalidPaths && !missing.includes("allowedPaths"))

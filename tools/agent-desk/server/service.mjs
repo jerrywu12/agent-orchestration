@@ -1398,11 +1398,7 @@ export class Service extends EventEmitter {
       childRoles.some((r) => r === "review")
     ) {
       targetRole = "review";
-    } else if (
-      childRoles.some(
-        (r) => r === "active" || r === "ready" || r === "review",
-      )
-    ) {
+    } else if (childRoles.some((r) => r === "active" || r === "review")) {
       targetRole = "active";
     }
 
@@ -1440,6 +1436,38 @@ export class Service extends EventEmitter {
     for (const parentId of parentIds) {
       this.syncParentContainerStage(parentId);
     }
+  }
+  planningAdmission(ticketId) {
+    const ticket = this.require("ticket", ticketId);
+    const children = this.store.list("ticket", ticket.projectId)
+      .filter((child) => child.parentId === ticketId);
+    const candidates = children.length ? children : [ticket];
+    const parentHolds = children.length ? [
+      ...(ticket.archived ? ["Parent is archived."] : []),
+      ...(ticket.blockedReason ? ["Parent has an unresolved blocker."] : []),
+      ...((ticket.dependsOn ?? []).some((id) =>
+        this.require("stage", this.require("ticket", id).stageId).role !== "done"
+      ) ? ["Parent has an unfinished dependency."] : []),
+    ] : [];
+    return {
+      source: { ticketId, stage: this.require("stage", ticket.stageId).role },
+      tickets: candidates.slice(0, 100).map((candidate) => {
+        const stage = this.require("stage", candidate.stageId).role;
+        const readiness = stage === "planning" ? this.readiness(candidate.id) : null;
+        return {
+          ticketId: candidate.id,
+          stage,
+          admissionHolds: stage === "planning" ? parentHolds : [],
+          readiness: readiness && {
+            ready: readiness.ready,
+            missing: readiness.missing,
+            holds: readiness.holds,
+            conflictCount: readiness.conflicts.length,
+          },
+        };
+      }),
+      truncated: candidates.length > 100,
+    };
   }
   event(key, input) {
     let ticketId = null;
@@ -1600,7 +1628,9 @@ export class Service extends EventEmitter {
     if (result.releasedAt && result.purpose === "planning" && ticketId) {
       this.syncParentContainerStage(ticketId);
     }
-    return result;
+    return input.type === "complete" && result.purpose === "planning" && result.releasedAt
+      ? { ...result, planningAdmission: this.planningAdmission(ticketId) }
+      : result;
   }
   reconcileExternal(key, input) {
     const result = this.store.transaction(() => {

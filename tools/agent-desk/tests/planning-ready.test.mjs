@@ -75,6 +75,13 @@ test("six stages and incomplete Ready creation rejected", (t) => {
   );
   assert.throws(() => make({ stageId: stage("ready") }), /prepar|ready/i);
 });
+test("Ready check names a missing implementation owner", (t) => {
+  const { service, stage, make } = setup(t);
+  const ticket = make({ ownerId: null, stageId: stage("planning"), brief });
+  const result = service.readiness(ticket.id);
+  assert.equal(result.ready, false);
+  assert.match(result.holds.join(" "), /Assign an enabled implementation agent/);
+});
 test("confirmed admission and overlapping repository scope fail without mutation", (t) => {
   const { service, stage, make } = setup(t);
   const a = make({ brief });
@@ -197,6 +204,8 @@ test("planning packet and completion remain preparation only", (t) => {
   assert.match(packet, /Planning only/);
   assert.match(packet, /acceptance tests/);
   assert.match(packet, /does not authorize production implementation/);
+  assert.match(packet, /When planning is finished, report_progress type=complete/);
+  assert.match(packet, /type=checkpoint only when planning remains unfinished/);
   const end = service.event(execution.id, {
     agentId: "codex",
     sessionId: "planning",
@@ -207,6 +216,63 @@ test("planning packet and completion remain preparation only", (t) => {
   });
   assert.equal(end.state, "checkpointed");
   assert.equal(service.require("ticket", ticket.id).stageId, stage("planning"));
+  assert.equal(end.planningAdmission.tickets[0].stage, "planning");
+  assert.ok(end.planningAdmission.tickets[0].readiness.missing.length > 0);
+  assert.deepEqual(service.event(execution.id, {
+    agentId: "codex", sessionId: "planning", eventId: "done",
+    seq: 1, type: "complete", summary: "Specification prepared",
+  }).planningAdmission, end.planningAdmission);
+});
+test("completed planning moves a prepared leaf to Ready until implementation is claimed", (t) => {
+  const { service, stage, make } = setup(t);
+  const ticket = make({ stageId: stage("planning"), brief });
+  const planning = service.claim(ticket.id, { agentId: "codex", sessionId: "plan" });
+  const report = service.event(planning.id, {
+    agentId: "codex", sessionId: planning.sessionId, eventId: "plan-done",
+    seq: 1, type: "complete", summary: "Plan and acceptance criteria ready",
+  });
+  assert.equal(service.getTicket(ticket.id).stageId, stage("ready"));
+  assert.deepEqual(report.planningAdmission, {
+    source: { ticketId: ticket.id, stage: "ready" },
+    tickets: [{ ticketId: ticket.id, stage: "ready", admissionHolds: [], readiness: null }],
+    truncated: false,
+  });
+  assert.equal(service.getTicket(ticket.id).execution.state, "checkpointed");
+  const build = service.claim(ticket.id, { agentId: "codex", sessionId: "build" });
+  assert.equal(build.purpose, "implementation");
+  assert.equal(service.getTicket(ticket.id).stageId, stage("active"));
+});
+test("a parent stays in Planning while its prepared child waits in Ready", (t) => {
+  const { service, stage, make } = setup(t);
+  const parent = make({ stageId: stage("planning") });
+  const child = make({ parentId: parent.id, stageId: stage("planning"), brief });
+  const planning = service.claim(parent.id, { agentId: "codex", sessionId: "parent-plan" });
+  const report = service.event(planning.id, {
+    agentId: "codex", sessionId: planning.sessionId, eventId: "parent-plan-done",
+    seq: 1, type: "complete", summary: "Child plan and acceptance criteria ready",
+  });
+  assert.equal(service.getTicket(child.id).stageId, stage("ready"));
+  assert.equal(report.planningAdmission.tickets[0].ticketId, child.id);
+  assert.equal(report.planningAdmission.tickets[0].stage, "ready");
+  assert.equal(report.planningAdmission.source.stage, "planning");
+  assert.equal(service.getTicket(parent.id).stageId, stage("planning"));
+  service.claim(child.id, { agentId: "codex", sessionId: "build-child" });
+  assert.equal(service.getTicket(parent.id).stageId, stage("active"));
+});
+test("planning completion reports a parent hold even when a child passes readiness", (t) => {
+  const { service, stage, make } = setup(t);
+  const parent = make({ stageId: stage("planning"), blockedReason: "Parent review pending" });
+  const child = make({ parentId: parent.id, stageId: stage("planning"), brief });
+  const planning = service.claim(parent.id, { agentId: "codex", sessionId: "held-plan" });
+  const report = service.event(planning.id, {
+    agentId: "codex", sessionId: planning.sessionId, eventId: "held-done",
+    seq: 1, type: "complete", summary: "Child plan prepared; parent still held",
+  });
+  const admission = report.planningAdmission.tickets[0];
+  assert.equal(admission.ticketId, child.id);
+  assert.equal(admission.stage, "planning");
+  assert.equal(admission.readiness.ready, true);
+  assert.match(admission.admissionHolds.join(" "), /Parent has an unresolved blocker/);
 });
 test("parent container stages synchronize as child subtasks advance to review and done", (t) => {
   const { service, stage, make } = setup(t);

@@ -25,7 +25,9 @@ In progress, In review and Done. Moving a request to Planning records its assign
 buildable leaf ticket to Ready records its development owner after readiness checks. Neither action
 starts or queues an AI agent. Agent Desk is a tracker: agents start in their own clients, claim their
 exact sessions through CLI/MCP, and report progress, checkpoints, completion and blockers. A planning
-completion report can advance prepared work to Ready. An implementation claim moves Ready to In progress;
+`complete` report checks prepared leaves for Ready admission and returns `planningAdmission`
+with each stage, missing field, hold and conflict count. A planning `checkpoint` records unfinished work or handoff. An implementation
+claim moves Ready to In progress;
 a completed implementation report moves it to In review. Historical executions remain visible.
 
 For an already running native agent session, a local operator can confirm a
@@ -223,7 +225,8 @@ private data directory; never paste tokens in prompts or commit them. Remote cli
 Report start, state change, checkpoint and completion with the exact execution/session IDs.
 The agent should update the ticket whenever verified work changes stage or stops; moving a
 ticket on the board never implies that an agent process started.
-A stale heartbeat never releases ownership. `complete` means awaiting review, not merged.
+A stale heartbeat never releases ownership. For planning, `complete` releases the claim and
+checks Ready admission. For implementation, `complete` means awaiting review, not merged.
 Once independent review, gates, PR merge, and merged-runtime verification are complete,
 the assigned agent may call `desk_deliver_task` for its latest released In review
 execution, submitting the reviewer identity and exact reviewed head. The service checks
