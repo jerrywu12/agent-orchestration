@@ -298,6 +298,8 @@ export class Service extends EventEmitter {
       }
     }
     if (stage.role === "done") {
+      if (this.resolutionNeeded(ticket))
+        fail(409, "DELIVERY_HOLD", "Resolve blockers and dependencies before marking done.");
       const children = this.store
         .list("ticket")
         .filter((t) => t.parentId === ticket.id);
@@ -518,11 +520,20 @@ export class Service extends EventEmitter {
         this.require("stage", next.stageId).autoStart
       )
         this.emit("autostart", key);
-      const decorated = this.decorate(result);
       if (next.parentId && next.stageId !== previous.stageId) {
         this.syncParentContainerStage(next.parentId);
       }
-      return decorated;
+      if (next.blockedReason !== previous.blockedReason ||
+          JSON.stringify(next.dependsOn) !== JSON.stringify(previous.dependsOn)) {
+        this.syncParentContainerStage(next.id);
+      }
+      if (next.stageId !== previous.stageId) {
+        for (const dependent of this.store.list("ticket")) {
+          if (dependent.dependsOn?.includes(next.id))
+            this.syncParentContainerStage(dependent.id);
+        }
+      }
+      return this.decorate(this.require("ticket", result.id));
     });
   }
   repairLaunchIntent(key, input) {
@@ -1470,6 +1481,14 @@ export class Service extends EventEmitter {
     ) {
       targetRole = "active";
     }
+
+    // Existing children are not the whole plan while the parent retains an
+    // explicit hold or an unfinished hard dependency.
+    if (["review", "done"].includes(targetRole) && (
+      parent.blockedReason ||
+      (parent.dependsOn ?? []).some((key) =>
+        this.require("stage", this.require("ticket", key).stageId).role !== "done")
+    )) targetRole = "active";
 
     if (targetRole) {
       const currentRole = stageMap.get(parent.stageId)?.role;

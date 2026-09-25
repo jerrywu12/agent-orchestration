@@ -723,6 +723,69 @@ test("parent container stages synchronize as child subtasks advance to review an
   assert.equal(service.getTicket(parent.id).stageId, stage("done"));
 });
 
+test("held parent stays active when its only existing child finishes", (t) => {
+  const { service, stage, make } = setup(t);
+  const parent = make({ stageId: stage("planning"), blockedReason: "C1-C3 still require review" });
+  const child = make({ parentId: parent.id, stageId: stage("active") });
+
+  service.syncParentContainerStage(parent.id);
+  assert.equal(service.getTicket(parent.id).stageId, stage("active"));
+  service.updateTicket(child.id, { version: child.version, stageId: stage("review") });
+  assert.equal(service.getTicket(parent.id).stageId, stage("active"));
+  const reviewedChild = service.getTicket(child.id);
+  service.updateTicket(child.id, { version: reviewedChild.version, stageId: stage("done") });
+  const held = service.getTicket(parent.id);
+  assert.equal(held.stageId, stage("active"));
+  assert.equal(held.blockedReason, "C1-C3 still require review");
+  assert.throws(
+    () => service.updateTicket(parent.id, { version: held.version, stageId: stage("done") }),
+    /hold|block/i,
+  );
+
+  const released = service.updateTicket(parent.id, { version: held.version, blockedReason: "" });
+  assert.equal(service.getTicket(parent.id).stageId, stage("done"));
+  assert.equal(released.stageId, stage("done"));
+  assert.equal(released.version, service.getTicket(parent.id).version);
+});
+
+test("parent with an unfinished hard dependency cannot be marked done by child rollup", (t) => {
+  const { service, stage, make } = setup(t);
+  const dependency = make({ stageId: stage("planning") });
+  const parent = make({ stageId: stage("planning"), dependsOn: [dependency.id] });
+  const child = make({ parentId: parent.id, stageId: stage("active") });
+  service.updateTicket(child.id, { version: child.version, stageId: stage("done") });
+  const held = service.getTicket(parent.id);
+  assert.equal(held.stageId, stage("active"));
+  assert.throws(
+    () => service.updateTicket(parent.id, { version: held.version, stageId: stage("done") }),
+    /hold|depend/i,
+  );
+  service.updateTicket(dependency.id, { version: dependency.version, stageId: stage("done") });
+  assert.equal(service.getTicket(parent.id).stageId, stage("done"));
+});
+
+test("cross-project dependencies release a completed parent through public updates", (t) => {
+  const { service, store, stage, make } = setup(t);
+  const other = service.createProject({ name: "External", repo: "org/other" });
+  const otherStage = (role) => store.list("stage", other.id).find((s) => s.role === role).id;
+  const dependency = service.createTicket({
+    projectId: other.id,
+    title: "External prerequisite",
+    stageId: otherStage("active"),
+  });
+  const parent = make({ stageId: stage("planning"), dependsOn: [dependency.id] });
+  const child = make({ parentId: parent.id, stageId: stage("active") });
+  service.updateTicket(child.id, { version: child.version, stageId: stage("done") });
+  assert.equal(service.getTicket(parent.id).stageId, stage("active"));
+  service.updateTicket(dependency.id, { version: dependency.version, stageId: otherStage("done") });
+  assert.equal(service.getTicket(parent.id).stageId, stage("done"));
+
+  const secondParent = make({ stageId: stage("planning"), dependsOn: [dependency.id] });
+  const secondChild = make({ parentId: secondParent.id, stageId: stage("active") });
+  service.updateTicket(secondChild.id, { version: secondChild.version, stageId: stage("done") });
+  assert.equal(service.getTicket(secondParent.id).stageId, stage("done"));
+});
+
 test("planning with remaining blocker or unfinished dependency remains in Planning without advancing", (t) => {
   const { service, stage, make } = setup(t);
   const dep = make();
