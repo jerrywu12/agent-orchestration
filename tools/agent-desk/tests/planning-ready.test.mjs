@@ -748,6 +748,101 @@ test("held parent stays active when its only existing child finishes", (t) => {
   assert.equal(released.version, service.getTicket(parent.id).version);
 });
 
+test("confirmed external planning admission survives parent rollup until its exact claim", (t) => {
+  const { service, stage, make } = setup(t);
+  const parent = make({ stageId: stage("active"), blockedReason: "C1 contract review" });
+  const child = make({ parentId: parent.id, stageId: stage("active") });
+  service.updateTicket(child.id, { version: child.version, stageId: stage("done") });
+  const held = service.getTicket(parent.id);
+  assert.equal(held.stageId, stage("active"));
+
+  const admitted = service.transition(parent.id, {
+    version: held.version,
+    stageId: stage("planning"),
+    ownerId: "codex",
+    confirmed: true,
+    executionMode: "external",
+  });
+  assert.equal(admitted.outcome, "awaiting_claim");
+  service.syncAllParentContainers();
+  assert.equal(service.getTicket(parent.id).stageId, stage("planning"));
+  const claim = service.claim(parent.id, {
+    agentId: "codex",
+    sessionId: "same-native-planning-session",
+    external: true,
+  });
+  assert.equal(claim.purpose, "planning");
+  assert.equal(service.getTicket(parent.id).stageId, stage("planning"));
+  service.event(claim.id, {
+    agentId: "codex",
+    sessionId: claim.sessionId,
+    eventId: "planning-checkpoint",
+    seq: 1,
+    type: "checkpoint",
+    summary: "Contract review saved",
+  });
+  assert.equal(service.getTicket(parent.id).stageId, stage("active"));
+});
+
+test("external adapter planning intent binds its claim and releases parent rollup on checkpoint", (t) => {
+  const { service, store, stage, make } = setup(t);
+  const parent = make({ stageId: stage("active"), ownerId: "hermes", blockedReason: "Contract review" });
+  const child = make({ parentId: parent.id, stageId: stage("active") });
+  service.updateTicket(child.id, { version: child.version, stageId: stage("done") });
+  const current = service.getTicket(parent.id);
+  const admitted = service.transition(parent.id, {
+    version: current.version,
+    stageId: stage("planning"),
+    ownerId: "hermes",
+    confirmed: true,
+  });
+  assert.equal(admitted.outcome, "started");
+  service.syncAllParentContainers();
+  assert.equal(service.getTicket(parent.id).stageId, stage("planning"));
+  const claim = service.claim(parent.id, {
+    agentId: "hermes",
+    sessionId: "hermes-planning",
+    external: true,
+  });
+  assert.equal(store.get("launch-intent", parent.id).executionId, claim.id);
+  service.event(claim.id, {
+    agentId: "hermes",
+    sessionId: claim.sessionId,
+    eventId: "hermes-planning-checkpoint",
+    seq: 1,
+    type: "checkpoint",
+    summary: "Contract review saved",
+  });
+  assert.equal(service.getTicket(parent.id).stageId, stage("active"));
+});
+
+test("reconciled external planning claim immediately releases parent rollup", (t) => {
+  const { service, stage, make } = setup(t);
+  const parent = make({ stageId: stage("active"), blockedReason: "Contract review" });
+  const child = make({ parentId: parent.id, stageId: stage("active") });
+  service.updateTicket(child.id, { version: child.version, stageId: stage("done") });
+  const current = service.getTicket(parent.id);
+  service.transition(parent.id, {
+    version: current.version,
+    stageId: stage("planning"),
+    ownerId: "codex",
+    confirmed: true,
+    executionMode: "external",
+  });
+  const claim = service.claim(parent.id, {
+    agentId: "codex",
+    sessionId: "reconciled-planning-session",
+    external: true,
+  });
+  const released = service.reconcileExternal(claim.id, {
+    sessionId: claim.sessionId,
+    stopped: true,
+    summary: "The native planning session saved its state",
+  });
+  assert.ok(released.releasedAt);
+  assert.equal(service.getTicket(parent.id).stageId, stage("active"));
+});
+
 test("parent with an unfinished hard dependency cannot be marked done by child rollup", (t) => {
   const { service, stage, make } = setup(t);
   const dependency = make({ stageId: stage("planning") });
