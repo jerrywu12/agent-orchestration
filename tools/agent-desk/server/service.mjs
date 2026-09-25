@@ -112,6 +112,7 @@ export class Service extends EventEmitter {
       ...intent,
       id: id(),
       originalId: intent.id,
+      originalVersion: intent.version,
       archivedAt: now(),
       archiveReason,
     });

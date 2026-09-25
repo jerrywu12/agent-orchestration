@@ -119,6 +119,7 @@ test("new Planning confirmation supersedes an old failed launch status", (t) => 
   assert.equal(moved.ticket.launchIntent, null);
   assert.equal(f.service.getTicket(f.ticket.id).launchIntentHistory[0].reason, "Old launcher failed");
   assert.equal(f.service.getTicket(f.ticket.id).launchIntentHistory[0].status, "failed");
+  assert.equal(f.service.getTicket(f.ticket.id).launchIntentHistory[0].originalVersion, 1);
   assert.ok(f.store.activities().some((entry) => entry.kind === "launch_intent_archived"));
 });
 
