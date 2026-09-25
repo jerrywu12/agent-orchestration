@@ -187,7 +187,7 @@ function ProjectSettings({
                 placeholder="/absolute/path/to/project"
               />
               <span className="field-hint">
-                An existing local directory is required to start an agent.
+                An existing local directory identifies where the assigned agent works.
               </span>
             </label>
           </div>
@@ -329,7 +329,7 @@ function ProjectSettings({
           <span className="muted small">{stages.length} stages</span>
         </div>
         <p className="field-hint">
-          Every project follows the same five stages. Moving a ticket keeps its
+          Every project follows the same six stages. Moving a ticket keeps its
           owner. Blockers remain separate from stage, and assignment does not
           start work.
         </p>

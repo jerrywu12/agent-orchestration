@@ -1,9 +1,6 @@
 import { Attachments } from "./attachments.mjs";
 import { EventEmitter } from "node:events";
-import { existsSync } from "node:fs";
-import { isAbsolute } from "node:path";
 import { fail, id, now } from "./store.mjs";
-import { assertManagedCapacity } from "./capacity.mjs";
 import { ensureProjectWorkflow, migrateWorkflow } from "./workflow.mjs";
 import {
   PREPARATION_FIELDS,
@@ -55,6 +52,16 @@ export class Service extends EventEmitter {
           enabled: true,
           capabilities: { execute: adapter !== "external", report: true },
         });
+    // Older confirmed transitions may have left a queued launch behind. Retire
+    // those requests before any coordinator can observe them on restart.
+    for (const intent of store.list("launch-intent"))
+      if (["queued", "awaiting_claim"].includes(intent.status))
+        store.put("launch-intent", {
+          ...intent,
+          status: "cancelled",
+          reason: "Agent Desk now tracks work without launching agents.",
+          updatedAt: now(),
+        });
   }
   require(kind, key) {
     return (
@@ -92,9 +99,25 @@ export class Service extends EventEmitter {
   getTicket(key) {
     return {
       ...this.decorate(this.require("ticket", key)),
+      launchIntentHistory: this.store.list("launch-intent-history")
+        .filter((intent) => intent.ticketId === key),
       attachmentContext: this.attachments.list(key, true),
       coordination: this.coordinationContext(key),
     };
+  }
+  archiveLaunchIntent(key, archiveReason) {
+    const intent = this.store.get("launch-intent", key);
+    if (!intent) return;
+    this.store.put("launch-intent-history", {
+      ...intent,
+      id: id(),
+      originalId: intent.id,
+      originalVersion: intent.version,
+      archivedAt: now(),
+      archiveReason,
+    });
+    this.store.delete("launch-intent", key);
+    this.store.activity(key, "launch_intent_archived", `Historical ${intent.status} launch intent archived: ${archiveReason}`);
   }
   coordinationContext(key) {
     const ticket = this.require("ticket", key);
@@ -457,6 +480,15 @@ export class Service extends EventEmitter {
         next.brief = this.normalizeBrief(input.brief);
       this.validateTicket(next);
       const role = this.require("stage", next.stageId).role;
+      if (next.stageId !== previous.stageId || next.ownerId !== previous.ownerId)
+        next.planningAssignment = null;
+      if (role === "planning" &&
+          (confirmedTransition ||
+            (previous.planningAssignment && next.stageId === previous.stageId)))
+        next.planningAssignment = {
+          stageId: next.stageId,
+          ownerId: next.ownerId,
+        };
       // Completion supersedes the old resume request, including on legacy records
       // being reopened. The execution and checkpoint history remain untouched.
       if (
@@ -515,11 +547,6 @@ export class Service extends EventEmitter {
           : "Ticket details updated",
       );
       this.changed();
-      if (
-        next.stageId !== previous.stageId &&
-        this.require("stage", next.stageId).autoStart
-      )
-        this.emit("autostart", key);
       if (next.parentId && next.stageId !== previous.stageId) {
         this.syncParentContainerStage(next.parentId);
       }
@@ -641,10 +668,10 @@ export class Service extends EventEmitter {
           "Explicit confirmation is required.",
         );
       if (input.executionMode !== undefined && input.executionMode !== "external")
-        fail(422, "EXECUTION_MODE", "Only an existing external session may be selected explicitly.");
+        fail(422, "EXECUTION_MODE", "Only an existing external session may be identified explicitly.");
       const previous = this.require("ticket", key);
       if (this.store.get("launch-intent", key)?.status === "awaiting_claim")
-        fail(409, "EXTERNAL_CLAIM_PENDING", "The confirmed external session must claim or be reconciled before another launch.");
+        fail(409, "EXTERNAL_CLAIM_PENDING", "The previously confirmed external session must claim or be reconciled before changing this ticket.");
       if (input.version !== previous.version)
         fail(
           409,
@@ -657,39 +684,14 @@ export class Service extends EventEmitter {
       const agent = this.require("agent", input.ownerId);
       if (!agent.enabled)
         fail(422, "AGENT_DISABLED", "This agent is disabled.");
-      const existingExternal = input.executionMode === "external";
-      const isExternal =
-        existingExternal ||
-        agent.adapter === "external" || agent.capabilities?.execute === false;
-      const availability = this.runner
-        ?.availability?.()
-        .find((a) => a.id === agent.id);
-      if (!isExternal && availability && !availability.available)
-        fail(
-          422,
-          "ADAPTER_UNAVAILABLE",
-          availability.reason || "The selected agent is unavailable.",
-        );
       if (this.store.active(key))
         fail(
           409,
           "ALREADY_CLAIMED",
-          "Checkpoint the existing session before confirming another launch.",
+          "Checkpoint the existing session before changing its stage or owner.",
         );
       if (previous.archived)
-        fail(409, "ARCHIVED", "Archived work cannot start.");
-      const project = this.require("project", previous.projectId);
-      if (
-        !isExternal &&
-        (!project.path ||
-          !isAbsolute(project.path) ||
-          !existsSync(project.path))
-      )
-        fail(
-          422,
-          "PROJECT_PATH",
-          "Configure an existing absolute project path before confirming a launch.",
-        );
+        fail(409, "ARCHIVED", "Archived work cannot change stage.");
       if (stage.role === "ready")
         this.assertReadiness({
           ...previous,
@@ -705,118 +707,25 @@ export class Service extends EventEmitter {
         },
         { confirmedTransition: true },
       );
-      this.store.put("launch-intent", {
-        id: key,
-        ticketId: key,
-        ownerId: input.ownerId,
-        stageId: input.stageId,
-        purpose: stage.role === "planning" ? "planning" : "implementation",
-        confirmed: true,
-        fingerprint: this.launchFingerprint(result),
-        status: existingExternal ? "awaiting_claim" : isExternal ? "started" : "queued",
-        reason: existingExternal
-          ? "Awaiting the assigned agent's exact existing session claim."
-          : isExternal
-          ? "External agent; start in client or report through CLI/MCP."
-          : undefined,
-        createdAt: now(),
-      });
+      this.archiveLaunchIntent(key, "Superseded by a tracking-only stage confirmation.");
+      this.store.activity(key, "stage_confirmed", `Moved to ${stage.name}; assigned agent ${agent.id}. Agent Desk did not launch an agent.`);
       return result;
     });
-    if (
-      input.executionMode === "external" ||
-      this.require("agent", input.ownerId).adapter === "external" ||
-      this.require("agent", input.ownerId).capabilities?.execute === false
-    ) {
-      this.changed();
-      return { ticket: this.getTicket(key), outcome: input.executionMode === "external" ? "awaiting_claim" : "started" };
-    }
-    const result = this.dispatchIntent(key);
     this.changed();
-    return { ticket: this.getTicket(key), ...result };
+    return { ticket: this.getTicket(key), outcome: "moved" };
   }
   dispatchIntent(key) {
     const intent = this.store.get("launch-intent", key);
-    if (!intent || intent.status !== "queued")
-      return {
-        outcome: intent?.status === "started" ? "started" : "failed",
-        reason: intent?.reason,
-      };
-    // A missing supervisor is a visible post-admission failure, never silent approval.
-    try {
-      const ticket = this.require("ticket", key);
-      if (
-        ticket.ownerId !== intent.ownerId ||
-        ticket.stageId !== intent.stageId
-      )
-        fail(
-          409,
-          "INTENT_CHANGED",
-          "Queued stage or owner changed; confirm again.",
-        );
-      const agent = this.require("agent", intent.ownerId);
-      if (
-        agent.adapter === "external" ||
-        agent.capabilities?.execute === false
-      ) {
-        this.store.put("launch-intent", {
-          ...intent,
-          status: "started",
-          reason: "External agent; start in client or report through CLI/MCP.",
-          updatedAt: now(),
-        });
-        this.changed();
-        return { outcome: "started" };
-      }
-      this.ready(key, intent.ownerId);
-      if (intent.fingerprint !== this.launchFingerprint(ticket))
-        fail(
-          409,
-          "INTENT_CHANGED",
-          "Queued preparation or task content changed; confirm again.",
-        );
-      if (!this.runner)
-        fail(503, "RUNNER_UNAVAILABLE", "Launch supervisor is unavailable.");
-      this.runner.validateStart?.(key, { automatic: true });
-      assertManagedCapacity(this, this.runner);
-      const execution = this.runner.start(key, { automatic: true });
+    if (intent?.status === "queued") {
       this.store.put("launch-intent", {
-        ...this.store.get("launch-intent", key),
-        status: "started",
-        executionId: execution.id,
-        code: undefined,
-        reason: "Agent started.",
+        ...intent,
+        status: "cancelled",
+        reason: "Agent Desk now tracks work without launching agents.",
         updatedAt: now(),
       });
       this.changed();
-      return { outcome: "started" };
-    } catch (error) {
-      if (error.code === "CAPACITY_FULL") {
-        if (intent.reason !== error.message || intent.code !== error.code) {
-          this.store.put("launch-intent", {
-            ...intent,
-            reason: error.message,
-            code: error.code,
-            updatedAt: now(),
-          });
-          this.changed();
-        }
-        return { outcome: "queued", reason: error.message };
-      }
-      const reason = error.status
-        ? error.message
-        : "Launch failed; inspect the retained execution.";
-      this.store.put("launch-intent", {
-        ...this.store.get("launch-intent", key),
-        status: "failed",
-        code: error.status ? error.code : "LAUNCH_FAILED",
-        reason,
-        updatedAt: now(),
-      });
-      this.store.activity(key, "start_failed", reason);
-      this.changed();
-      return { outcome: "failed", reason };
     }
+    return { outcome: "cancelled" };
   }
   dispatchConfirmed() {
     for (const intent of this.store.list("launch-intent"))
@@ -914,6 +823,16 @@ export class Service extends EventEmitter {
         external: !!input.external,
         releasedAt: null,
       });
+      if (purpose === "planning" && ticket.planningAssignment)
+        this.store.put("ticket", {
+          ...ticket,
+          planningAssignment: null,
+          updatedAt: now(),
+        }, ticket.version);
+      // A new independently claimed session supersedes a historical launch
+      // display record; its telemetry must describe this exact execution.
+      if (this.store.get("launch-intent", key)?.status === "started")
+        this.archiveLaunchIntent(key, "Superseded by an independently claimed session.");
       this.bindPendingLaunches(execution);
       if (purpose === "implementation") {
         const activeStage = this.store
@@ -943,16 +862,7 @@ export class Service extends EventEmitter {
     // The claim and its pending requests commit together. A fast external/direct
     // run may finish before the next drain; its authorization must not replay.
     const intent = this.store.get("launch-intent", execution.ticketId);
-    const ticket = this.require("ticket", execution.ticketId);
-    const unboundExternalPlanning =
-      intent?.status === "started" &&
-      intent.purpose === "planning" &&
-      execution.purpose === "planning" &&
-      !intent.executionId &&
-      intent.ownerId === execution.agentId &&
-      intent.stageId === ticket.stageId &&
-      intent.fingerprint === this.launchFingerprint(ticket);
-    if (["queued", "awaiting_claim"].includes(intent?.status) || unboundExternalPlanning)
+    if (["queued", "awaiting_claim"].includes(intent?.status))
       this.store.put("launch-intent", {
         ...intent,
         status: "started",
@@ -1467,15 +1377,10 @@ export class Service extends EventEmitter {
 
     const parentActive = this.store.active(parent.id);
     if (parentActive && parentActive.purpose === "planning") return;
-    const planningIntent = this.store.get("launch-intent", parent.id);
     if (
       this.require("stage", parent.stageId).role === "planning" &&
-      planningIntent?.purpose === "planning" &&
-      (["queued", "awaiting_claim"].includes(planningIntent.status) ||
-        (planningIntent.status === "started" && !planningIntent.executionId)) &&
-      planningIntent.stageId === parent.stageId &&
-      planningIntent.ownerId === parent.ownerId &&
-      planningIntent.fingerprint === this.launchFingerprint(parent)
+      parent.planningAssignment?.stageId === parent.stageId &&
+      parent.planningAssignment?.ownerId === parent.ownerId
     ) return;
 
     const stages = this.store.list("stage", parent.projectId);

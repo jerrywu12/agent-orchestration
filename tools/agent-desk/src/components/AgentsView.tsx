@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Bot, Check, CircleDot, ExternalLink, RefreshCw } from "lucide-react";
 import { api, errorMessage, pathId } from "../api";
-import type { Agent, DeskState, Integrations } from "../types";
+import type { Agent, DeskState } from "../types";
 import { useAgentCapacity } from "../useAgentCapacity";
 import { AgentCapacity } from "./AgentCapacity";
 import {
@@ -15,17 +15,11 @@ import {
 
 export function AgentsView({
   state,
-  integrations,
-  integrationError,
   refresh,
-  refreshIntegrations,
   onOpen,
 }: {
   state: DeskState;
-  integrations: Integrations | null;
-  integrationError: string;
   refresh: () => Promise<void>;
-  refreshIntegrations: () => Promise<void>;
   onOpen: (id: string) => void;
 }) {
   const capacity = useAgentCapacity();
@@ -35,8 +29,7 @@ export function AgentsView({
         <div className="page-kicker">WORKSPACE / PEOPLE & MACHINES</div>
         <h1>Agents</h1>
         <p>
-          Independent executors, shared context. Assign work first, then start a
-          session.
+          Assign work here. Agents claim sessions and report progress from their own clients.
         </p>
       </div>
       <div className="section-title agent-list-title">
@@ -44,12 +37,6 @@ export function AgentsView({
           Connected agents <span className="count">{state.agents.length}</span>
         </h2>
         <div className="agent-status-actions">
-          <button
-            className="button small-button"
-            onClick={() => void refreshIntegrations()}
-          >
-            <RefreshCw size={13} /> Check launchers
-          </button>
           <button
             className="button small-button"
             disabled={
@@ -64,7 +51,6 @@ export function AgentsView({
           </button>
         </div>
       </div>
-      {integrationError && <ErrorNotice>{integrationError}</ErrorNotice>}
       {capacity.error && (
         <ErrorNotice>
           {capacity.error} Retained observations may be stale.
@@ -76,9 +62,6 @@ export function AgentsView({
             key={agent.id}
             agent={agent}
             state={state}
-            integration={integrations?.agents.find(
-              (item) => item.id === agent.id,
-            )}
             refresh={refresh}
             onOpen={onOpen}
             capacity={capacity}
@@ -88,12 +71,11 @@ export function AgentsView({
       <div className="quiet-note">
         <Bot size={16} />
         <p>
-          Launcher readiness only checks the server’s configured adapters.
-          Provider limits are separate passive observations, refreshed every
+          Provider limits are passive observations, refreshed every
           five minutes or on request; this page checks cached status every 30
-          seconds. A passed reset time does not confirm recovery. External
-          agents can report progress through the API or MCP connector. Enabling
-          an agent does not launch it.
+          seconds. A passed reset time does not confirm recovery. Agents report
+          progress through the API or MCP connector. Enabling an agent permits
+          assignment and reporting; it does not start a session.
         </p>
       </div>
     </div>
@@ -102,14 +84,12 @@ export function AgentsView({
 function AgentRow({
   agent,
   state,
-  integration,
   refresh,
   onOpen,
   capacity,
 }: {
   agent: Agent;
   state: DeskState;
-  integration?: Integrations["agents"][number];
   refresh: () => Promise<void>;
   onOpen: (id: string) => void;
   capacity: ReturnType<typeof useAgentCapacity>;
@@ -122,7 +102,6 @@ function AgentRow({
     (ticket) => ticket.ownerId === agent.id && !ticket.archived,
   );
   const reserved = assigned.filter((ticket) => isActive(ticket.execution));
-  const external = agent.adapter === "external";
   async function update(fields: Partial<Agent>) {
     setBusy(true);
     setError("");
@@ -185,26 +164,14 @@ function AgentRow({
             </h3>
           )}
           <span className="muted small">
-            {external
-              ? "External reporting"
-              : `${agent.adapter || agent.id} · local adapter`}
+            {agent.adapter || agent.id} · reporting client
           </span>
         </div>
         <span
-          className={`availability ${!agent.enabled ? "muted" : integration?.available ? "available" : "unavailable"}`}
+          className={`availability ${agent.enabled ? "available" : "muted"}`}
         >
           <span className="live-dot" />
-          {!agent.enabled
-            ? "Disabled"
-            : integration
-              ? integration.available
-                ? external
-                  ? "External reporting"
-                  : "Launcher ready"
-                : external
-                  ? "External"
-                  : "Launcher unavailable"
-              : "Checking…"}
+          {agent.enabled ? "Reporting enabled" : "Disabled"}
         </span>
         <label className="switch-label">
           <span className="sr-only">Enable {agent.name}</span>
@@ -225,9 +192,6 @@ function AgentRow({
           <CircleDot size={12} />
           {reserved.length} reserved
         </span>
-        {integration?.reason && (
-          <span className="agent-reason">{integration.reason}</span>
-        )}
       </div>
       <AgentCapacity
         capacity={capacity.agents.find((item) => item.agentId === agent.id)}

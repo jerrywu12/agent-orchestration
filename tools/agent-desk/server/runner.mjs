@@ -66,16 +66,6 @@ export class Runner {
       }
     }
     this.coordinator = new RunCoordinator(service, this);
-    service.on("autostart", (ticketId) =>
-      setImmediate(() => {
-        try {
-          this.start(ticketId, { automatic: true });
-        } catch (e) {
-          service.store.activity(ticketId, "start_refused", e.message);
-          service.changed();
-        }
-      }),
-    );
   }
   availability() {
     return this.service.store.list("agent").map((a) => ({
@@ -164,6 +154,7 @@ export class Runner {
     };
   }
   start(ticketId, options = {}) {
+    fail(410, "TRACKING_ONLY", "Agent Desk tracks work; start the agent in its own client and report through CLI/MCP.");
     const {
       ticket,
       agent,

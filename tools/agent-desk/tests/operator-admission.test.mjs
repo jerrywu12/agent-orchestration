@@ -51,16 +51,16 @@ test("operator CLI confirms an existing-session Ready admission without launchin
   ];
 
   const { stdout } = await run(process.execPath, args, { env });
-  assert.equal(JSON.parse(stdout).outcome, "awaiting_claim");
+  assert.equal(JSON.parse(stdout).outcome, "moved");
   assert.equal(service.getTicket(ticket.id).stageId, ready.id);
-  assert.equal(store.get("launch-intent", ticket.id).status, "awaiting_claim");
+  assert.equal(store.get("launch-intent", ticket.id), null);
   assert.equal(launches, 0);
 
   const claim = service.claim(ticket.id, {
     agentId: "codex", sessionId: "native-codex-session", external: true,
   });
   assert.equal(claim.purpose, "implementation");
-  assert.equal(store.get("launch-intent", ticket.id).sessionId, "native-codex-session");
+  assert.equal(service.getTicket(ticket.id).execution.sessionId, "native-codex-session");
 });
 
 test("operator CLI requires confirmation and refuses an agent-scoped credential", async (t) => {

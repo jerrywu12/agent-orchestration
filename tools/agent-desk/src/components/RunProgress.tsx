@@ -68,11 +68,11 @@ interface RunProgressProps {
   recoveryState?: "idle" | "reserved" | "ended" | "closed" | "unknown";
 }
 const recoveryMessages = {
-  idle: "Agent not started. Click Run Agent to begin.",
+  idle: "No agent is running. Start the assigned agent in its own client and report progress.",
   reserved:
     "Another session holds this ticket. Open the ticket to inspect its progress.",
   ended: "A later session has ended. Open the ticket to inspect its result.",
-  closed: "Ticket is closed. Reopen it to start an agent.",
+  closed: "Ticket is closed. Reopen it before an agent claims new work.",
   unknown: "Current ticket status is unavailable.",
 };
 export function RunProgress(props: RunProgressProps) {

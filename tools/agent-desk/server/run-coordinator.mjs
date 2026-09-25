@@ -184,7 +184,7 @@ export class RunCoordinator {
         state: result.state,
         releasedAt,
         reason:
-          "Old claim revoked; saved work and session history retained. Run Agent to start a new resolution pass.",
+          "Old claim revoked; saved work and session history retained. Start the assigned agent in its own client.",
       };
     });
     return this.status(ticketId);
@@ -271,7 +271,7 @@ export class RunCoordinator {
         status,
         message:
           status === "claim_released"
-            ? "Prior claim released; saved work is preserved. Use Run Agent to continue."
+            ? "Prior claim released; saved work is preserved. Continue in the assigned agent's own client."
             : telemetry.summary || row.message,
         telemetry,
       };
@@ -288,6 +288,7 @@ export class RunCoordinator {
     };
   }
   submit(input) {
+    fail(410, "TRACKING_ONLY", "Agent Desk no longer launches agents. Start work in the agent's own client and report its progress.");
     const ticketIds = ids(input.ticketIds),
       concurrency = input.concurrency ?? 2;
     if (!Number.isInteger(concurrency) || concurrency < 1 || concurrency > 4)

@@ -4,21 +4,27 @@ import type { RunResult } from "../bulk-types";
 import { ErrorNotice, isActive, ticketKey } from "./shared";
 import { heartbeatStale, RunProgress } from "./RunProgress";
 
-export function planningIsWorking(ticket: Ticket, now = Date.now()) {
+function currentPlanningExecution(ticket: Ticket) {
   const execution = ticket.execution;
-  const intent = ticket.launchIntent;
-  if (
-    intent?.purpose === "planning" &&
-    (intent.status !== "started" ||
-      !intent.executionId ||
-      intent.executionId !== execution?.id)
-  )
+  if (execution?.purpose !== "planning") return null;
+  const stageChangedAt = Date.parse(ticket.stageChangedAt || "");
+  const startedAt = Date.parse(execution.startedAt || "");
+  if (Number.isFinite(stageChangedAt) &&
+      (!Number.isFinite(startedAt) || startedAt < stageChangedAt))
+    return null;
+  return execution;
+}
+
+export function planningIsWorking(ticket: Ticket, now = Date.now()) {
+  const execution = currentPlanningExecution(ticket);
+  const historicalStart = ticket.launchIntent;
+  if (historicalStart?.purpose === "planning" && historicalStart.status === "started" &&
+      historicalStart.executionId !== execution?.id)
     return false;
   const heartbeat = Date.parse(execution?.heartbeatAt || "");
   return (
     execution?.purpose === "planning" &&
     execution.state === "running" &&
-    !execution.external &&
     !execution.releasedAt &&
     !execution.stale &&
     Number.isFinite(heartbeat) &&
@@ -27,8 +33,16 @@ export function planningIsWorking(ticket: Ticket, now = Date.now()) {
 }
 
 function projection(ticket: Ticket): RunResult | null {
+  const historicalStart =
+    ticket.launchIntent?.purpose === "planning" &&
+    ticket.launchIntent.status === "started"
+      ? ticket.launchIntent
+      : null;
   const intent =
-    ticket.launchIntent?.purpose === "planning" ? ticket.launchIntent : null;
+    ticket.launchIntent?.purpose === "planning" &&
+    ["queued", "failed"].includes(ticket.launchIntent.status)
+      ? ticket.launchIntent
+      : null;
   if (intent?.status === "queued")
     return {
       ticketId: ticket.id,
@@ -44,22 +58,20 @@ function projection(ticket: Ticket): RunResult | null {
         intent.reason ||
         "Planning agent failed to start. Open the ticket to inspect the launch failure.",
     };
-  const execution =
-    ticket.execution?.purpose === "planning" ? ticket.execution : null;
-  // A later launch intent must never borrow telemetry from an earlier session.
-  if (
-    !execution ||
-    (intent && (!intent.executionId || intent.executionId !== execution.id))
-  )
-    return intent
-      ? {
-          ticketId: ticket.id,
-          status: "skipped",
-          message:
-            intent.reason ||
-            "Launch acknowledged; waiting for execution status.",
-        }
-      : null;
+  const execution = currentPlanningExecution(ticket);
+  if (historicalStart &&
+      (!historicalStart.executionId || historicalStart.executionId !== execution?.id))
+    return {
+      ticketId: ticket.id,
+      status: "skipped",
+      message: historicalStart.reason || "Waiting for the recorded planning session to report progress.",
+    };
+  if (!execution)
+    return {
+      ticketId: ticket.id,
+      status: "skipped",
+      message: "Assigned; waiting for the agent to claim this ticket and report progress.",
+    };
   return {
     ticketId: ticket.id,
     executionId: execution.id,
@@ -134,9 +146,7 @@ export function PlanningProgress({
       (!projectId || ticket.projectId === projectId) &&
       state.stages.some(
         (stage) => stage.id === ticket.stageId && stage.role === "planning",
-      ) &&
-      (ticket.execution?.purpose === "planning" ||
-        ticket.launchIntent?.purpose === "planning")
+      )
     )
       rows.push(ticket);
   }
@@ -159,7 +169,7 @@ export function PlanningProgress({
           </button>
         )}
       </div>
-      {submitting && <p role="status">Submitting planning requests…</p>}
+      {submitting && <p role="status">Recording Planning stage changes…</p>}
       {error && (
         <ErrorNotice>
           Results above are retained, but the board could not refresh. {error}
@@ -193,7 +203,7 @@ export function PlanningProgress({
                           ? "Prepared for review"
                           : result?.status === "checkpointed"
                             ? "Planning checkpointed"
-                            : "Awaiting planning status";
+                            : "Awaiting agent update";
           return (
             <li key={ticket.id}>
               <button className="text-button" onClick={() => onOpen(ticket.id)}>

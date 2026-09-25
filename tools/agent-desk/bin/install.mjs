@@ -353,7 +353,7 @@ function updateGuidance(text, policyPath) {
     "",
   );
   text = text.replaceAll("KANGENTIC_BOARD_POLICY.md", "AGENT_DESK_POLICY.md");
-  const notice = `${START}\n## Agent Desk board connector\n\nUse the stable \`agent_desk\` MCP server for Agent Desk tickets and exact execution ownership.\nRead the canonical policy at \`${policyPath}\`. Assignment and explicit Start are separate;\nkeep existing executor sessions intact and report checkpoints before handoff. Completion\nmeans ready for review; delivery needs verified merge evidence. If the connector is unavailable,\nretain the work and report the gap. Never reconstruct another application's session credentials.\n${END}`;
+  const notice = `${START}\n## Agent Desk board connector\n\nUse the stable \`agent_desk\` MCP server for Agent Desk tickets and exact execution ownership.\nRead the canonical policy at \`${policyPath}\`. Agent Desk records assignments and stage changes;\nit never launches an agent. Start in your own client, claim the exact session, and report verified\nprogress, stage changes, blockers, checkpoints and completion. Keep existing executor sessions\nintact and report checkpoints before handoff. Completion means ready for review; delivery needs\nverified merge evidence. If the connector is unavailable, retain the work and report the gap.\nNever reconstruct another application's session credentials.\n${END}`;
   if (text.includes(START) || text.includes(END)) {
     const start = text.indexOf(START);
     const end = text.indexOf(END);
@@ -384,7 +384,7 @@ function updateGuidance(text, policyPath) {
 }
 
 function cursorRule(policyPath) {
-  return `---\ndescription: Agent Desk ticket ownership and progress\nalwaysApply: true\n---\n\n# Agent Desk\n\nRead the canonical policy at ${policyPath}.\nUse the agent_desk MCP server to read assigned work, claim the exact executor session,\nand report progress or checkpointed handoffs. Preserve existing active sessions.\nAssignment does not start an executor. Completion awaits review; delivery requires\nverified merge evidence. If the connector is unavailable, retain work and report the gap.\n`;
+  return `---\ndescription: Agent Desk ticket ownership and progress\nalwaysApply: true\n---\n\n# Agent Desk\n\nRead the canonical policy at ${policyPath}.\nUse the agent_desk MCP server to read assigned work, claim the exact executor session,\nand report progress or checkpointed handoffs. Preserve existing active sessions.\nAgent Desk only tracks work: assignment and stage changes never start an executor.\nStart in your own client, claim your exact session, and report verified progress,\nstage changes, blockers, checkpoints and completion. Completion awaits review;\ndelivery requires verified merge evidence. If the connector is unavailable, retain\nwork and report the gap.\n`;
 }
 
 function wrapper(node, appPath, entry, dataDir) {

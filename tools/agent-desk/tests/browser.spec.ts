@@ -175,89 +175,74 @@ test("completed synthetic execution reaches In review and retains exact stage hi
 
 });
 
-test("real progress reports reach a tracked bulk run without reload or a second executor", async ({
-  page,
-  request,
-}) => {
-  const { project, stages } = await projectFixture(request, "Live reports");
-  const ticket = await ticketFixture(
-    request,
-    project,
-    stages.find((s) => s.role === "ready")!.id,
-    { ownerId: "codex" },
-  );
+test("independent agent progress reaches the board without a launch control", async ({ page, request }) => {
+  const { project, stages } = await projectFixture(request, "Independent reports");
+  const ticket = await ticketFixture(request, project, stages.find((s) => s.role === "ready")!.id, { ownerId: "codex" });
   const claim = await request.post(`/api/tickets/${ticket.id}/claim`, {
-    data: { agentId: "codex", sessionId: unique("external-progress") },
+    data: { agentId: "codex", sessionId: unique("independent-progress") },
   });
   expect(claim.status()).toBe(201);
   const execution: Execution = await claim.json();
-  const report = async (
-    seq: number,
-    type: string,
-    summary: string,
-    progress?: number,
-  ) => {
-    const response = await request.post(
-      `/api/executions/${execution.id}/events`,
-      {
-        data: {
-          agentId: "codex",
-          sessionId: execution.sessionId,
-          eventId: randomUUID(),
-          seq,
-          type,
-          summary,
-          ...(progress === undefined ? {} : { progress }),
-        },
-      },
-    );
-    expect(response.ok(), await response.text()).toBeTruthy();
-  };
   await page.goto("/");
   const key = `${project.key}-${ticket.number}`;
-  await page
-    .getByRole("checkbox", { name: `Select ticket ${key}`, exact: true })
-    .check();
-  await page.getByRole("button", { name: "Run Agent", exact: true }).click();
-  const panel = page.getByRole("region", { name: "Bulk run results" });
-  await expect(
-    panel.getByText("external session", { exact: true }),
-  ).toBeVisible();
-  await expect(
-    panel.getByRole("heading", { name: "Action required", exact: true }),
-  ).toBeVisible();
-  await report(1, "progress", "Checking baseline before implementation", 0);
-  await expect(
-    panel.getByRole("heading", { name: "Agent run in progress", exact: true }),
-  ).toBeVisible();
-  await expect(
-    panel.getByText("Checking baseline before implementation", { exact: true }),
-  ).toBeVisible();
-  await expect(
-    panel.getByRole("progressbar", { name: `Reported progress for ${key}` }),
-  ).toHaveAttribute("value", "0");
-  await report(2, "progress", "Verifying the regression tests", 55);
-  await expect(
-    panel.getByText("Verifying the regression tests", { exact: true }),
-  ).toBeVisible();
-  await expect(
-    panel.getByRole("progressbar", { name: `Reported progress for ${key}` }),
-  ).toHaveAttribute("value", "55");
+  const article = page.getByRole("article", { name: `${key} ${ticket.title}` });
+  await expect(page.getByRole("button", { name: "Run Agent", exact: true })).toHaveCount(0);
+  const directRefused = await request.post(`/api/tickets/${ticket.id}/start`, { data: {} });
+  expect(directRefused.status()).toBe(410);
+  expect((await directRefused.json()).error.code).toBe("TRACKING_ONLY");
+  const refused = await request.post("/api/runs", { data: { ticketIds: [ticket.id], requestId: randomUUID(), concurrency: 1 } });
+  expect(refused.status()).toBe(410);
+  expect((await refused.json()).error.code).toBe("TRACKING_ONLY");
+  const reported = await request.post(`/api/executions/${execution.id}/events`, {
+    data: { agentId: "codex", sessionId: execution.sessionId, eventId: randomUUID(), seq: 1,
+      type: "progress", summary: "Verifying the regression tests", progress: 55 },
+  });
+  expect(reported.ok(), await reported.text()).toBeTruthy();
+  await expect(article.locator('[data-execution-status="running"]')).toContainText("55%");
   const current = await request.get(`/api/tickets/${ticket.id}`);
-  expect((await current.json()).execution.id).toBe(execution.id);
-  await report(3, "checkpoint", "Work saved; independent verification remains");
-  await expect(
-    panel.getByRole("heading", { name: "Agent run finished", exact: true }),
-  ).toBeVisible();
-  await expect(
-    panel.getByText("Work saved; independent verification remains", {
-      exact: true,
-    }),
-  ).toBeVisible();
-  await expect(panel.getByText("checkpointed", { exact: true })).toBeVisible();
-  await expect(
-    panel.getByText("Updates every 2 seconds", { exact: true }),
-  ).toHaveCount(0);
+  expect((await current.json()).execution.summary).toBe("Verifying the regression tests");
+});
+
+test("Planning shows current assignment separately from old and unverified sessions", async ({ page, request }) => {
+  const { project, stages } = await projectFixture(request, "Planning evidence");
+  const planningId = stages.find((stage) => stage.role === "planning")!.id;
+  const old = await ticketFixture(request, project, planningId, { ownerId: "codex" });
+  const imported = await ticketFixture(request, project, planningId, { ownerId: "claude" });
+  const snapshot = await state(request);
+  const currentStageAt = new Date(Date.now() - 30_000).toISOString();
+  snapshot.tickets = [
+    {
+      ...old,
+      stageChangedAt: currentStageAt,
+      execution: {
+        id: "old-planning-session", ticketId: old.id, agentId: "codex", sessionId: "old-session",
+        purpose: "planning", state: "checkpointed", summary: "Prior planning checkpoint",
+        startedAt: new Date(Date.now() - 86_400_000).toISOString(),
+        heartbeatAt: new Date(Date.now() - 86_400_000).toISOString(),
+        releasedAt: new Date(Date.now() - 86_300_000).toISOString(),
+      },
+    },
+    {
+      ...imported,
+      stageChangedAt: currentStageAt,
+      execution: {
+        id: "imported-planning-session", ticketId: imported.id, agentId: "claude", sessionId: "native-session",
+        purpose: "planning", state: "external", external: true,
+        summary: "Imported session; progress unverified",
+        startedAt: new Date(Date.now() - 20_000).toISOString(),
+        heartbeatAt: new Date().toISOString(),
+      },
+    },
+  ];
+  await page.route("**/api/state", (route) => route.fulfill({ json: snapshot }));
+  await page.goto("/");
+  const outcomes = page.getByRole("list", { name: "Planning ticket outcomes" });
+  const oldRow = outcomes.getByRole("listitem").filter({ hasText: `${project.key}-${old.number}` });
+  const importedRow = outcomes.getByRole("listitem").filter({ hasText: `${project.key}-${imported.number}` });
+  await expect(oldRow).toContainText("Awaiting agent update");
+  await expect(oldRow).not.toContainText("Prior planning checkpoint");
+  await expect(importedRow).toContainText("Needs attention · inspect execution");
+  await expect(importedRow).not.toContainText("Planning agent working");
 });
 
 async function expectNoDocumentOverflow(page: Page, width: number) {
@@ -732,7 +717,7 @@ test("external reconciliation requires evidence and confirmation for the exact s
   ).toBeTruthy();
 });
 
-test("agent Start API reports the unavailable project boundary without launching an agent", async ({
+test("agent Start API is disabled in tracking-only mode", async ({
   page,
   request,
 }) => {
@@ -743,17 +728,15 @@ test("agent Start API reports the unavailable project boundary without launching
     stages.find((item) => item.role === "ready")!.id,
     { ownerId: "codex" },
   );
-  // No working directory is configured. Even an installed CLI must be rejected before execution.
-  expect(project.path).toBeFalsy();
   await page.goto("/");
   await openProject(page, project);
   await page.getByRole("button", { name: ticket.title, exact: true }).click();
   const dialog = page.getByRole("dialog");
   await expect(dialog.getByRole("button", { name: "Start agent", exact: true })).toHaveCount(0);
   const response = await request.post(`/api/tickets/${ticket.id}/start`, { data: {} });
-  expect(response.status()).toBe(422);
+  expect(response.status()).toBe(410);
   const failure = await response.json();
-  expect(["PROJECT_PATH", "ADAPTER_UNAVAILABLE"]).toContain(failure.error.code);
+  expect(failure.error.code).toBe("TRACKING_ONLY");
   expect(
     (await state(request)).tickets.find((item) => item.id === ticket.id)
       ?.execution,

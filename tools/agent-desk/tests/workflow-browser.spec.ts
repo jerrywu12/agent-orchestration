@@ -247,7 +247,7 @@ test("workflow settings are fixed and GitHub status discovery is read-only", asy
   expect(fixture.writes[0].body).not.toHaveProperty("stageMapping");
 });
 
-test("an assigned blocked Backlog ticket keeps its blocker and delegates starts to board controls", async ({ page }) => {
+test("an assigned blocked Backlog ticket keeps its blocker without launch controls", async ({ page }) => {
   const fixture = await mockWorkflow(page);
   await page.goto("/");
   await page.getByRole("button", { name: fixture.state.tickets[0].title, exact: true }).click();
@@ -260,10 +260,10 @@ test("an assigned blocked Backlog ticket keeps its blocker and delegates starts 
   expect(fixture.writes).toEqual([]);
   await dialog.getByRole("button", { name: "Close dialog", exact: true }).click();
   await page.getByLabel("Select ticket SMARTSTO-20").check();
-  await expect(page.getByRole("button", { name: "Run Agent", exact: true })).toBeEnabled();
+  await expect(page.getByRole("button", { name: "Run Agent", exact: true })).toHaveCount(0);
 });
 
-test("capacity shows observed windows, reset times and unavailable limits separately from launchers", async ({
+test("capacity shows observed windows and unavailable limits alongside reporting status", async ({
   page,
 }) => {
   await mockWorkflow(page);
@@ -285,7 +285,7 @@ test("capacity shows observed windows, reset times and unavailable limits separa
   await expect(
     page.getByRole("region", { name: "Provider capacity for Claude" }),
   ).toContainText("Limits unavailable");
-  await expect(page.getByText("Launcher ready", { exact: true })).toHaveCount(
+  await expect(page.getByText("Reporting enabled", { exact: true })).toHaveCount(
     2,
   );
   await expect(page.getByText("Available", { exact: true })).toHaveCount(0);

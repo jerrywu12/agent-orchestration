@@ -410,10 +410,7 @@ export default function App() {
         ) : page === "agents" ? (
           <AgentsView
             state={state}
-            integrations={desk.integrations}
-            integrationError={desk.integrationError}
             refresh={desk.refresh}
-            refreshIntegrations={desk.refreshIntegrations}
             onOpen={setSelectedId}
           />
         ) : page === "machine" ? (
@@ -495,16 +492,7 @@ export default function App() {
           onResult={async (result) => {
             setTransition(null);
             setActionNoticeId(result.ticket.id);
-            setActionNotice(
-              result.outcome === "started"
-                ? transition.stage.role === "planning"
-                  ? "Planning agent started."
-                  : "Development agent started."
-                : result.reason ||
-                    (result.outcome === "queued"
-                      ? "Queued: waiting for agent capacity."
-                      : "The agent could not start. Open the ticket to retry."),
-            );
+            setActionNotice("Stage and owner updated. Awaiting the assigned agent's progress report.");
             await desk.refresh();
           }}
         />

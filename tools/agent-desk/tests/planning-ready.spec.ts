@@ -41,9 +41,7 @@ async function fixture(page: Page, options: { missing?: boolean; outcome?: "star
       if (path.endsWith("/transition")) {
         if (options.stale) return route.fulfill({ status: 409, json: { error: { message: "Ticket version changed" } } });
         Object.assign(state.tickets[0], { stageId: body.stageId, ownerId: body.ownerId, version: 8 });
-        state.tickets[0].launchIntent = { status: options.outcome || "started", purpose: body.stageId === "planning" ? "planning" : "implementation", ownerId: body.ownerId, reason: options.outcome === "queued" ? "agent is busy" : "fixture unavailable" };
-        if (body.stageId === "planning") state.tickets[0].execution = { id: "planning-execution", ticketId: "ticket", agentId: body.ownerId, sessionId: "synthetic-planner", state: "running", purpose: "planning", heartbeatAt: state.serverTime };
-        return route.fulfill({ json: { ticket: state.tickets[0], outcome: options.outcome || "started", reason: options.outcome === "queued" ? "Queued: agent is busy" : options.outcome === "failed" ? "Launch failed: fixture unavailable" : undefined } });
+        return route.fulfill({ json: { ticket: state.tickets[0], outcome: "moved" } });
       }
       Object.assign(state.tickets[0], body, { version: state.tickets[0].version + 1 });
     }
@@ -60,7 +58,7 @@ for (const surface of ["list", "details"]) {
     if (surface === "details") await page.getByRole("button", { name: f.state.tickets[0].title, exact: true }).click();
     for (const stage of ["planning", "ready"]) {
       await page.getByRole("combobox", { name: surface === "list" ? "Stage for PLAN-1" : "Stage", exact: true }).selectOption(stage);
-      const dialog = page.getByRole("dialog", { name: stage === "planning" ? "Start planning" : "Move to Ready" });
+      const dialog = page.getByRole("dialog", { name: stage === "planning" ? "Move to Planning" : "Move to Ready" });
       await dialog.getByRole("combobox").selectOption("claude");
       await dialog.getByRole("button", { name: "Cancel", exact: true }).click();
     }
@@ -74,9 +72,9 @@ test("Ready reports missing preparation, dependency and competing ticket before 
   const f = await fixture(page, { missing: true });
   await page.getByRole("combobox", { name: "Stage for PLAN-1" }).selectOption("ready");
   const dialog = page.getByRole("dialog", { name: "Move to Ready" });
-  await dialog.getByLabel("Development agent").selectOption("codex");
+  await dialog.getByLabel("Assigned agent").selectOption("codex");
   for (const text of ["Specification reference", "Allowed paths", "Unfinished dependency", "PLAN-2 · Competing schema", "Shared resource: schema"]) await expect(dialog).toContainText(text);
-  await expect(dialog.getByRole("button", { name: "Confirm and start", exact: true })).toBeDisabled();
+  await expect(dialog.getByRole("button", { name: "Move to Ready", exact: true })).toBeDisabled();
   expect(f.writes).toEqual([]);
 });
 
@@ -84,9 +82,9 @@ test("Update Spec records missing preparation and admits the ticket after the re
   const f = await fixture(page, { resolvable: true });
   await page.getByRole("combobox", { name: "Stage for PLAN-1" }).selectOption("ready");
   const dialog = page.getByRole("dialog", { name: "Move to Ready" });
-  await dialog.getByLabel("Development agent").selectOption("claude");
+  await dialog.getByLabel("Assigned agent").selectOption("claude");
   for (const text of ["Acceptance criteria", "Scope", "Shared resources", "Allowed paths must be relative paths", "PLAN-2 · Competing schema", "Unknown reserved scope"]) await expect(dialog).toContainText(text);
-  const confirm = dialog.getByRole("button", { name: "Confirm and start", exact: true });
+  const confirm = dialog.getByRole("button", { name: "Move to Ready", exact: true });
   await expect(confirm).toBeDisabled();
   await dialog.getByRole("button", { name: "Update Spec", exact: true }).click();
   await expect(dialog.getByRole("textbox", { name: "Specification", exact: true })).toHaveValue("specs/fixture.md");
@@ -101,7 +99,7 @@ test("Update Spec records missing preparation and admits the ticket after the re
   expect(f.writes).toEqual([{ path: "/api/tickets/ticket", body: { version: 7, brief } }]);
   await expect(confirm).toBeEnabled();
   await confirm.click();
-  await expect(page.getByRole("status").filter({ hasText: "Development agent started." })).toBeVisible();
+  await expect(page.getByRole("status").filter({ hasText: "Stage and owner updated. Awaiting the assigned agent's progress report." })).toBeVisible();
   expect(f.writes.at(-1)).toEqual({ path: "/api/tickets/ticket/transition", body: { version: 8, stageId: "ready", ownerId: "claude", confirmed: true } });
 });
 
@@ -109,9 +107,9 @@ test("Release claim inspects the reservation and admits the ticket once the clai
   const f = await fixture(page, { held: true });
   await page.getByRole("combobox", { name: "Stage for PLAN-1" }).selectOption("ready");
   const dialog = page.getByRole("dialog", { name: "Move to Ready" });
-  await dialog.getByLabel("Development agent").selectOption("claude");
+  await dialog.getByLabel("Assigned agent").selectOption("claude");
   await expect(dialog.getByRole("alert").filter({ hasText: "An existing execution owns this ticket" })).toBeVisible();
-  const confirm = dialog.getByRole("button", { name: "Confirm and start", exact: true });
+  const confirm = dialog.getByRole("button", { name: "Move to Ready", exact: true });
   await expect(confirm).toBeDisabled();
   await dialog.getByRole("button", { name: "Release claim", exact: true }).click();
   for (const text of ["Prior session cannot be traced", "synthetic-session", "No live process verified", "/fixture/worktree"]) await expect(dialog).toContainText(text);
@@ -123,7 +121,7 @@ test("Release claim inspects the reservation and admits the ticket once the clai
   expect(f.writes).toEqual([{ path: "/api/tickets/ticket/takeover", body: { executionId: "execution", sessionId: "synthetic-session", expectedHeartbeatAt: heldExecution.heartbeatAt, reason: "", confirmed: true } }]);
   await expect(confirm).toBeEnabled();
   await confirm.click();
-  await expect(page.getByRole("status").filter({ hasText: "Development agent started." })).toBeVisible();
+  await expect(page.getByRole("status").filter({ hasText: "Stage and owner updated. Awaiting the assigned agent's progress report." })).toBeVisible();
   expect(f.writes.at(-1)).toEqual({ path: "/api/tickets/ticket/transition", body: { version: 7, stageId: "ready", ownerId: "claude", confirmed: true } });
 });
 
@@ -136,7 +134,7 @@ test("a live claim keeps its reservation and the ticket out of admission", async
   await expect(dialog).toContainText("Managed runner");
   await expect(dialog.getByRole("button", { name: "Take over prior claim", exact: true })).toHaveCount(0);
   await expect(dialog.getByRole("alert").filter({ hasText: "An existing execution owns this ticket" })).toBeVisible();
-  await expect(dialog.getByRole("button", { name: "Confirm and start", exact: true })).toBeDisabled();
+  await expect(dialog.getByRole("button", { name: "Move to Ready", exact: true })).toBeDisabled();
   expect(f.writes).toEqual([]);
   expect(f.state.tickets[0].execution).toMatchObject({ id: "execution", state: "running" });
 });
@@ -145,51 +143,38 @@ test("Update Spec keeps a concurrently changed ticket out of admission", async (
   const f = await fixture(page, { resolvable: true });
   await page.getByRole("combobox", { name: "Stage for PLAN-1" }).selectOption("ready");
   const dialog = page.getByRole("dialog", { name: "Move to Ready" });
-  await dialog.getByLabel("Development agent").selectOption("claude");
+  await dialog.getByLabel("Assigned agent").selectOption("claude");
   await dialog.getByRole("button", { name: "Update Spec", exact: true }).click();
   f.state.tickets[0].version = 9;
   await expect(dialog.getByRole("alert").filter({ hasText: "This ticket changed" })).toBeVisible();
   await expect(dialog.getByRole("button", { name: "Save spec", exact: true })).toBeDisabled();
-  await expect(dialog.getByRole("button", { name: "Confirm and start", exact: true })).toBeDisabled();
+  await expect(dialog.getByRole("button", { name: "Move to Ready", exact: true })).toBeDisabled();
   expect(f.writes).toEqual([]);
 });
-
-for (const outcome of ["started", "queued", "failed"] as const) {
-  test(`Ready confirms chosen owner and displays ${outcome}`, async ({ page }) => {
-    const f = await fixture(page, { outcome });
-    await page.getByRole("combobox", { name: "Stage for PLAN-1" }).selectOption("ready");
-    const dialog = page.getByRole("dialog", { name: "Move to Ready" });
-    await expect(dialog.getByRole("button", { name: "Confirm and start", exact: true })).toBeDisabled();
-    await dialog.getByLabel("Development agent").selectOption("claude");
-    await dialog.getByRole("button", { name: "Confirm and start", exact: true }).click();
-    await expect(page.getByRole("status").filter({ hasText: outcome === "started" ? "Development agent started." : outcome === "queued" ? "Queued: agent is busy" : "Launch failed: fixture unavailable" })).toBeVisible();
-    expect(f.writes).toEqual([{ path: "/api/tickets/ticket/transition", body: { version: 7, stageId: "ready", ownerId: "claude", confirmed: true } }]);
-  });
-}
 
 test("stale confirmation retains modal and cannot report a successful start", async ({ page }) => {
   const f = await fixture(page, { stale: true });
   await page.getByRole("combobox", { name: "Stage for PLAN-1" }).selectOption("ready");
   const dialog = page.getByRole("dialog", { name: "Move to Ready" });
-  await dialog.getByLabel("Development agent").selectOption("codex");
-  await dialog.getByRole("button", { name: "Confirm and start", exact: true }).click();
+  await dialog.getByLabel("Assigned agent").selectOption("codex");
+  await dialog.getByRole("button", { name: "Move to Ready", exact: true }).click();
   await expect(dialog.getByRole("alert")).toContainText("Ticket version changed");
   expect(f.state.tickets[0].stageId).toBe("backlog");
 });
 
-test("queued admission survives reload without exposing duplicate Start in details", async ({ page }) => {
-  const f = await fixture(page, { outcome: "queued" });
+test("Ready assignment survives reload without a launch intent or Start control", async ({ page }) => {
+  const f = await fixture(page);
   await page.getByRole("combobox", { name: "Stage for PLAN-1" }).selectOption("ready");
   const confirm = page.getByRole("dialog", { name: "Move to Ready" });
-  await confirm.getByLabel("Development agent").selectOption("codex");
-  await confirm.getByRole("button", { name: "Confirm and start", exact: true }).click();
+  await confirm.getByLabel("Assigned agent").selectOption("codex");
+  await confirm.getByRole("button", { name: "Move to Ready", exact: true }).click();
   await expect(confirm).not.toBeVisible();
   await page.reload();
-  await expect(page.getByRole("article", { name: "PLAN-1 Prepare synthetic feature" })).toContainText("Queued");
+  await expect(page.getByRole("article", { name: "PLAN-1 Prepare synthetic feature" })).toContainText("Ready");
   await page.getByRole("button", { name: f.state.tickets[0].title, exact: true }).click();
   const detail = page.getByRole("dialog", { name: "PLAN-1" });
-  await expect(detail.getByRole("status").filter({ hasText: "Queued: agent is busy" })).toHaveCount(0);
-  expect(f.state.tickets[0].launchIntent).toMatchObject({ status: "queued", reason: "agent is busy" });
+  expect(f.state.tickets[0].launchIntent).toBeUndefined();
+  expect(f.state.tickets[0].execution).toBeUndefined();
   await expect(detail.getByRole("button", { name: "Start agent", exact: true })).toHaveCount(0);
   expect(f.writes).toHaveLength(1);
 });
@@ -206,11 +191,11 @@ test("details require saving visible edits before planning confirmation", async 
   await detail.getByRole("button", { name: "Save changes" }).click();
   await expect(detail.getByText("Changes saved.", { exact: true })).toBeVisible();
   await detail.getByRole("combobox", { name: "Stage", exact: true }).selectOption("planning");
-  const dialog = page.getByRole("dialog", { name: "Start planning" });
-  await dialog.getByLabel("Planning agent").selectOption("codex");
-  await dialog.getByRole("button", { name: "Confirm and start planning" }).click();
-  await expect(page.getByRole("dialog", { name: "PLAN-1" }).getByRole("status").filter({ hasText: "Planning agent started." })).toBeVisible();
-  expect(f.state.tickets[0].execution).toMatchObject({ purpose: "planning", state: "running" });
+  const dialog = page.getByRole("dialog", { name: "Move to Planning" });
+  await dialog.getByLabel("Assigned agent").selectOption("codex");
+  await dialog.getByRole("button", { name: "Move to Planning" }).click();
+  await expect(page.getByRole("dialog", { name: "PLAN-1" }).getByRole("status").filter({ hasText: "Stage and owner updated. Awaiting the assigned agent's progress report." })).toBeVisible();
+  expect(f.state.tickets[0].execution).toBeUndefined();
   expect(f.state.tickets[0].brief).toEqual(brief);
   expect(f.writes.at(-1)?.body).toMatchObject({ stageId: "planning", ownerId: "codex", confirmed: true, version: 8 });
 });
@@ -251,7 +236,7 @@ for (const target of ["Planning", "Ready"]) {
     await create.getByLabel("Title", { exact: true }).fill(title);
     await create.getByRole("combobox", { name: "Stage", exact: true }).selectOption({ label: target });
     await create.getByRole("button", { name: "Create ticket", exact: true }).click();
-    const transition = page.getByRole("dialog", { name: target === "Planning" ? "Start planning" : "Move to Ready" });
+    const transition = page.getByRole("dialog", { name: target === "Planning" ? "Move to Planning" : "Move to Ready" });
     await expect(transition).toBeVisible();
     await transition.getByRole("button", { name: "Cancel", exact: true }).click();
     const state = await (await request.get("/api/state")).json();
