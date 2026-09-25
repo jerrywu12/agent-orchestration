@@ -34,6 +34,20 @@ Ollama and ArkCLI report through their own clients using the connector; Ollama/A
 advisory providers. Assignment alone never launches work. Planning/Ready confirmation is the start
 authorization; imports and migration do not start agents. Implementation claims recheck readiness.
 
+For an already running native agent session, a local operator can confirm a
+prepared Backlog or Planning leaf ticket into Ready without spawning another
+managed agent:
+
+```sh
+agent-desk admit-existing TICKET_ID --agent codex --version TICKET_VERSION --confirm
+```
+
+The command rechecks the current owner, version and readiness, then records an
+external admission awaiting the assigned agent's exact session claim through
+the normal connector. Agent-scoped credentials cannot perform this confirmation.
+In review and Done tickets require a separate reopen decision. Planning parent
+containers remain unclaimed for implementation.
+
 Ready requires a specification reference, acceptance criteria, scope, verification plan, allowed paths
 and shared-resource identifiers. Enter repository-relative paths/directories one per line; use shared
 behavior/API/schema names to detect conflicts across different files (`none` for no shared resources).

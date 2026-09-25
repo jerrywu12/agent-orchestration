@@ -98,6 +98,37 @@ try {
         clientConfig(agentId),
       ),
     );
+  } else if (command === "admit-existing") {
+    const [ticketId] = args;
+    const agentId = option("agent");
+    const version = Number(option("version"));
+    if (!ticketId || !agentId || !Number.isSafeInteger(version) || version < 1 || !args.includes("--confirm"))
+      throw Error("admit-existing requires TICKET --agent AGENT --version N --confirm.");
+    const config = clientConfig(null);
+    const state = await request("GET", "/api/state", undefined, config);
+    const ticket = state.tickets.find((item) => item.id === ticketId);
+    if (!ticket) throw Error("Ticket not found. Reload Agent Desk before confirming.");
+    if (ticket.version !== version)
+      throw Error("Ticket changed. Reload Agent Desk before confirming.");
+    if (ticket.ownerId !== agentId)
+      throw Error("The confirmed agent must be the ticket's assigned owner.");
+    const currentStage = state.stages.find((stage) => stage.id === ticket.stageId);
+    if (!["backlog", "planning"].includes(currentStage?.role))
+      throw Error("Only Backlog or Planning work can use admit-existing; reopen other work separately.");
+    const readyStage = state.stages.find(
+      (stage) => stage.projectId === ticket.projectId && stage.role === "ready",
+    );
+    if (!readyStage) throw Error("Ready stage is unavailable for this project.");
+    const readiness = await request(
+      "GET", `/api/tickets/${encodeURIComponent(ticketId)}/readiness`, undefined, config,
+    );
+    if (!readiness.ready)
+      throw Error("Ready admission is held; review the ticket's preparation and conflicts.");
+    output(await request(
+      "POST", `/api/tickets/${encodeURIComponent(ticketId)}/transition`,
+      { version, stageId: readyStage.id, ownerId: agentId, confirmed: true, executionMode: "external" },
+      config,
+    ));
   } else if (command === "event") {
     const [executionId] = args;
     const agentId = option("agent") ?? process.env.AGENT_DESK_AGENT_ID;
@@ -128,7 +159,7 @@ try {
     output(await previewKangentic(args[0]));
   } else {
     console.log(
-      "Agent Desk\n  health | state\n  request METHOD /api/path [JSON]\n  claim TICKET --agent AGENT --session SESSION\n  event EXECUTION --agent AGENT --session SESSION --seq N --type progress --summary TEXT\n  wrap --ticket TICKET --agent AGENT [--session SESSION] -- COMMAND [ARGS...]\n  mcp --agent AGENT\n  migration-preview SOURCE_DIRECTORY",
+      "Agent Desk\n  health | state\n  request METHOD /api/path [JSON]\n  admit-existing TICKET --agent AGENT --version N --confirm (operator only; agent claims separately)\n  claim TICKET --agent AGENT --session SESSION\n  event EXECUTION --agent AGENT --session SESSION --seq N --type progress --summary TEXT\n  wrap --ticket TICKET --agent AGENT [--session SESSION] -- COMMAND [ARGS...]\n  mcp --agent AGENT\n  migration-preview SOURCE_DIRECTORY",
     );
     if (command) process.exitCode = 1;
   }
