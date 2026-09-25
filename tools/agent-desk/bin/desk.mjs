@@ -126,7 +126,7 @@ try {
       throw Error("Ready admission is held; review the ticket's preparation and conflicts.");
     output(await request(
       "POST", `/api/tickets/${encodeURIComponent(ticketId)}/transition`,
-      { version, stageId: readyStage.id, ownerId: agentId, confirmed: true, executionMode: "external" },
+      { version, stageId: readyStage.id, ownerId: agentId, confirmed: true },
       config,
     ));
   } else if (command === "event") {

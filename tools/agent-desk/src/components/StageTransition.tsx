@@ -6,7 +6,7 @@ import { emptyBrief } from "../intake";
 import type { DeskState, Integrations, Stage, Ticket } from "../types";
 import { ExecutionTracking } from "./ExecutionTracking";
 import { BriefFields } from "./WorkflowBrief";
-import { ErrorNotice, isActive, isExternalAgent, Modal, ticketKey } from "./shared";
+import { ErrorNotice, isActive, Modal, ticketKey } from "./shared";
 
 interface Readiness {
   ready: boolean;
@@ -29,7 +29,7 @@ const preparationLabels: Record<string, string> = {
 };
 export interface TransitionResult {
   ticket: Ticket;
-  outcome: "started" | "queued" | "failed";
+  outcome: "moved";
   reason?: string;
 }
 
@@ -75,10 +75,7 @@ export function StageTransition({
   const execution = (current ?? ticket).execution;
   const held = isActive(execution);
   const owner = state.agents.find((item) => item.id === ownerId);
-  const availability = integrations?.agents.find((item) => item.id === ownerId);
-  const external = isExternalAgent(owner);
-  const unavailable =
-    !owner?.enabled || (!external && availability?.available === false);
+  const unavailable = !owner?.enabled;
   useEffect(() => {
     if (planning) return;
     let cancelled = false;
@@ -157,7 +154,7 @@ export function StageTransition({
   }
   return (
     <Modal
-      title={planning ? "Start planning" : "Move to Ready"}
+      title={planning ? "Move to Planning" : "Move to Ready"}
       subtitle={`${ticketKey(ticket, state.projects)} · ${ticket.title}`}
       onClose={() => {
         if (!busy && !saving) onClose();
@@ -166,8 +163,8 @@ export function StageTransition({
       <div className="dialog-form">
         <p>
           {planning
-            ? "Choose the agent that will prepare the specification and independent implementation tickets."
-            : "Choose the development agent. Confirming reserves this scope and starts work, or queues it until the agent is available."}
+            ? "Assign the agent responsible for planning. Moving the ticket records its status; the agent starts work in its own client and reports progress."
+            : "Assign the development agent. Moving the ticket records readiness; the agent starts work in its own client and reports progress."}
         </p>
         {error && <ErrorNotice>{error}</ErrorNotice>}
         {stale && (
@@ -210,7 +207,7 @@ export function StageTransition({
           </p>
         )}
         <label>
-          {planning ? "Planning agent" : "Development agent"}
+          Assigned agent
           <select
             value={ownerId}
             disabled={busy}
@@ -225,14 +222,9 @@ export function StageTransition({
             ))}
           </select>
         </label>
-        {ownerId && external && (
+        {ownerId && (
           <p className="field-hint">
-            Reports through CLI/MCP; start in client or connector.
-          </p>
-        )}
-        {ownerId && !external && availability?.available === false && (
-          <p className="field-hint">
-            {availability.reason || "This agent cannot start locally."}
+            The assigned agent claims this ticket and reports updates through CLI/MCP.
           </p>
         )}
         {!planning && (
@@ -364,15 +356,7 @@ export function StageTransition({
             }
             onClick={() => void confirm()}
           >
-            {busy
-              ? "Starting…"
-              : planning
-                ? external
-                  ? "Confirm planning"
-                  : "Confirm and start planning"
-                : external
-                  ? "Confirm"
-                  : "Confirm and start"}
+            {busy ? "Moving…" : planning ? "Move to Planning" : "Move to Ready"}
           </button>
         </div>
       </div>

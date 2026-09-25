@@ -35,10 +35,11 @@ ownership, executor session, branch/worktree scope, dependency holds and checkpo
 handoffs. Assignment does not launch work; explicit claims and verified readiness
 precede execution. Projects use Backlog, Planning, Ready, In progress, In review and Done; blocked remains a flag.
 Planning prepares comprehensive specifications and independent implementation tickets.
-Moving to Planning or Ready requires owner confirmation and starts or queues the selected agent.
+Moving to Planning or Ready records the owner and stage only. Agent Desk never launches an agent.
+The assigned agent starts in its own client, claims its exact session, and reports progress and stage changes.
 Ready admission and implementation claims require complete preparation, resolved dependencies
 and no conflict with reserved development scope in Ready, In progress, In review or held executions.
-Explicit Start can launch scoped blocker resolution while preserving other claims. Update start, state changes, delivery and stop without
+An explicitly authorized agent may claim scoped blocker resolution in its own client while preserving other claims. Update start, state changes, delivery and stop without
 delivery with evidence. Process completion is not merge or delivery; independent
 review remains required. Imported active/suspended sessions stay externally owned
 until reconciled. A source update is separate from verified global cutover.

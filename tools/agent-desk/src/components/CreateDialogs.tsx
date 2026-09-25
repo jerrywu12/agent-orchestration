@@ -362,7 +362,7 @@ export function CreateTicket({
             </select>
             <span className="field-hint">
               Planning and Ready open an owner confirmation after capture.
-              Confirming starts or queues the assigned agent.
+              Confirming records the assigned agent; work starts in its own client.
             </span>
           </label>
         </fieldset>

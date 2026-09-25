@@ -2,7 +2,7 @@ import { useRef, useState } from "react";
 import { api, ApiError, errorMessage, pathId } from "../api";
 import type { Agent, DeskState, Integrations, Ticket } from "../types";
 import type { TransitionResult } from "./StageTransition";
-import { ErrorNotice, isActive, isExternalAgent, Modal, ticketKey } from "./shared";
+import { isActive, Modal, ticketKey } from "./shared";
 import { PlanningProgress } from "./PlanningProgress";
 
 function executable(agent: Agent) {
@@ -69,19 +69,11 @@ export function BulkPlanningTransition({
   const latest = useRef({ state, integrations });
   latest.current = { state, integrations };
   const owner = state.agents.find((agent) => agent.id === ownerId);
-  const availability = integrations?.agents.find(
-    (agent) => agent.id === ownerId,
-  );
-  const isExternal = isExternalAgent(owner);
-  const canStart =
-    !!owner &&
-    executable(owner) &&
-    !!integrations &&
-    (isExternal || availability?.available !== false);
+  const canMove = !!owner && executable(owner);
   const eligible = tickets.filter((ticket) => !candidate(ticket, state).reason);
 
   async function confirm() {
-    if (submitted.current || !canStart || !eligible.length) return;
+    if (submitted.current || !canMove || !eligible.length) return;
     submitted.current = true;
     setPhase("submitting");
     onPhaseChange("submitting");
@@ -110,11 +102,11 @@ export function BulkPlanningTransition({
               confirmed: true,
             },
           );
-          // A malformed success is ambiguous, not evidence of admission or launch.
+          // A malformed success is ambiguous, not evidence of a stage change.
           if (
             response.ticket?.id !== ticket.id ||
             response.ticket.stageId !== target.stageId ||
-            !["started", "queued", "failed"].includes(response.outcome)
+            response.outcome !== "moved"
           ) {
             throw new Error(
               "The server returned an unexpected transition result.",
@@ -125,14 +117,7 @@ export function BulkPlanningTransition({
             ...current,
             [ticket.id]: response.ticket,
           }));
-          result =
-            response.outcome === "started"
-              ? isExternal
-                ? "Moved to Planning · external agent assigned."
-                : "Moved to Planning · planning agent started."
-              : response.outcome === "queued"
-                ? `Moved to Planning · queued. ${response.reason || "Waiting for planner capacity."}`
-                : `Moved to Planning · agent failed to start. ${response.reason || "Open the ticket to inspect the launch failure."}`;
+          result = "Moved to Planning · awaiting agent update.";
         } catch (error) {
           const refused =
             error instanceof ApiError &&
@@ -183,7 +168,7 @@ export function BulkPlanningTransition({
         <p>
           Choose one agent to prepare specifications and independent
           implementation tickets. Confirming moves eligible Backlog tickets to
-          their own project's Planning stage and starts or queues planning.
+          their own project's Planning stage. Assigned agents start in their own clients and report progress.
         </p>
         <label>
           Planning agent
@@ -204,12 +189,6 @@ export function BulkPlanningTransition({
             ))}
           </select>
         </label>
-        {ownerId && !canStart && (
-          <ErrorNotice>
-            {availability?.reason ||
-              "This planning agent is unavailable or availability is still loading."}
-          </ErrorNotice>
-        )}
         <p role="status">
           {`${eligible.length} eligible · ${tickets.length - eligible.length} will not move`}
         </p>
@@ -240,10 +219,10 @@ export function BulkPlanningTransition({
           </button>
           <button
             className="button primary"
-            disabled={!canStart || !eligible.length}
+            disabled={!canMove || !eligible.length}
             onClick={() => void confirm()}
           >
-            Confirm and start planning
+            Move to Planning
           </button>
         </div>
       </div>

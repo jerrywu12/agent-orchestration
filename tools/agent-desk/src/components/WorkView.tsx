@@ -16,7 +16,6 @@ import {
   LayoutGrid,
   List,
   Plus,
-  Play,
   Search,
   SlidersHorizontal,
   X,
@@ -153,7 +152,6 @@ export function WorkView({
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
   const [pending, setPending] = useState<string | null>(null);
   const [selected, setSelected] = useState<Set<string>>(new Set());
-  const [concurrency, setConcurrency] = useState(2);
   const [bulkBusy, setBulkBusy] = useState("");
   const [bulkError, setBulkError] = useState("");
   const [confirmArchive, setConfirmArchive] = useState(false);
@@ -357,7 +355,6 @@ export function WorkView({
       window.clearTimeout(timer);
     };
   }, [run?.id, run?.state, pollRetry, refresh, bulkBusy]);
-  const runActive = run?.state === "running";
   function selectTicket(id: string, checked: boolean) {
     if (planningLocked) return;
     setSelected((current) => {
@@ -367,75 +364,6 @@ export function WorkView({
       return next;
     });
     setConfirmArchive(false);
-  }
-  async function runSelected(
-    retryOriginal = false,
-    recoveredTicketId?: string,
-  ) {
-    const recovered = recoveredTicketId
-      ? run?.results.find(
-          (row) =>
-            row.ticketId === recoveredTicketId &&
-            row.status === "claim_released",
-        )
-      : undefined;
-    if (recoveredTicketId && !recovered) return;
-    if (
-      bulkBusy ||
-      planningBusy ||
-      takeoverPending ||
-      (retryOriginal
-        ? !runMissing || !runRequest.current
-        : runActive ||
-          !!runRequest.current ||
-          (!recoveredTicketId && !selectedIds.length))
-    )
-      return;
-    const request =
-      retryOriginal && runRequest.current
-        ? runRequest.current
-        : {
-            ticketIds: recoveredTicketId ? [recoveredTicketId] : selectedIds,
-            concurrency,
-            requestId: crypto.randomUUID(),
-          };
-    runRequest.current = request;
-    try {
-      sessionStorage.setItem(
-        lastRunKey,
-        JSON.stringify({
-          id: request.requestId,
-          concurrency: request.concurrency,
-          ticketIds: request.ticketIds,
-        }),
-      );
-    } catch {
-      runRequest.current = null;
-      setBulkError(
-        "The run was not sent because browser session storage is unavailable. Enable session storage before starting a batch.",
-      );
-      return;
-    }
-    setRun(
-      restoringRun({ id: request.requestId, concurrency: request.concurrency }),
-    );
-    setRunMissing(false);
-    setBulkBusy("run");
-    setBulkError("");
-    setPollError("");
-    try {
-      const next = await api<BulkRun>("/runs", "POST", request);
-      if (!mounted.current || restoreSavedRun()?.id !== request.requestId)
-        return;
-      rememberRun(next);
-      setRun(next);
-      runRequest.current = null;
-      await refresh?.();
-    } catch (failure) {
-      if (mounted.current) setBulkError(errorMessage(failure));
-    } finally {
-      if (mounted.current) setBulkBusy("");
-    }
   }
   async function archiveSelected() {
     if (bulkBusy || planningBusy || !confirmArchive || !selectedIds.length)
@@ -500,7 +428,7 @@ export function WorkView({
                     ...row,
                     status: "claim_released",
                     message:
-                      "Claim released; saved work retained. Run Agent to start this ticket.",
+                      "Claim released; saved work retained. Start the agent in its own client and report progress.",
                   }
                 : row,
             ),
@@ -825,33 +753,6 @@ export function WorkView({
               Clear selection
             </button>
           )}
-          <label className="bulk-concurrency">
-            Agent limit
-            <select
-              aria-label="Bulk run concurrency"
-              value={concurrency}
-              disabled={!!bulkBusy || planningBusy || runActive}
-              onChange={(event) => {
-                setConcurrency(Number(event.target.value));
-              }}
-            >
-              {[1, 2, 4].map((value) => (
-                <option key={value} value={value}>
-                  {value}
-                </option>
-              ))}
-            </select>
-          </label>
-          <button
-            className="button primary small-button"
-            disabled={
-              !selectedIds.length || !!bulkBusy || planningBusy || runActive
-            }
-            onClick={() => void runSelected()}
-          >
-            <Play size={13} />
-            {bulkBusy === "run" ? "Submitting…" : "Run Agent"}
-          </button>
           <button
             className="button small-button"
             disabled={!selectedIds.length || planningLocked || archived}
@@ -1021,13 +922,6 @@ export function WorkView({
                       .join(", ")}
                     . Agent limit: {runRequest.current.concurrency}.
                   </p>
-                  <button
-                    className="button small-button"
-                    disabled={!!bulkBusy}
-                    onClick={() => void runSelected(true)}
-                  >
-                    Retry same run request
-                  </button>
                 </>
               )}
               {runMissing && (
@@ -1126,25 +1020,7 @@ export function WorkView({
                     </button>
                   )}
                   {result.status === "claim_released" && (
-                    <button
-                      className="button primary small-button"
-                      aria-label={`Run Agent for ${key}`}
-                      disabled={
-                        !!bulkBusy ||
-                        takeoverPending ||
-                        runActive ||
-                        recoveryState !== "idle"
-                      }
-                      title={
-                        runActive
-                          ? "Wait for the remaining batch executions to finish."
-                          : undefined
-                      }
-                      onClick={() => void runSelected(false, result.ticketId)}
-                    >
-                      <Play size={13} />
-                      Run Agent
-                    </button>
+                    <p>Start the assigned agent in its own client and report progress through CLI/MCP.</p>
                   )}
                   {!["needs_takeover", "claim_released"].includes(
                     result.status,
@@ -1427,14 +1303,16 @@ export function WorkView({
                                     className="status-chip warning"
                                     title={
                                       ticket.launchIntent.reason ||
-                                      "Waiting for agent capacity"
+                                      "Historical launch status"
                                     }
                                   >
                                     {ticket.launchIntent.status === "queued"
-                                      ? "Queued"
+                                      ? "Legacy launch queued"
                                       : ticket.launchIntent.status === "failed"
                                         ? "Launch failed"
-                                        : "Launch status unavailable"}
+                                        : ticket.launchIntent.status === "cancelled"
+                                          ? "Legacy launch cancelled"
+                                          : "Launch status unavailable"}
                                   </span>
                                 )}
                               {ticket.resumeReason && (

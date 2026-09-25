@@ -69,7 +69,7 @@ export function ExecutionTracking({
     setReason("");
     setError("");
     setNotice(
-      "Prior claim released. Existing work is preserved. You can now start an agent.",
+      "Prior claim released. Existing work is preserved. The assigned agent can now claim this ticket from its own client.",
     );
     if (releaseNotified.current) return;
     releaseNotified.current = true;

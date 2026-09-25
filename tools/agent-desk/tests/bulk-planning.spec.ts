@@ -2,7 +2,7 @@ import { expect, test, type Page } from "@playwright/test";
 import type { DeskState } from "../src/types";
 import { randomUUID } from "node:crypto";
 
-type Outcome = "started" | "queued" | "failed" | "refused" | "uncertain";
+type Outcome = "moved" | "refused" | "uncertain";
 
 for (const scenario of ["failed", "started", "started-without-id"] as const) {
   const status = scenario === "failed" ? "failed" : "started";
@@ -39,7 +39,7 @@ for (const scenario of ["failed", "started", "started-without-id"] as const) {
       exact: true,
     });
     await expect(progress).toContainText(
-      status === "failed" ? "Planning failed" : "Awaiting planning status",
+      status === "failed" ? "Planning failed" : "Awaiting agent update",
     );
     await expect(progress).toContainText(ticket.launchIntent.reason!);
     await expect(progress).not.toContainText("Old preparation must not leak");
@@ -146,7 +146,7 @@ test("queued planning becomes current running telemetry on polling without start
 
 async function fixture(
   page: Page,
-  outcomes: Outcome[] = ["started", "queued"],
+  outcomes: Outcome[] = ["moved", "moved"],
 ) {
   const now = "2026-09-13T00:00:00.000Z";
   const state: DeskState = {
@@ -228,7 +228,7 @@ async function fixture(
           release = resolve;
         });
       const i = Number(path.match(/ticket-(\d+)/)?.[1]);
-      const outcome = outcomes[i] || "started";
+      const outcome = outcomes[i] || "moved";
       if (outcome === "refused")
         return route.fulfill({
           status: 409,
@@ -244,12 +244,6 @@ async function fixture(
         json: {
           ticket: state.tickets[i],
           outcome,
-          reason:
-            outcome === "failed"
-              ? "Admitted but launcher unavailable"
-              : outcome === "queued"
-                ? "Waiting for planner capacity"
-                : undefined,
         },
       });
     }
@@ -345,7 +339,7 @@ for (const view of ["List", "Board"]) {
       "q-backlog",
     ]);
   });
-  test(`${view} drag then confirm starts or queues each selected ticket`, async ({
+  test(`${view} drag then confirm records each selected ticket`, async ({
     page,
   }) => {
     const app = await fixture(page);
@@ -364,15 +358,15 @@ for (const view of ["List", "Board"]) {
       .getByRole("combobox", { name: "Planning agent", exact: true })
       .selectOption("claude");
     await dialog
-      .getByRole("button", { name: "Confirm and start planning", exact: true })
+      .getByRole("button", { name: "Move to Planning", exact: true })
       .click();
     await expect(dialog).not.toBeVisible();
     const progress = page.getByRole("region", {
       name: "Planning progress",
       exact: true,
     });
-    await expect(progress).toContainText("planning agent started");
-    await expect(progress).toContainText("queued");
+    await expect(progress).toContainText("awaiting agent update");
+    await expect(progress).toContainText("Awaiting agent update");
     expect(app.writes.map((w) => w.body)).toEqual([
       { version: 4, stageId: "p-planning", ownerId: "claude", confirmed: true },
       { version: 5, stageId: "q-planning", ownerId: "claude", confirmed: true },
@@ -436,7 +430,7 @@ test("keyboard bulk confirmation maps each project and prevents duplicate submis
     exact: true,
   });
   const confirm = dialog.getByRole("button", {
-    name: "Confirm and start planning",
+    name: "Move to Planning",
     exact: true,
   });
   await expect(confirm).toBeDisabled();
@@ -474,8 +468,7 @@ test("keyboard bulk confirmation maps each project and prevents duplicate submis
       },
     },
   ]);
-  await expect(progress).toContainText(/started/i);
-  await expect(progress).toContainText(/queued|Waiting for planner capacity/i);
+  await expect(progress).toContainText("Awaiting agent update");
   await expect(confirm).toHaveCount(0);
 });
 
@@ -518,7 +511,7 @@ test("mixed and reserved candidates stay listed but only eligible Backlog work s
     .getByRole("combobox", { name: "Planning agent", exact: true })
     .selectOption("codex");
   await dialog
-    .getByRole("button", { name: "Confirm and start planning", exact: true })
+    .getByRole("button", { name: "Move to Planning", exact: true })
     .click();
   await expect.poll(() => app.writes.length).toBe(1);
   expect(app.writes[0].path).toBe("/api/tickets/ticket-0/transition");
@@ -639,11 +632,11 @@ for (const scenario of [
   });
 }
 
-for (const failure of ["refused", "uncertain", "failed"] as const) {
+for (const failure of ["refused", "uncertain"] as const) {
   test(`partial ${failure} retains per-ticket outcomes without automatic retry`, async ({
     page,
   }) => {
-    const app = await fixture(page, ["started", failure]);
+    const app = await fixture(page, ["moved", failure]);
     await selectBoth(page);
     await page
       .getByRole("button", { name: "Move to Planning", exact: true })
@@ -656,7 +649,7 @@ for (const failure of ["refused", "uncertain", "failed"] as const) {
       .getByRole("combobox", { name: "Planning agent", exact: true })
       .selectOption("codex");
     await dialog
-      .getByRole("button", { name: "Confirm and start planning", exact: true })
+      .getByRole("button", { name: "Move to Planning", exact: true })
       .click();
     await expect.poll(() => app.writes.length).toBe(2);
     await expect(dialog).not.toBeVisible();
@@ -669,13 +662,11 @@ for (const failure of ["refused", "uncertain", "failed"] as const) {
     await expect(progress).toContainText(
       failure === "refused"
         ? /Ticket version changed/
-        : failure === "uncertain"
-          ? /uncertain|inspect|verify/i
-          : /Admitted but launcher unavailable/,
+        : /uncertain|inspect|verify/i,
     );
     await expect(
       dialog.getByRole("button", {
-        name: "Confirm and start planning",
+        name: "Move to Planning",
         exact: true,
       }),
     ).toHaveCount(0);
@@ -684,20 +675,12 @@ for (const failure of ["refused", "uncertain", "failed"] as const) {
     await expect(
       page.getByRole("checkbox", { name: "Select ticket ONE-1", exact: true }),
     ).not.toBeChecked();
-    if (failure === "failed")
-      await expect(
-        page.getByRole("checkbox", {
-          name: "Select ticket TWO-1",
-          exact: true,
-        }),
-      ).not.toBeChecked();
-    else
-      await expect(
-        page.getByRole("checkbox", {
-          name: "Select ticket TWO-1",
-          exact: true,
-        }),
-      ).toBeChecked();
+    await expect(
+      page.getByRole("checkbox", {
+        name: "Select ticket TWO-1",
+        exact: true,
+      }),
+    ).toBeChecked();
   });
 }
 
@@ -783,13 +766,13 @@ test("a refreshed stale candidate cannot submit its unreviewed version", async (
     .getByRole("combobox", { name: "Planning agent", exact: true })
     .selectOption("claude");
   await dialog
-    .getByRole("button", { name: "Confirm and start planning", exact: true })
+    .getByRole("button", { name: "Move to Planning", exact: true })
     .click();
   await expect.poll(() => app.writes.length).toBe(1);
   expect(app.writes[0].path).toBe("/api/tickets/ticket-1/transition");
 });
 
-test("unavailable planner prevents confirmation", async ({ page }) => {
+test("local launcher availability does not block tracking assignment", async ({ page }) => {
   const app = await fixture(page);
   app.unavailable();
   await page.reload();
@@ -804,14 +787,15 @@ test("unavailable planner prevents confirmation", async ({ page }) => {
   await dialog
     .getByRole("combobox", { name: "Planning agent", exact: true })
     .selectOption("codex");
-  await expect(dialog).toContainText("Synthetic planner unavailable");
   await expect(
     dialog.getByRole("button", {
-      name: "Confirm and start planning",
+      name: "Move to Planning",
       exact: true,
     }),
-  ).toBeDisabled();
-  expect(app.writes).toEqual([]);
+  ).toBeEnabled();
+  await dialog.getByRole("button", { name: "Move to Planning", exact: true }).click();
+  await expect.poll(() => app.writes.length).toBe(2);
+  expect(app.state.tickets.every((ticket) => ticket.stageId.endsWith("planning"))).toBe(true);
 });
 
 test("an excluded reservation released during submission cannot join the confirmed batch", async ({
@@ -842,7 +826,7 @@ test("an excluded reservation released during submission cannot join the confirm
     .selectOption("codex");
   app.hold();
   await dialog
-    .getByRole("button", { name: "Confirm and start planning", exact: true })
+    .getByRole("button", { name: "Move to Planning", exact: true })
     .click();
   await expect.poll(() => app.writes.length).toBe(1);
   const priorReads = app.stateReads();
@@ -885,20 +869,20 @@ test("completed outcomes survive board refresh failure without replay", async ({
     .selectOption("codex");
   app.failRefresh();
   await dialog
-    .getByRole("button", { name: "Confirm and start planning", exact: true })
+    .getByRole("button", { name: "Move to Planning", exact: true })
     .click();
   await expect(dialog).not.toBeVisible();
   const progress = page.getByRole("region", {
     name: "Planning progress",
     exact: true,
   });
-  await expect(progress).toContainText("planning agent started");
-  await expect(progress).toContainText("queued");
+  await expect(progress).toContainText("awaiting agent update");
+  await expect(progress).toContainText("Awaiting agent update");
   await expect(progress).toContainText(/could not refresh|refresh.*failed/i);
   expect(app.writes).toHaveLength(2);
   await expect(
     dialog.getByRole("button", {
-      name: "Confirm and start planning",
+      name: "Move to Planning",
       exact: true,
     }),
   ).toHaveCount(0);
