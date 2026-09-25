@@ -99,9 +99,24 @@ export class Service extends EventEmitter {
   getTicket(key) {
     return {
       ...this.decorate(this.require("ticket", key)),
+      launchIntentHistory: this.store.list("launch-intent-history")
+        .filter((intent) => intent.ticketId === key),
       attachmentContext: this.attachments.list(key, true),
       coordination: this.coordinationContext(key),
     };
+  }
+  archiveLaunchIntent(key, archiveReason) {
+    const intent = this.store.get("launch-intent", key);
+    if (!intent) return;
+    this.store.put("launch-intent-history", {
+      ...intent,
+      id: id(),
+      originalId: intent.id,
+      archivedAt: now(),
+      archiveReason,
+    });
+    this.store.delete("launch-intent", key);
+    this.store.activity(key, "launch_intent_archived", `Historical ${intent.status} launch intent archived: ${archiveReason}`);
   }
   coordinationContext(key) {
     const ticket = this.require("ticket", key);
@@ -691,11 +706,7 @@ export class Service extends EventEmitter {
         },
         { confirmedTransition: true },
       );
-      const priorIntent = this.store.get("launch-intent", key);
-      if (priorIntent) {
-        this.store.activity(key, "launch_intent_superseded", `Historical ${priorIntent.status} launch intent superseded by a tracking-only stage confirmation.`);
-        this.store.delete("launch-intent", key);
-      }
+      this.archiveLaunchIntent(key, "Superseded by a tracking-only stage confirmation.");
       this.store.activity(key, "stage_confirmed", `Moved to ${stage.name}; assigned agent ${agent.id}. Agent Desk did not launch an agent.`);
       return result;
     });
@@ -820,7 +831,7 @@ export class Service extends EventEmitter {
       // A new independently claimed session supersedes a historical launch
       // display record; its telemetry must describe this exact execution.
       if (this.store.get("launch-intent", key)?.status === "started")
-        this.store.delete("launch-intent", key);
+        this.archiveLaunchIntent(key, "Superseded by an independently claimed session.");
       this.bindPendingLaunches(execution);
       if (purpose === "implementation") {
         const activeStage = this.store

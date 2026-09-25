@@ -117,7 +117,27 @@ test("new Planning confirmation supersedes an old failed launch status", (t) => 
   });
   assert.equal(moved.outcome, "moved");
   assert.equal(moved.ticket.launchIntent, null);
-  assert.ok(f.store.activities().some((entry) => entry.kind === "launch_intent_superseded"));
+  assert.equal(f.service.getTicket(f.ticket.id).launchIntentHistory[0].reason, "Old launcher failed");
+  assert.equal(f.service.getTicket(f.ticket.id).launchIntentHistory[0].status, "failed");
+  assert.ok(f.store.activities().some((entry) => entry.kind === "launch_intent_archived"));
+});
+
+test("a new independent claim archives its prior started launch record", (t) => {
+  const f = fixture(t);
+  const moved = f.service.transition(f.ticket.id, {
+    version: f.ticket.version, stageId: f.stage("planning"), ownerId: "codex", confirmed: true,
+  });
+  f.store.put("launch-intent", {
+    id: f.ticket.id, ticketId: f.ticket.id, ownerId: "codex",
+    stageId: f.stage("planning"), purpose: "planning", confirmed: true,
+    status: "started", reason: "Prior externally started session", createdAt: new Date().toISOString(),
+  });
+  f.service.claim(f.ticket.id, { agentId: "codex", sessionId: "new-native-plan" });
+  const current = f.service.getTicket(f.ticket.id);
+  assert.equal(current.launchIntent, null);
+  assert.equal(current.launchIntentHistory[0].reason, "Prior externally started session");
+  assert.equal(current.launchIntentHistory[0].status, "started");
+  assert.ok(current.version > moved.ticket.version);
 });
 
 test("direct and batch launch entry points refuse work in tracking-only mode", (t) => {

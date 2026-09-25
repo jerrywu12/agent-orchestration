@@ -74,6 +74,7 @@ export interface GitHubLink {
 }
 export interface Ticket {
   planningAssignment?: { stageId: string; ownerId: string } | null;
+  launchIntentHistory?: Array<Record<string, unknown>>;
   launchIntent?: {
     status: "queued" | "started" | "failed";
     purpose: "planning" | "implementation";
