@@ -405,6 +405,42 @@ test("operator resolution grant is version-bound and cannot transfer ownership",
   assert.equal(f.store.active(ticket.id), null);
 });
 
+for (const eventType of ["complete", "checkpoint"]) {
+  for (const clearBlocker of [false, true]) {
+    test(`external resolution ${eventType} preserves stage and never becomes implementation (clear=${clearBlocker})`, async (t) => {
+      const f = await fixture(t);
+      const ticket = f.make({ stageId: f.stages.active, blockedReason: "Needs scoped review" });
+      const resolutionReason = "Owner authorizes prerequisite review only";
+      f.service.authorizeResolution(ticket.id, {
+        version: ticket.version,
+        agentId: "codex",
+        sessionId: "resolution-only",
+        reason: resolutionReason,
+      });
+      const run = f.service.claim(ticket.id, {
+        agentId: "codex", sessionId: "resolution-only", resolutionReason, external: true,
+      }, { resolveBlockers: true });
+      if (clearBlocker) {
+        const current = f.service.getTicket(ticket.id);
+        f.service.agentUpdate(ticket.id, {
+          agentId: "codex", executionId: run.id, sessionId: run.sessionId,
+          version: current.version, reason: "Verified prerequisite resolved",
+          changes: { blockedReason: "" },
+        });
+      }
+      const event = {
+        agentId: "codex", sessionId: run.sessionId, eventId: "resolution-finished",
+        seq: 1, type: eventType, summary: "Resolution pass saved",
+      };
+      const result = f.service.event(run.id, event);
+      assert.equal(result.state, "checkpointed");
+      assert.equal(f.service.getTicket(ticket.id).stageId, f.stages.active);
+      assert.equal(f.store.active(ticket.id), null);
+      assert.equal(f.service.event(run.id, event).state, "checkpointed");
+    });
+  }
+}
+
 test("resolution claim requires a real hold and cannot be enabled with arbitrary override flags", async (t) => {
   const f = await fixture(t);
   const clear = f.make({ stageId: f.stages.ready });
@@ -528,7 +564,7 @@ test("managed completion through legacy HTTP checkpoints unresolved work and pre
   );
   assert.equal(first.status, 200);
   assert.equal(first.data.state, "checkpointed");
-  assert.match(first.data.summary, /Unresolved blockers/);
+  assert.match(first.data.summary, /Resolution pass saved/);
   const repeat = await f.req(
     `/api/executions/${f.run.id}/events`,
     "POST",

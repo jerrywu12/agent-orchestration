@@ -1118,6 +1118,7 @@ export class Service extends EventEmitter {
       execution.id !== input.executionId ||
       execution.agentId !== input.agentId ||
       execution.sessionId !== input.sessionId ||
+      execution.purpose !== "implementation" ||
       execution.state !== "awaiting_review" ||
       !execution.releasedAt
     )
@@ -1276,6 +1277,7 @@ export class Service extends EventEmitter {
         ticket.ownerId !== current.agentId
       )
         return ticket;
+      if (current.purpose === "resolve_blockers") return ticket;
       if (current.purpose === "planning") {
         if (
           this.isPlanningExecutionComplete(current) &&
@@ -1576,14 +1578,14 @@ export class Service extends EventEmitter {
       // idempotent replay while recording the truthful effective outcome.
       const eventType =
         input.type === "complete" &&
-        (execution.purpose === "planning" ||
+        (["planning", "resolve_blockers"].includes(execution.purpose) ||
           (execution.managedBy === "agent-desk" &&
             this.resolutionNeeded(this.require("ticket", execution.ticketId))))
           ? "checkpoint"
           : input.type;
       if (eventType !== input.type)
         summary =
-          `${execution.purpose === "planning" ? "Planning prepared for review." : "Unresolved blockers or dependencies remain."} ${summary}`.slice(
+          `${execution.purpose === "planning" ? "Planning prepared for review." : execution.purpose === "resolve_blockers" ? "Resolution pass saved; implementation remains separately admitted." : "Unresolved blockers or dependencies remain."} ${summary}`.slice(
             0,
             4000,
           );
