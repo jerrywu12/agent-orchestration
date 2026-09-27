@@ -207,7 +207,11 @@ in memory. Provider-specific coverage and source research are in spec 005.
 ```sh
 agent-desk health
 agent-desk state
+agent-desk authorize-resolution BLOCKED_TICKET_ID --agent codex --session EXACT_NATIVE_SESSION_ID --version TICKET_VERSION \
+  --reason 'Authorized bounded blocker review and child planning' --confirm
 agent-desk claim TICKET_ID --agent codex --session EXACT_NATIVE_SESSION_ID
+agent-desk claim BLOCKED_TICKET_ID --agent codex --session EXACT_NATIVE_SESSION_ID \
+  --resolution-reason 'Authorized bounded blocker review and child planning'
 agent-desk event EXECUTION_ID --agent codex --session EXACT_NATIVE_SESSION_ID \
   --event-id UNIQUE_RETRY_STABLE_ID --seq 1 --type progress --summary 'Focused checks passed' --progress 40
 agent-desk wrap --ticket TICKET_ID --agent codex -- COMMAND ARGUMENTS
@@ -217,6 +221,14 @@ agent-desk-mcp --agent codex
 The stdio MCP server exposes `desk_list_tasks`, `desk_get_task`, `desk_claim_task`,
 `desk_report_progress`, `desk_get_resolution_context`, `desk_update_task`,
 `desk_create_subtask` and `desk_deliver_task`. Organization tools require the exact active assigned execution/session.
+An operator first records a version-bound, one-use resolution authorization through
+`authorize-resolution`, bound to the exact native session. The assigned agent then passes the exact reason as
+`resolutionReason` to `desk_claim_task` or `--resolution-reason` to the CLI.
+The claim is recorded as
+`resolve_blockers`, with its reason in activity. It permits scoped blocker review and
+child planning while retaining the parent implementation hold; each child still needs
+separate Ready admission and an implementation claim. Ordinary claims ignore override
+flags such as `resolveBlockers`.
 Updates require a current version and evidence/reorganization reason; new subtasks inherit
 project and owner and start Planning. Organization tools cannot steal a
 reservation, reassign, archive or mark Done. Installed per-agent connectors load their scoped token from the

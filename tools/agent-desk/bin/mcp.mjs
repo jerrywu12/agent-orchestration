@@ -30,7 +30,7 @@ export const definitions = [
   {
     name: "desk_claim_task",
     description:
-      "Atomically claim your assigned ready ticket before work. Supply the exact native session ID. Do not claim work already running elsewhere.",
+      "Atomically claim your assigned ready ticket before work. Supply the exact native session ID. For an explicitly authorized bounded blocker-resolution pass, supply resolutionReason; this does not authorize parent implementation or child admission. Do not claim work already running elsewhere.",
     inputSchema: object(
       {
         ticketId: str,
@@ -38,6 +38,7 @@ export const definitions = [
         agentId: str,
         branch: str,
         worktreePath: str,
+        resolutionReason: str,
       },
       ["ticketId", "sessionId"],
     ),
