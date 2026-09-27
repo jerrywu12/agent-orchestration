@@ -30,7 +30,7 @@ export const definitions = [
   {
     name: "desk_claim_task",
     description:
-      "Atomically claim your assigned ready ticket before work. Supply the exact native session ID. Do not claim work already running elsewhere.",
+      "Atomically claim your assigned Planning ticket for preparation or Ready ticket for implementation. The ticket stage determines the execution purpose. Supply the exact native session ID. Do not claim work already running elsewhere.",
     inputSchema: object(
       {
         ticketId: str,

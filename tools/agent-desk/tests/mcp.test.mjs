@@ -35,6 +35,7 @@ test("stdio MCP initializes and lists durable claim/progress tools without leaki
   const lines = out.trim().split("\n").map(JSON.parse);
   assert.equal(lines[0].result.serverInfo.name, "agent-desk");
   assert.ok(lines[1].result.tools.some((t) => t.name === "desk_claim_task"));
+  assert.match(lines[1].result.tools.find((t) => t.name === "desk_claim_task").description, /Planning ticket for preparation or Ready ticket for implementation/);
   assert.ok(
     lines[1].result.tools.some((t) => t.name === "desk_report_progress"),
   );
