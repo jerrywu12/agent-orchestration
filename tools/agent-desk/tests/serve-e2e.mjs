@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 const data = mkdtempSync(join(tmpdir(), "agent-desk-e2e-"));
 process.env.AGENT_DESK_DATA_DIR = data;
-process.env.AGENT_DESK_PORT = "4318";
+process.env.AGENT_DESK_PORT = process.env.AGENT_DESK_E2E_PORT ?? "4318";
 process.env.AGENT_DESK_HOST = "127.0.0.1";
 process.env.AGENT_DESK_ADMIN_TOKEN = "";
 const { startServer } = await import("../server/http.mjs");

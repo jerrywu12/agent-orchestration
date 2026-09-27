@@ -111,6 +111,27 @@ export const definitions = [
     ),
   },
   {
+    name: "desk_correct_completion_head",
+    description:
+      "Correct a released In review execution's recorded completion head after Agent Desk verifies the merged GitHub PR's exact final head. Requires the original recorded head, independent exact-head review and gate evidence, and an audit reason. Delivery remains a separate verified action.",
+    inputSchema: object(
+      {
+        ticketId: str,
+        executionId: str,
+        sessionId: str,
+        version: { type: "integer", minimum: 1 },
+        expectedHeadSha: str,
+        correctedHeadSha: str,
+        reviewedHeadSha: str,
+        reason: str,
+        reviewerId: str,
+        reviewEvidence: str,
+        verificationEvidence: str,
+      },
+      ["ticketId", "executionId", "sessionId", "version", "expectedHeadSha", "correctedHeadSha", "reviewedHeadSha", "reason", "reviewerId", "reviewEvidence", "verificationEvidence"],
+    ),
+  },
+  {
     name: "desk_deliver_task",
     description:
       "Mark an assigned, completed In review execution Done only after Agent Desk verifies its recorded PR is merged on GitHub. Supply current version, independent reviewer identity and exact reviewed head, plus review, gate and merged-runtime attestations. Ordinary agent updates cannot mark Done.",
@@ -193,12 +214,13 @@ async function invoke(name, input = {}) {
       config,
     );
   }
-  if (name === "desk_update_task" || name === "desk_create_subtask" || name === "desk_deliver_task") {
+  if (name === "desk_update_task" || name === "desk_create_subtask" || name === "desk_deliver_task" || name === "desk_correct_completion_head") {
     const { ticketId, ...payload } = input;
     const action = {
       desk_update_task: "agent-update",
       desk_create_subtask: "subtasks",
       desk_deliver_task: "deliver",
+      desk_correct_completion_head: "correct-completion-head",
     }[name];
     return request(
       name === "desk_update_task" ? "PATCH" : "POST",

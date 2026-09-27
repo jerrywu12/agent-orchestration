@@ -262,6 +262,7 @@ export function createAppServer({
               ((action === "resolution-context" && method === "GET") ||
                 (action === "agent-update" && method === "PATCH") ||
                 (action === "deliver" && method === "POST") ||
+                (action === "correct-completion-head" && method === "POST") ||
                 (action === "subtasks" && method === "POST"))) ||
             (resource === "executions" && action === "events") ||
             (method === "GET" && resource === "tickets" && key && !action) ||
@@ -524,7 +525,7 @@ export function createAppServer({
           resource === "tickets" &&
           key &&
           parts.length === 4 &&
-          ["resolution-context", "agent-update", "deliver", "subtasks"].includes(action)
+          ["resolution-context", "agent-update", "deliver", "correct-completion-head", "subtasks"].includes(action)
         ) {
           if (
             actor.role === "agent" &&
@@ -559,6 +560,13 @@ export function createAppServer({
               fail(503, "SYNC_UNAVAILABLE", "GitHub PR verification is unavailable.");
             const pullRequest = await syncManager.client.getPullRequest(delivery.repo, delivery.number);
             return json(service.deliver(key, context, pullRequest));
+          }
+          if (action === "correct-completion-head" && method === "POST") {
+            const correction = service.completionHeadCorrectionContext(key, context);
+            if (!syncManager?.client?.getPullRequest)
+              fail(503, "SYNC_UNAVAILABLE", "GitHub PR verification is unavailable.");
+            const pullRequest = await syncManager.client.getPullRequest(correction.repo, correction.number);
+            return json(service.correctCompletionHead(key, context, pullRequest));
           }
           if (action === "subtasks" && method === "POST")
             return json(service.createSubtask(key, context), 201);

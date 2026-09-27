@@ -39,6 +39,12 @@ test("stdio MCP initializes and lists durable claim/progress tools without leaki
     lines[1].result.tools.some((t) => t.name === "desk_report_progress"),
   );
   const deliver = lines[1].result.tools.find((t) => t.name === "desk_deliver_task");
+  const correct = lines[1].result.tools.find((t) => t.name === "desk_correct_completion_head");
+  assert.deepEqual(correct.inputSchema.required, [
+    "ticketId", "executionId", "sessionId", "version", "expectedHeadSha",
+    "correctedHeadSha", "reviewedHeadSha", "reason", "reviewerId",
+    "reviewEvidence", "verificationEvidence",
+  ]);
   assert.deepEqual(deliver.inputSchema.required, [
     "ticketId", "executionId", "sessionId", "version",
     "reviewerId", "reviewedHeadSha",

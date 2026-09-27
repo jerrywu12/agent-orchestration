@@ -1054,6 +1054,77 @@ export class Service extends EventEmitter {
       return result;
     });
   }
+  completionHeadCorrectionContext(key, input) {
+    const ticket = this.require("ticket", key);
+    if (!ticket.ownerId || ticket.ownerId !== input.agentId)
+      fail(403, "OWNER_MISMATCH", "This ticket is not assigned to your agent.");
+    if (!Number.isSafeInteger(input.version) || input.version < 1)
+      fail(422, "VERSION_REQUIRED", "Provide the ticket version.");
+    if (input.version !== ticket.version)
+      fail(409, "VERSION_CONFLICT", "This ticket changed. Reload before correcting its head.");
+    if (ticket.archived || !this.require("agent", input.agentId).enabled || this.resolutionNeeded(ticket))
+      fail(409, "DELIVERY_HOLD", "Resolve ticket holds before correcting its head.");
+    if (this.store.active(key) || this.require("stage", ticket.stageId).role !== "review")
+      fail(409, "REVIEW_REQUIRED", "A released In review execution is required.");
+    const execution = this.store.latest(key);
+    if (!execution || execution.id !== input.executionId || execution.agentId !== input.agentId ||
+        execution.sessionId !== input.sessionId || execution.state !== "awaiting_review" || !execution.releasedAt)
+      fail(403, "SESSION_MISMATCH", "The latest completed assigned execution is required.");
+    if (execution.completionHeadCorrection)
+      fail(409, "HEAD_ALREADY_CORRECTED", "A completion head can only be corrected once.");
+    if ((execution.heldSessions ?? []).some((session) => !session.releasedAt))
+      fail(409, "HELD_SESSIONS", "Reconcile held sessions before correcting the head.");
+    if (input.expectedHeadSha !== execution.headSha || !/^[a-f0-9]{7,40}$/i.test(execution.headSha ?? ""))
+      fail(409, "HEAD_CHANGED", "The original completion head does not match the recorded execution.");
+    if (!/^[a-f0-9]{40}$/i.test(input.correctedHeadSha ?? "") ||
+        input.correctedHeadSha.toLowerCase() === execution.headSha.toLowerCase())
+      fail(422, "CORRECTED_HEAD_REQUIRED", "Provide a different exact final PR head SHA.");
+    if (input.reviewedHeadSha?.toLowerCase() !== input.correctedHeadSha.toLowerCase())
+      fail(409, "REVIEW_HEAD_MISMATCH", "Independent review must cover the corrected final PR head.");
+    const reason = text(input.reason, "Completion head correction reason", 2000);
+    const reviewerId = text(input.reviewerId, "Independent reviewer identity", 200);
+    if (reviewerId.toLowerCase() === input.agentId.toLowerCase())
+      fail(422, "REVIEWER_REQUIRED", "The reviewer must differ from the implementing agent.");
+    const reviewEvidence = text(input.reviewEvidence, "Independent review evidence", 2000);
+    const verificationEvidence = text(input.verificationEvidence, "Verification evidence", 2000);
+    const match = /^https:\/\/github\.com\/([\w.-]+\/[\w.-]+)\/pull\/(\d+)$/.exec(execution.prUrl ?? "");
+    const project = this.require("project", ticket.projectId);
+    if (!match || match[1].toLowerCase() !== project.repo?.toLowerCase())
+      fail(409, "PR_MISMATCH", "The completed execution needs a PR in this project repository.");
+    return { ticket, execution, repo: project.repo, number: Number(match[2]), reason, reviewerId, reviewEvidence, verificationEvidence };
+  }
+  correctCompletionHead(key, input, pullRequest) {
+    const result = this.store.transaction(() => {
+      const context = this.completionHeadCorrectionContext(key, input);
+      const { execution } = context;
+      if (pullRequest?.merged !== true || !Number.isFinite(Date.parse(pullRequest.mergedAt ?? "")) ||
+          !/^[a-f0-9]{40}$/i.test(pullRequest.mergeCommitSha ?? ""))
+        fail(409, "PR_NOT_MERGED", "GitHub must confirm a merged PR before correction.");
+      if (pullRequest.repo?.toLowerCase() !== context.repo.toLowerCase() ||
+          pullRequest.number !== context.number || pullRequest.url !== execution.prUrl ||
+          pullRequest.headSha?.toLowerCase() !== input.correctedHeadSha.toLowerCase())
+        fail(409, "PR_MISMATCH", "GitHub PR does not match the exact reviewed final head.");
+      this.store.saveExecution({
+        ...execution,
+        headSha: pullRequest.headSha,
+        completionHeadCorrection: {
+          originalHeadSha: execution.headSha,
+          correctedHeadSha: pullRequest.headSha,
+          reason: context.reason,
+          reviewerId: context.reviewerId,
+          reviewedHeadSha: input.reviewedHeadSha,
+          reviewEvidence: context.reviewEvidence,
+          verificationEvidence: context.verificationEvidence,
+          actorId: input.agentId,
+          correctedAt: now(),
+        },
+      });
+      this.store.activity(key, "completion_head_corrected", `${execution.headSha} -> ${pullRequest.headSha}: ${context.reason}`, input.agentId);
+      return this.getTicket(key);
+    });
+    this.changed();
+    return result;
+  }
   deliveryContext(key, input) {
     const ticket = this.require("ticket", key);
     if (!ticket.ownerId || ticket.ownerId !== input.agentId)
@@ -1133,6 +1204,9 @@ export class Service extends EventEmitter {
         sessionId: execution.sessionId,
         prUrl: execution.prUrl,
         headSha: execution.headSha,
+        ...(execution.completionHeadCorrection ? {
+          originalCompletionHeadSha: execution.completionHeadCorrection.originalHeadSha,
+        } : {}),
         mergeCommitSha: pullRequest.mergeCommitSha,
         mergedAt: pullRequest.mergedAt,
         reviewerId: context.reviewerId,

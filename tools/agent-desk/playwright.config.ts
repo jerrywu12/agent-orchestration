@@ -1,4 +1,5 @@
 import { defineConfig } from "@playwright/test";
+const port = process.env.AGENT_DESK_E2E_PORT ?? "4318";
 export default defineConfig({
   testDir: "./tests",
   testMatch: [
@@ -18,14 +19,14 @@ export default defineConfig({
   expect: { timeout: 7000 },
   retries: 0,
   use: {
-    baseURL: "http://127.0.0.1:4318",
+    baseURL: `http://127.0.0.1:${port}`,
     channel: process.env.CI ? undefined : "chrome",
     trace: "off",
     screenshot: "off",
   },
   webServer: {
     command: "node tests/serve-e2e.mjs",
-    url: "http://127.0.0.1:4318/api/health",
+    url: `http://127.0.0.1:${port}/api/health`,
     reuseExistingServer: false,
     timeout: 30000,
   },
