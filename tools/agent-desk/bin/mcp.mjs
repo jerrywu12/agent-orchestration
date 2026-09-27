@@ -30,7 +30,7 @@ export const definitions = [
   {
     name: "desk_claim_task",
     description:
-      "Atomically claim your assigned ready ticket before work. Supply the exact native session ID. For an explicitly authorized bounded blocker-resolution pass, supply resolutionReason; this does not authorize parent implementation or child admission. Do not claim work already running elsewhere.",
+      "Atomically claim your assigned Planning ticket for preparation or Ready ticket for implementation. The ticket stage determines the execution purpose. Supply the exact native session ID. Do not claim work already running elsewhere. For an explicitly authorized bounded blocker-resolution pass, supply resolutionReason; this does not authorize parent implementation or child admission.",
     inputSchema: object(
       {
         ticketId: str,
@@ -109,6 +109,27 @@ export const definitions = [
         }),
       },
       ["ticketId", "executionId", "sessionId", "reason", "title"],
+    ),
+  },
+  {
+    name: "desk_correct_completion_head",
+    description:
+      "Correct a released In review execution's recorded completion head after Agent Desk verifies the merged GitHub PR's exact final head. Requires the original recorded head, independent exact-head review and gate evidence, and an audit reason. Delivery remains a separate verified action.",
+    inputSchema: object(
+      {
+        ticketId: str,
+        executionId: str,
+        sessionId: str,
+        version: { type: "integer", minimum: 1 },
+        expectedHeadSha: str,
+        correctedHeadSha: str,
+        reviewedHeadSha: str,
+        reason: str,
+        reviewerId: str,
+        reviewEvidence: str,
+        verificationEvidence: str,
+      },
+      ["ticketId", "executionId", "sessionId", "version", "expectedHeadSha", "correctedHeadSha", "reviewedHeadSha", "reason", "reviewerId", "reviewEvidence", "verificationEvidence"],
     ),
   },
   {
@@ -194,12 +215,13 @@ async function invoke(name, input = {}) {
       config,
     );
   }
-  if (name === "desk_update_task" || name === "desk_create_subtask" || name === "desk_deliver_task") {
+  if (name === "desk_update_task" || name === "desk_create_subtask" || name === "desk_deliver_task" || name === "desk_correct_completion_head") {
     const { ticketId, ...payload } = input;
     const action = {
       desk_update_task: "agent-update",
       desk_create_subtask: "subtasks",
       desk_deliver_task: "deliver",
+      desk_correct_completion_head: "correct-completion-head",
     }[name];
     return request(
       name === "desk_update_task" ? "PATCH" : "POST",

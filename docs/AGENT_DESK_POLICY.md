@@ -109,6 +109,13 @@ details are submitted by the assigned agent and retained for audit, not independ
 verified by the service. A live, foreign, blocked, dependency-held, or unmerged
 execution cannot use this delivery action. The ordinary organization tools remain
 unable to mark Done.
+When a PR head changes after completion, the same assigned agent can use
+`desk_correct_completion_head` on the latest released In review execution. The action
+requires the exact recorded old head, final 40-character reviewed head, independent
+review and gate evidence, and a correction reason. Agent Desk verifies the merged PR
+and exact final head on GitHub, then atomically updates the execution and records an
+audit event while preserving the original completion event. Correction alone does not
+mark Done; delivery still requires its separate exact-head and runtime checks.
 
 ## Mandatory dependency, duplicate and conflict review
 

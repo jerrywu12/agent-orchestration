@@ -220,7 +220,7 @@ agent-desk-mcp --agent codex
 
 The stdio MCP server exposes `desk_list_tasks`, `desk_get_task`, `desk_claim_task`,
 `desk_report_progress`, `desk_get_resolution_context`, `desk_update_task`,
-`desk_create_subtask` and `desk_deliver_task`. Organization tools require the exact active assigned execution/session.
+`desk_create_subtask`, `desk_correct_completion_head` and `desk_deliver_task`. Organization tools require the exact assigned execution/session.
 An operator first records a version-bound, one-use resolution authorization through
 `authorize-resolution`, bound to the exact native session. The assigned agent then passes the exact reason as
 `resolutionReason` to `desk_claim_task` or `--resolution-reason` to the CLI.
@@ -245,6 +245,12 @@ execution, submitting the reviewer identity and exact reviewed head. The service
 the recorded PR against GitHub and records the merge SHA and agent-submitted review,
 gate, and runtime attestations before moving the ticket to Done. GitHub verification failures
 leave the ticket In review.
+If the PR head changed after execution completion, the assigned agent first calls
+`desk_correct_completion_head` with the recorded old SHA, exact final reviewed SHA,
+independent review and gate evidence, and a reason. Agent Desk verifies the merged PR
+on GitHub, retains the original completion event, and atomically records the correction
+and audit activity. This does not deliver the ticket; `desk_deliver_task` still applies
+its ordinary exact-head and merged-runtime checks.
 
 Source wrappers accept `AGENT_DESK_TICKET_ID`; without a linked ID they report their board
 visibility limit. Configure fresh scheduled/queue work with its assigned ticket; do not guess
