@@ -171,7 +171,10 @@ The assigned agent must:
    credentials, broaden access or take over another session to complete this check.
 
 Managed task packets require this checkpoint for planning, blocker resolution and
-implementation. External/native agents follow this canonical policy with the
+implementation. Task brief updates patch only supplied fields; omitted fields
+remain intact, and an explicit empty string clears one field. An empty brief
+object preserves the current brief. Version, ownership, readiness and reservation
+guards still apply. External/native agents follow this canonical policy with the
 stable connector and the same scope limits. Instructions and recorded findings are
 an agent review obligation, not an automated semantic-duplicate verdict. Existing
 transactional readiness and claim conflict checks remain mandatory; a written
