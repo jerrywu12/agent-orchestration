@@ -90,6 +90,11 @@ Preserve existing `blocked:*` evidence, especially `blocked:duplicate-reference`
 Clear a blocker only when its cause is resolved and record the evidence. Backlog work,
 temporary blockers and stopped executors are distinct states. Explicit authorization
 lets the assigned agent claim a bounded resolution pass from its own client; it does not clear the hold itself.
+An administrator records that authorization against the current ticket version,
+assigned agent, native session and exact resolution reason. The assigned agent presents the matching
+reason when claiming; the grant is consumed once. A changed ticket needs a fresh
+authorization. This resolution execution may inspect blockers and prepare children,
+but cannot implement a parent or admit a child to Ready.
 The assigned active execution can use desk_get_resolution_context, desk_update_task
 (with current version and audit reason), and desk_create_subtask. These tools preserve
 project/owner boundaries and require separate claims for children; they cannot steal

@@ -346,7 +346,8 @@ test("machine inventory separates installation, observed runtime, health and res
     }),
   ).toContainText("Not found");
   await expect(
-    page.getByRole("table", { name: "Local service health" }).getByRole("row").filter({ hasText: "DeerFlow" }),
+    page.getByRole("table", { name: "Local service health" })
+      .getByRole("row").filter({ hasText: "DeerFlow" }),
   ).toContainText("Unreachable");
   await expect(
     page.getByText(/Endpoint responsiveness does not verify/),

@@ -320,6 +320,34 @@ test("completion-head correction rolls back the head when its audit write fails"
   assert.equal(f.store.activities().filter((activity) => activity.kind === "completion_head_corrected").length, 0);
 });
 
+test("legacy resolution completion cannot be delivered as implementation", async (t) => {
+  const f = await fixture(t);
+  f.complete();
+  const execution = f.store.execution(f.execution.id);
+  f.store.saveExecution({ ...execution, purpose: "resolve_blockers" });
+  const response = await f.request(f.ticket.id, f.evidence());
+  assert.equal(response.status, 403);
+  assert.equal(f.lookups(), 0);
+  assert.equal(f.service.getTicket(f.ticket.id).stageId, f.stages.review);
+});
+
+test("legacy resolution completion cannot correct an implementation head", async (t) => {
+  const f = await fixture(t, { headSha: "c".repeat(40) });
+  f.complete();
+  f.store.saveExecution({ ...f.store.execution(f.execution.id), purpose: "resolve_blockers" });
+  const response = await f.correct(f.ticket.id, {
+    executionId: f.execution.id, sessionId: f.execution.sessionId,
+    version: f.service.getTicket(f.ticket.id).version,
+    expectedHeadSha: headSha, correctedHeadSha: "c".repeat(40),
+    reviewedHeadSha: "c".repeat(40), reason: "Final head reviewed.",
+    reviewerId: "independent-reviewer", reviewEvidence: "Exact-head review.",
+    verificationEvidence: "Exact-head gate.",
+  });
+  assert.equal(response.status, 403);
+  assert.equal(f.store.execution(f.execution.id).headSha, headSha);
+  assert.equal(f.lookups(), 0);
+});
+
 test("delivery rejects a previous session and cannot repeat the transition", async (t) => {
   const f = await fixture(t);
   f.complete();
