@@ -476,3 +476,40 @@ test("planning with remaining blocker or unfinished dependency remains in Planni
   assert.equal(runnerInvoked, false);
   assert.equal(service.require("ticket", ticket.id).stageId, stage("planning"));
 });
+
+
+test("partial native brief updates preserve omitted preparation and scope fields", (t) => {
+  const { service, stage, make } = setup(t);
+  const ticket = make({ stageId: stage("planning"), brief });
+  const run = service.claim(ticket.id, { agentId: "codex", sessionId: "brief-patch" });
+  const scope = { agentId: "codex", sessionId: run.sessionId, executionId: run.id,
+    reason: "Revise verification while preserving the prepared task scope" };
+  const updated = service.agentUpdate(ticket.id, { ...scope, version: ticket.version,
+    changes: { brief: { verification: "Run the independently reviewed contract tests" } } });
+  assert.deepEqual(updated.brief, { ...brief,
+    verification: "Run the independently reviewed contract tests" });
+  const empty = service.agentUpdate(ticket.id, { ...scope, version: updated.version, changes: { brief: {} } });
+  assert.deepEqual(empty.brief, updated.brief);
+  const cleared = service.agentUpdate(ticket.id, { ...scope, version: empty.version,
+    changes: { brief: { verification: "" } } });
+  assert.deepEqual(cleared.brief, { ...brief, verification: "" });
+  assert.ok(service.readiness(ticket.id).missing.includes("verification"));
+  assert.equal(service.readiness(ticket.id).ready, false);
+  assert.equal(service.store.active(ticket.id).id, run.id);
+});
+
+test("partial brief updates keep shape validation and stale versions atomic", (t) => {
+  const { service, stage, make } = setup(t);
+  const ticket = make({ stageId: stage("planning"), brief });
+  for (const invalid of [null, [], "verification", { verification: 7 }]) {
+    assert.throws(() => service.updateTicket(ticket.id,
+      { version: ticket.version, brief: invalid }), /brief|text/i);
+    assert.deepEqual(service.getTicket(ticket.id).brief, brief);
+    assert.equal(service.getTicket(ticket.id).version, ticket.version);
+  }
+  const changed = service.updateTicket(ticket.id,
+    { version: ticket.version, brief: { verification: "Updated verification" } });
+  assert.throws(() => service.updateTicket(ticket.id,
+    { version: ticket.version, brief: { allowedPaths: "other/**" } }), /changed/i);
+  assert.deepEqual(service.getTicket(ticket.id).brief, changed.brief);
+});

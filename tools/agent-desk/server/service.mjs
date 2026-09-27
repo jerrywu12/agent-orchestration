@@ -476,8 +476,12 @@ export class Service extends EventEmitter {
           "ACTIVE_EXECUTION",
           "Checkpoint active execution before archiving.",
         );
-      if (input.brief !== undefined)
-        next.brief = this.normalizeBrief(input.brief);
+      if (input.brief !== undefined) {
+        const patch = this.normalizeBrief(input.brief);
+        next.brief = this.normalizeBrief(previous.brief);
+        for (const field of PREPARATION_FIELDS)
+          if (Object.hasOwn(input.brief, field)) next.brief[field] = patch[field];
+      }
       this.validateTicket(next);
       const role = this.require("stage", next.stageId).role;
       if (next.stageId !== previous.stageId || next.ownerId !== previous.ownerId)
