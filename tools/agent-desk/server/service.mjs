@@ -771,6 +771,33 @@ export class Service extends EventEmitter {
         fail(409, "DEPENDENCY_HOLD", "A dependency is unfinished.");
     return ticket;
   }
+  authorizeResolution(key, input) {
+    return this.store.transaction(() => {
+      const ticket = this.require("ticket", key);
+      if (input.version !== ticket.version)
+        fail(409, "VERSION_CONFLICT", "This ticket changed. Reload before authorizing resolution.");
+      if (ticket.ownerId !== input.agentId)
+        fail(403, "OWNER_MISMATCH", "Resolution must be authorized for the assigned agent.");
+      this.ready(key, input.agentId, { resolveBlockers: true });
+      if (!this.resolutionNeeded(ticket))
+        fail(409, "RESOLUTION_NOT_NEEDED", "This ticket has no blocker or unfinished dependency requiring resolution.");
+      if (this.store.active(key))
+        fail(409, "ALREADY_CLAIMED", "An execution already owns this ticket.");
+      const reason = text(input.reason, "Resolution authorization and scope", 2000);
+      const sessionId = text(input.sessionId, "Session ID", 300);
+      this.store.put("resolution-grant", {
+        id: key,
+        ticketVersion: ticket.version,
+        agentId: input.agentId,
+        sessionId,
+        reason,
+        authorizedAt: now(),
+      });
+      this.store.activity(key, "resolution_authorized", `Resolution authorized for ${input.agentId}: ${reason}`);
+      this.changed();
+      return { ticketId: key, agentId: input.agentId, sessionId, reason, ticketVersion: ticket.version };
+    });
+  }
   claim(key, input, { resolveBlockers = false } = {}) {
     return this.store.transaction(() => {
       const sessionId = text(input.sessionId, "Session ID", 300);
@@ -788,6 +815,17 @@ export class Service extends EventEmitter {
         );
       }
       const ticket = this.ready(key, input.agentId, { resolveBlockers });
+      const resolutionReason = resolveBlockers
+        ? text(input.resolutionReason, "Resolution authorization and scope", 2000)
+        : null;
+      if (resolveBlockers && !this.resolutionNeeded(ticket))
+        fail(409, "RESOLUTION_NOT_NEEDED", "This ticket has no blocker or unfinished dependency requiring a resolution claim.");
+      if (resolveBlockers) {
+        const grant = this.store.get("resolution-grant", key);
+        if (!grant || grant.agentId !== input.agentId || grant.sessionId !== sessionId ||
+            grant.ticketVersion !== ticket.version || grant.reason !== resolutionReason)
+          fail(409, "RESOLUTION_AUTH_REQUIRED", "An administrator must authorize this exact resolution scope on the current ticket before the assigned agent claims it.");
+      }
       const pendingExternalIntent = this.store.get("launch-intent", key);
       if (pendingExternalIntent?.status === "awaiting_claim" &&
           (input.external !== true ||
@@ -850,10 +888,14 @@ export class Service extends EventEmitter {
       }
       this.store.activity(
         key,
-        "claimed",
-        `Execution claimed by ${input.agentId}`,
+        resolveBlockers ? "resolution_claimed" : "claimed",
+        resolveBlockers
+          ? `Resolution claimed by ${input.agentId}: ${resolutionReason}`
+          : `Execution claimed by ${input.agentId}`,
         input.agentId,
       );
+      if (resolveBlockers)
+        this.store.delete("resolution-grant", key);
       this.changed();
       return execution;
     });
@@ -1076,6 +1118,7 @@ export class Service extends EventEmitter {
       execution.id !== input.executionId ||
       execution.agentId !== input.agentId ||
       execution.sessionId !== input.sessionId ||
+      execution.purpose !== "implementation" ||
       execution.state !== "awaiting_review" ||
       !execution.releasedAt
     )
@@ -1234,6 +1277,7 @@ export class Service extends EventEmitter {
         ticket.ownerId !== current.agentId
       )
         return ticket;
+      if (current.purpose === "resolve_blockers") return ticket;
       if (current.purpose === "planning") {
         if (
           this.isPlanningExecutionComplete(current) &&
@@ -1534,14 +1578,14 @@ export class Service extends EventEmitter {
       // idempotent replay while recording the truthful effective outcome.
       const eventType =
         input.type === "complete" &&
-        (execution.purpose === "planning" ||
+        (["planning", "resolve_blockers"].includes(execution.purpose) ||
           (execution.managedBy === "agent-desk" &&
             this.resolutionNeeded(this.require("ticket", execution.ticketId))))
           ? "checkpoint"
           : input.type;
       if (eventType !== input.type)
         summary =
-          `${execution.purpose === "planning" ? "Planning prepared for review." : "Unresolved blockers or dependencies remain."} ${summary}`.slice(
+          `${execution.purpose === "planning" ? "Planning prepared for review." : execution.purpose === "resolve_blockers" ? "Resolution pass saved; implementation remains separately admitted." : "Unresolved blockers or dependencies remain."} ${summary}`.slice(
             0,
             4000,
           );

@@ -594,7 +594,11 @@ export function createAppServer({
               "AGENT_SCOPE",
               "Agent identity does not match credential.",
             );
-          return json(service.claim(key, { ...input, external: true }), 201);
+          return json(service.claim(
+            key,
+            { ...input, external: true },
+            { resolveBlockers: input.resolutionReason !== undefined },
+          ), 201);
         }
         if (
           resource === "executions" &&
@@ -675,6 +679,8 @@ export function createAppServer({
           return json(service.createTicket(input), 201);
         if (resource === "tickets" && key && !action && method === "PATCH")
           return json(service.updateTicket(key, input));
+        if (resource === "tickets" && action === "authorize-resolution" && method === "POST")
+          return json(service.authorizeResolution(key, input));
         if (resource === "tickets" && key && !action && method === "GET")
           return json(service.getTicket(key));
         if (

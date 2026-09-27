@@ -49,9 +49,16 @@ async function fixture(t) {
     blockedReason: "dependency",
     dependsOn: [foreign.id],
   });
+  const resolutionReason = "Test fixture authorizes bounded dependency review";
+  service.authorizeResolution(ticket.id, {
+    version: ticket.version,
+    agentId: "codex",
+    sessionId: "resolver",
+    reason: resolutionReason,
+  });
   const run = service.claim(
     ticket.id,
-    { agentId: "codex", sessionId: "resolver" },
+    { agentId: "codex", sessionId: "resolver", resolutionReason },
     { resolveBlockers: true },
   );
   const auth = {
@@ -75,7 +82,7 @@ async function fixture(t) {
     const r = await fetch(url + path, {
       method,
       headers: {
-        authorization: `Bearer ${token}`,
+        ...(token ? { authorization: `Bearer ${token}` } : {}),
         "content-type": "application/json",
       },
       body: body === undefined ? undefined : JSON.stringify(body),
@@ -279,6 +286,189 @@ test("HTTP derives scoped identity and never accepts resolution overrides in ord
   assert.equal(r.status, 403);
 });
 
+test("explicit assigned resolution claim reopens a blocked parent for child planning without implementation", async (t) => {
+  const f = await fixture(t);
+  const parent = f.make({
+    stageId: f.stages.active,
+    blockedReason: "Controlled acceptance remains open",
+  });
+  const deliveredChild = f.make({ parentId: parent.id, stageId: f.stages.done });
+  const path = `/api/tickets/${parent.id}`;
+  let denied = await f.req(`${path}/claim`, "POST", {
+    agentId: "codex",
+    sessionId: "parent-planner",
+    resolutionReason: "Owner authorized a bounded child-planning pass for controlled C1",
+  });
+  assert.equal(denied.status, 409);
+  assert.equal(denied.data.error.code, "RESOLUTION_AUTH_REQUIRED");
+  denied = await f.req(`${path}/authorize-resolution`, "POST", {
+    version: parent.version,
+    agentId: "codex",
+    sessionId: "parent-planner",
+    reason: "Spoofed operator approval",
+  });
+  assert.equal(denied.status, 403);
+  denied = await f.req(`${path}/authorize-resolution`, "POST", {
+    version: parent.version,
+    agentId: "codex",
+    sessionId: "parent-planner",
+    reason: "Owner authorized a bounded child-planning pass for controlled C1",
+  }, null);
+  assert.equal(denied.status, 200);
+  denied = await f.req(`${path}/claim`, "POST", {
+    agentId: "codex",
+    sessionId: "different-native-session",
+    resolutionReason: "Owner authorized a bounded child-planning pass for controlled C1",
+  });
+  assert.equal(denied.status, 409);
+  assert.equal(denied.data.error.code, "RESOLUTION_AUTH_REQUIRED");
+  denied = await f.req(`${path}/claim`, "POST", {
+    agentId: "codex",
+    sessionId: "parent-planner",
+    resolutionReason: "Different scope",
+  });
+  assert.equal(denied.status, 409);
+  assert.equal(denied.data.error.code, "RESOLUTION_AUTH_REQUIRED");
+  let r = await f.req(`${path}/claim`, "POST", {
+    agentId: "codex",
+    sessionId: "parent-planner",
+  });
+  assert.equal(r.status, 409);
+  assert.equal(r.data.error.code, "NOT_READY");
+  r = await f.req(`${path}/claim`, "POST", {
+    agentId: "codex",
+    sessionId: "parent-planner",
+    resolutionReason: "Owner authorized a bounded child-planning pass for controlled C1",
+  });
+  assert.equal(r.status, 201);
+  assert.equal(r.data.purpose, "resolve_blockers");
+  const executionId = r.data.id;
+  r = await f.req(`${path}/claim`, "POST", {
+    agentId: "codex",
+    sessionId: "parent-planner",
+    resolutionReason: "Retry same claim",
+  });
+  assert.equal(r.status, 201);
+  assert.equal(r.data.id, executionId);
+  r = await f.req(`${path}/subtasks`, "POST", {
+    executionId,
+    sessionId: "parent-planner",
+    reason: "Separate controlled C1 replay work",
+    title: "Controlled C1 replay",
+  });
+  assert.equal(r.status, 201);
+  assert.equal(r.data.ownerId, "codex");
+  assert.equal(r.data.parentId, parent.id);
+  assert.equal(r.data.stageId, f.stages.planning);
+  assert.equal(f.service.getTicket(parent.id).blockedReason, "Controlled acceptance remains open");
+  assert.equal(f.service.getTicket(parent.id).coordination.role, "coordinator");
+  assert.equal(f.store.active(deliveredChild.id), null);
+  assert.equal(f.store.active(r.data.id), null);
+  assert.ok(f.store.activities().some((a) =>
+    a.kind === "resolution_claimed" && a.summary.includes("Owner authorized")));
+  assert.equal(f.store.get("resolution-grant", parent.id), null);
+  const foreign = await f.req(`${path}/claim`, "POST", {
+    agentId: "claude",
+    sessionId: "foreign",
+    resolutionReason: "Spoof",
+  }, "test-claude");
+  assert.equal(foreign.status, 409);
+  assert.equal(foreign.data.error.code, "ALREADY_CLAIMED");
+});
+
+test("operator resolution grant is version-bound and cannot transfer ownership", async (t) => {
+  const f = await fixture(t);
+  const ticket = f.make({ stageId: f.stages.active, blockedReason: "Needs scoped review" });
+  const path = `/api/tickets/${ticket.id}`;
+  let r = await f.req(`${path}/authorize-resolution`, "POST", {
+    version: ticket.version,
+    agentId: "claude",
+    reason: "Wrong owner",
+  }, null);
+  assert.equal(r.status, 403);
+  r = await f.req(`${path}/authorize-resolution`, "POST", {
+    version: ticket.version,
+    agentId: "codex",
+    sessionId: "stale-grant",
+    reason: "Review a verified scope",
+  }, null);
+  assert.equal(r.status, 200);
+  const current = f.service.getTicket(ticket.id);
+  f.service.updateTicket(ticket.id, { version: current.version, description: "Scope changed" });
+  r = await f.req(`${path}/claim`, "POST", {
+    agentId: "codex",
+    sessionId: "stale-grant",
+    resolutionReason: "Review a verified scope",
+  });
+  assert.equal(r.status, 409);
+  assert.equal(r.data.error.code, "RESOLUTION_AUTH_REQUIRED");
+  assert.equal(f.store.active(ticket.id), null);
+});
+
+for (const eventType of ["complete", "checkpoint"]) {
+  for (const clearBlocker of [false, true]) {
+    test(`external resolution ${eventType} preserves stage and never becomes implementation (clear=${clearBlocker})`, async (t) => {
+      const f = await fixture(t);
+      const ticket = f.make({ stageId: f.stages.active, blockedReason: "Needs scoped review" });
+      const resolutionReason = "Owner authorizes prerequisite review only";
+      f.service.authorizeResolution(ticket.id, {
+        version: ticket.version,
+        agentId: "codex",
+        sessionId: "resolution-only",
+        reason: resolutionReason,
+      });
+      const run = f.service.claim(ticket.id, {
+        agentId: "codex", sessionId: "resolution-only", resolutionReason, external: true,
+      }, { resolveBlockers: true });
+      if (clearBlocker) {
+        const current = f.service.getTicket(ticket.id);
+        f.service.agentUpdate(ticket.id, {
+          agentId: "codex", executionId: run.id, sessionId: run.sessionId,
+          version: current.version, reason: "Verified prerequisite resolved",
+          changes: { blockedReason: "" },
+        });
+      }
+      const event = {
+        agentId: "codex", sessionId: run.sessionId, eventId: "resolution-finished",
+        seq: 1, type: eventType, summary: "Resolution pass saved",
+      };
+      const result = f.service.event(run.id, event);
+      assert.equal(result.state, "checkpointed");
+      assert.equal(f.service.getTicket(ticket.id).stageId, f.stages.active);
+      assert.equal(f.store.active(ticket.id), null);
+      assert.equal(f.service.event(run.id, event).state, "checkpointed");
+    });
+  }
+}
+
+test("resolution claim requires a real hold and cannot be enabled with arbitrary override flags", async (t) => {
+  const f = await fixture(t);
+  const clear = f.make({ stageId: f.stages.ready });
+  const path = `/api/tickets/${clear.id}/claim`;
+  let r = await f.req(path, "POST", {
+    agentId: "codex",
+    sessionId: "no-hold",
+    resolutionReason: "No actual blocker",
+  });
+  assert.equal(r.status, 409);
+  assert.equal(r.data.error.code, "RESOLUTION_NOT_NEEDED");
+  const otherOwner = f.make({ ownerId: "claude", blockedReason: "Needs owner review" });
+  r = await f.req(`/api/tickets/${otherOwner.id}/claim`, "POST", {
+    agentId: "codex",
+    sessionId: "wrong-owner",
+    resolutionReason: "Spoof",
+  });
+  assert.equal(r.status, 403);
+  assert.equal(r.data.error.code, "OWNER_MISMATCH");
+  r = await f.req(`/api/tickets/${otherOwner.id}/claim`, "POST", {
+    agentId: "claude",
+    sessionId: "empty-reason",
+    resolutionReason: "",
+  }, "test-claude");
+  assert.equal(r.status, 422);
+  assert.equal(f.store.active(otherOwner.id), null);
+});
+
 test("MCP organization tools reach scoped server and preserve actor identity", async (t) => {
   const f = await fixture(t);
   const calls = [
@@ -374,7 +564,7 @@ test("managed completion through legacy HTTP checkpoints unresolved work and pre
   );
   assert.equal(first.status, 200);
   assert.equal(first.data.state, "checkpointed");
-  assert.match(first.data.summary, /Unresolved blockers/);
+  assert.match(first.data.summary, /Resolution pass saved/);
   const repeat = await f.req(
     `/api/executions/${f.run.id}/events`,
     "POST",

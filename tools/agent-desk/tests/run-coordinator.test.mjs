@@ -49,10 +49,15 @@ function fixture(
     children: new Map(),
     start(key) {
       const t = service.require("ticket", key);
+      const resolveBlockers = service.resolutionNeeded(t);
+      const resolutionReason = "Fixture operator authorizes scoped resolution";
+      const sessionId = crypto.randomUUID();
+      if (resolveBlockers)
+        service.authorizeResolution(key, { version: t.version, agentId: t.ownerId, sessionId, reason: resolutionReason });
       const e = service.claim(
         key,
-        { agentId: t.ownerId, sessionId: crypto.randomUUID() },
-        { resolveBlockers: service.resolutionNeeded(t) },
+        { agentId: t.ownerId, sessionId, ...(resolveBlockers ? { resolutionReason } : {}) },
+        { resolveBlockers },
       );
       runner.children.set(e.id, {});
       return e;
@@ -263,5 +268,3 @@ test("coordinator drain auto-synchronizes parent containers when children advanc
   const updatedParent = f.service.getTicket(parent.id);
   assert.equal(updatedParent.stageId, reviewStage);
 });
-
-

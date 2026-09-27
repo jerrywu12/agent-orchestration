@@ -94,10 +94,22 @@ try {
       await request(
         "POST",
         `/api/tickets/${encodeURIComponent(ticketId)}/claim`,
-        { agentId, sessionId },
+        { agentId, sessionId, ...(option("resolution-reason") ? { resolutionReason: option("resolution-reason") } : {}) },
         clientConfig(agentId),
       ),
     );
+  } else if (command === "authorize-resolution") {
+    const [ticketId] = args;
+    const agentId = option("agent");
+    const version = Number(option("version"));
+    const reason = option("reason");
+    const sessionId = option("session");
+    if (!ticketId || !agentId || !sessionId || !Number.isSafeInteger(version) || version < 1 || !reason || !args.includes("--confirm"))
+      throw Error("authorize-resolution requires TICKET --agent AGENT --session SESSION --version N --reason TEXT --confirm.");
+    output(await request(
+      "POST", `/api/tickets/${encodeURIComponent(ticketId)}/authorize-resolution`,
+      { agentId, sessionId, version, reason }, clientConfig(null),
+    ));
   } else if (command === "admit-existing") {
     const [ticketId] = args;
     const agentId = option("agent");
@@ -159,7 +171,7 @@ try {
     output(await previewKangentic(args[0]));
   } else {
     console.log(
-      "Agent Desk\n  health | state\n  request METHOD /api/path [JSON]\n  admit-existing TICKET --agent AGENT --version N --confirm (operator only; agent claims separately)\n  claim TICKET --agent AGENT --session SESSION\n  event EXECUTION --agent AGENT --session SESSION --seq N --type progress --summary TEXT\n  wrap --ticket TICKET --agent AGENT [--session SESSION] -- COMMAND [ARGS...]\n  mcp --agent AGENT\n  migration-preview SOURCE_DIRECTORY",
+      "Agent Desk\n  health | state\n  request METHOD /api/path [JSON]\n  admit-existing TICKET --agent AGENT --version N --confirm (operator only; agent claims separately)\n  authorize-resolution TICKET --agent AGENT --session SESSION --version N --reason TEXT --confirm (operator only)\n  claim TICKET --agent AGENT --session SESSION [--resolution-reason AUTHORIZED_SCOPE]\n  event EXECUTION --agent AGENT --session SESSION --seq N --type progress --summary TEXT\n  wrap --ticket TICKET --agent AGENT [--session SESSION] -- COMMAND [ARGS...]\n  mcp --agent AGENT\n  migration-preview SOURCE_DIRECTORY",
     );
     if (command) process.exitCode = 1;
   }

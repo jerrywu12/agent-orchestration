@@ -174,6 +174,17 @@ test("delivery rejects a changed PR head and preserves review stage", async (t) 
   assert.equal(f.service.getTicket(f.ticket.id).stageId, f.stages.review);
 });
 
+test("legacy resolution completion cannot be delivered as implementation", async (t) => {
+  const f = await fixture(t);
+  f.complete();
+  const execution = f.store.execution(f.execution.id);
+  f.store.saveExecution({ ...execution, purpose: "resolve_blockers" });
+  const response = await f.request(f.ticket.id, f.evidence());
+  assert.equal(response.status, 403);
+  assert.equal(f.lookups(), 0);
+  assert.equal(f.service.getTicket(f.ticket.id).stageId, f.stages.review);
+});
+
 test("delivery rejects a previous session and cannot repeat the transition", async (t) => {
   const f = await fixture(t);
   f.complete();
