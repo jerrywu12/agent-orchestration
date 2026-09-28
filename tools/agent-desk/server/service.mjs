@@ -1374,12 +1374,16 @@ export class Service extends EventEmitter {
         return ticket;
       const complete =
         eventType === "complete" && current.state === "awaiting_review";
+      const checkpointMarker = `Execution ${current.state} (${current.id});`;
+      if (eventType === "checkpoint" && ticket.resumeReason?.startsWith(checkpointMarker))
+        return ticket;
+      const heldCheckpoint = eventType === "checkpoint" && this.resolutionNeeded(ticket);
       const target = this.store
         .list("stage", ticket.projectId)
-        .find((s) => s.role === (complete ? "review" : "backlog"));
+        .find((s) => s.role === (complete ? "review" : heldCheckpoint ? "active" : "backlog"));
       const resumeReason = complete
         ? ""
-        : `Execution ${current.state}; work and session history retained. Explicitly resume after reviewing the checkpoint. ${current.summary || ""}`.slice(
+        : `${heldCheckpoint ? checkpointMarker : `Execution ${current.state};`} work and session history retained. Explicitly resume after reviewing the checkpoint. ${current.summary || ""}`.slice(
             0,
             4000,
           );

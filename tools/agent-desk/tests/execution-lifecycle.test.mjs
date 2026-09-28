@@ -120,7 +120,7 @@ test("Done continues to refuse active claims without releasing them", (t) => {
   assert.deepEqual(store.get("ticket", ticket.id), current);
 });
 for (const type of ["checkpoint", "failed", "stopped"])
-  test(`${type} moves active leaf to Backlog with retained-work reason`, (t) => {
+  test(`${type} ${type === "checkpoint" ? "preserves blocked active leaf" : "moves active leaf to Backlog"} with retained-work reason`, (t) => {
     const { store, service, ticket, stage, report } = fixture(t);
     let current = store.get("ticket", ticket.id);
     service.updateTicket(ticket.id, {
@@ -129,12 +129,12 @@ for (const type of ["checkpoint", "failed", "stopped"])
     });
     report(type);
     current = store.get("ticket", ticket.id);
-    assert.equal(current.stageId, stage("backlog"));
+    assert.equal(current.stageId, stage(type === "checkpoint" ? "active" : "backlog"));
     assert.equal(current.blockedReason, "Provider prerequisite remains");
     assert.match(current.resumeReason, /retained|resume/i);
     assert.match(current.resumeReason, /Retained synthetic work/);
   });
-test("managed complete with unresolved blockers checkpoints into Backlog", (t) => {
+test("managed complete with unresolved blockers preserves In progress", (t) => {
   const { store, service, ticket, execution, stage, report } = fixture(t);
   store.saveExecution({ ...execution, managedBy: "agent-desk" });
   const current = store.get("ticket", ticket.id);
@@ -143,7 +143,7 @@ test("managed complete with unresolved blockers checkpoints into Backlog", (t) =
     blockedReason: "Still blocked",
   });
   assert.equal(report("complete").state, "checkpointed");
-  assert.equal(store.get("ticket", ticket.id).stageId, stage("backlog"));
+  assert.equal(store.get("ticket", ticket.id).stageId, stage("active"));
 });
 test("manually moved tickets and parent containers retain their stage", (t) => {
   const { store, service, project, ticket, stage, report } = fixture(t);
