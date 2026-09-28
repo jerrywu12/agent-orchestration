@@ -574,3 +574,60 @@ test("managed completion through legacy HTTP checkpoints unresolved work and pre
   assert.equal(repeat.data.state, "checkpointed");
   assert.equal(f.store.active(f.foreign.id).id, f.foreignRun.id);
 });
+
+for (const hold of ["blocker", "dependency"]) {
+  for (const managed of [false, true]) {
+    test(`implementation checkpoint retains active stage for ${hold} (managed=${managed})`, async (t) => {
+      const f = await fixture(t);
+      const ticket = f.make();
+      const run = f.service.claim(ticket.id, { agentId: "codex", sessionId: "held-implementation" });
+      assert.equal(run.purpose, "implementation");
+      const current = f.service.getTicket(ticket.id);
+      f.service.updateTicket(ticket.id, { version: current.version,
+        ...(hold === "blocker" ? { blockedReason: "Historical coverage still unverified" }
+          : { dependsOn: [f.foreign.id] }) });
+      if (managed) f.store.saveExecution({ ...run, managedBy: "agent-desk" });
+      const input = { agentId: "codex", sessionId: run.sessionId,
+        eventId: "held-checkpoint", seq: 1, type: managed ? "complete" : "checkpoint",
+        summary: "Saved unfinished work awaiting verified historical coverage" };
+      const path = `/api/executions/${run.id}/events`;
+      const first = await f.req(path, "POST", input);
+      assert.equal(first.status, 200);
+      assert.equal(first.data.state, "checkpointed");
+      assert.ok(first.data.releasedAt);
+      assert.equal(f.store.active(ticket.id), null);
+      const saved = f.service.getTicket(ticket.id);
+      assert.equal(saved.stageId, f.stages.active);
+      if (hold === "blocker") assert.equal(saved.blockedReason, "Historical coverage still unverified");
+      else assert.deepEqual(saved.dependsOn, [f.foreign.id]);
+      assert.match(saved.resumeReason, /checkpointed.*unfinished work/i);
+      const retry = await f.req(path, "POST", input);
+      assert.equal(retry.status, 200);
+      assert.equal(retry.data.releasedAt, first.data.releasedAt);
+      assert.equal(f.service.getTicket(ticket.id).stageId, f.stages.active);
+      assert.equal(f.service.getTicket(ticket.id).version, saved.version);
+      assert.throws(() => f.service.claim(ticket.id,
+        { agentId: "codex", sessionId: "unsafe-restart" }), /blocked|dependenc/i);
+      if (hold === "blocker") {
+        const cleared = f.service.updateTicket(ticket.id,
+          { version: saved.version, blockedReason: "" });
+        const replay = await f.req(path, "POST", input);
+        assert.equal(replay.status, 200);
+        assert.equal(f.service.getTicket(ticket.id).stageId, f.stages.active);
+        assert.equal(f.service.getTicket(ticket.id).version, cleared.version);
+      }
+      assert.equal(f.store.active(f.foreign.id).id, f.foreignRun.id);
+    });
+  }
+}
+
+test("unblocked implementation checkpoint keeps its existing Backlog disposition", async (t) => {
+  const f = await fixture(t);
+  const ticket = f.make();
+  const run = f.service.claim(ticket.id, { agentId: "codex", sessionId: "unheld-checkpoint" });
+  const result = await f.req(`/api/executions/${run.id}/events`, "POST", {
+    agentId: "codex", sessionId: run.sessionId, eventId: "unheld-checkpoint", seq: 1,
+    type: "checkpoint", summary: "Saved work for later explicit resumption" });
+  assert.equal(result.status, 200);
+  assert.equal(f.service.getTicket(ticket.id).stageId, f.stages.backlog);
+});

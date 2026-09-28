@@ -95,6 +95,10 @@ assigned agent, native session and exact resolution reason. The assigned agent p
 reason when claiming; the grant is consumed once. A changed ticket needs a fresh
 authorization. This resolution execution may inspect blockers and prepare children,
 but cannot implement a parent or admit a child to Ready.
+A blocked implementation checkpoint releases its execution while preserving the
+In progress stage, named hold and saved history. Replaying that same checkpoint
+does not reclassify work after a later hold change. Ordinary resumption still
+checks readiness; resolving a hold requires separately authorized resolution.
 The assigned active execution can use desk_get_resolution_context, desk_update_task
 (with current version and audit reason), and desk_create_subtask. These tools preserve
 project/owner boundaries and require separate claims for children; they cannot steal
