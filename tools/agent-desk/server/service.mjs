@@ -1830,6 +1830,74 @@ export class Service extends EventEmitter {
     }
     return result;
   }
+  releaseScope(key, input) {
+    return this.store.transaction(() => {
+      const allowed = ["agentId", "executionId", "sessionId", "version", "targetTicketId", "reason", "reviewerId", "reviewEvidence"];
+      if (!input || Object.keys(input).some(k => !allowed.includes(k)))
+        fail(422, "AGENT_FIELDS", "Scope release accepts only exact identity and handoff evidence.");
+      const ticket = this.require("ticket", key);
+      if (!ticket.ownerId || ticket.ownerId !== input.agentId)
+        fail(403, "OWNER_MISMATCH", "Only the assigned agent may release its own scope.");
+      if (!Number.isSafeInteger(input.version) || input.version < 1)
+        fail(422, "VERSION_REQUIRED", "Provide the current ticket version.");
+      if (input.version !== ticket.version)
+        fail(409, "VERSION_CONFLICT", "This ticket changed. Reload before releasing scope.");
+      if (ticket.archived || !this.require("agent", input.agentId).enabled ||
+          ["done", "review"].includes(this.require("stage", ticket.stageId).role))
+        fail(409, "SCOPE_RELEASE_HOLD", "Archived, disabled or review/completed work cannot release scope.");
+      if (this.store.active(key))
+        fail(409, "CHECKPOINT_REQUIRED", "Checkpoint and release the current executor before releasing scope.");
+      if (this.store.get("launch-intent", key)?.status === "awaiting_claim")
+        fail(409, "EXTERNAL_CLAIM_PENDING", "Reconcile the previously confirmed external session first.");
+      if (this.store.list("ticket").some(t => t.parentId === key))
+        fail(409, "PARENT_CONTAINER", "Release leaf contribution scope, not a parent container.");
+      const execution = this.store.latest(key);
+      if (!execution || execution.id !== input.executionId || execution.agentId !== input.agentId ||
+          execution.sessionId !== input.sessionId)
+        fail(403, "SESSION_MISMATCH", "The latest exact assigned execution and native session are required.");
+      if (execution.state !== "checkpointed" || !execution.releasedAt ||
+          (execution.heldSessions ?? []).some(s => !s.releasedAt))
+        fail(409, "CHECKPOINT_REQUIRED", "All sessions of the latest checkpoint must be released.");
+      const targetId = text(input.targetTicketId, "Receiving ticket", 200);
+      if (targetId === key)
+        fail(422, "HANDOFF_TARGET", "Choose a distinct receiving ticket.");
+      const target = this.require("ticket", targetId);
+      if (target.projectId !== ticket.projectId)
+        fail(422, "PROJECT_MISMATCH", "Scope handoffs must stay within the same project.");
+      const targetRun = this.store.active(targetId);
+      if (target.archived || !target.ownerId || !this.require("agent", target.ownerId).enabled ||
+          this.require("stage", target.stageId).role !== "active" ||
+          this.store.list("ticket").some(t => t.parentId === targetId) ||
+          !targetRun || targetRun.agentId !== target.ownerId || targetRun.purpose !== "implementation" ||
+          !targetRun.scopeSnapshot || targetRun.scopeSnapshot.unknown ||
+          targetRun.scopeSnapshot.invalidPaths || targetRun.scopeSnapshot.invalidKeys)
+        fail(409, "HANDOFF_TARGET", "The receiving leaf needs an active owned implementation and admitted scope.");
+      // Read its existing admission, never readiness against this still-reserved
+      // contribution: that would make the release prerequisite circular.
+      const reason = text(input.reason, "Scope handoff reason", 2000);
+      const reviewerId = text(input.reviewerId, "Independent reviewer identity", 200);
+      if (reviewerId.toLowerCase() === input.agentId.toLowerCase())
+        fail(422, "REVIEWER_REQUIRED", "The handoff reviewer must differ from the implementing agent.");
+      const reviewEvidence = text(input.reviewEvidence, "Independent handoff review evidence", 2000);
+      const receipt = {
+        sourceTicketId: key, sourceVersion: ticket.version, executionId: execution.id,
+        sessionId: execution.sessionId, branch: execution.branch, worktreePath: execution.worktreePath,
+        headSha: execution.headSha, originalAllowedPaths: ticket.brief?.allowedPaths ?? "",
+        originalConflictKeys: ticket.brief?.conflictKeys ?? "",
+        targetTicketId: targetId, targetExecutionId: targetRun.id,
+        reason, reviewerId, reviewEvidence, at: now(),
+      };
+      const planning = this.store.list("stage", ticket.projectId).find(s => s.role === "planning");
+      if (!planning) fail(409, "STAGE_HOLD", "Planning stage is unavailable.");
+      const result = this.updateTicket(key, {
+        version: ticket.version, stageId: planning.id,
+        brief: { allowedPaths: "", conflictKeys: "none" },
+        description: `${ticket.description || ""}\n\nReviewed metadata scope release (acceptance and delivery unfinished):\n${JSON.stringify(receipt)}`,
+      }, { confirmedTransition: true });
+      this.store.activity(key, "scope_released", JSON.stringify(receipt), input.agentId);
+      return result;
+    });
+  }
   handoff(key, input) {
     const ticket = this.require("ticket", key);
     if (this.store.active(key))

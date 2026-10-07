@@ -64,8 +64,7 @@ test("own released checkpoint releases only future scope without a resolution gr
   assert.deepEqual(f.store.execution(f.run.id), executionBefore);
   assert.deepEqual(f.service.getTicket(f.target.id), targetBefore);
   assert.equal(f.store.active(f.source.id), null);
-  assert.throws(() => f.service.claim(f.source.id, { agentId: "codex", sessionId: "new-implementation" }),
-    e => e.code === "BLOCKED" || e.code === "READINESS_HOLD");
+  assert.equal(f.service.readiness(f.source.id).ready, false);
   assert.ok(f.store.activities().some(a => a.kind === "scope_released" && a.agentId === "codex"));
 });
 
@@ -135,6 +134,38 @@ test("concurrent replay has one winner and receipt failure rolls back scope", as
   rollback.store.activity = (...args) => { if (args[1] === "scope_released") throw Error("receipt unavailable"); return activity(...args); };
   assert.equal((await rollback.req()).status, 500);
   assert.deepEqual(rollback.service.getTicket(rollback.source.id), before);
+});
+
+test("receiving admission is inspected without circular readiness or changed target scope", async t => {
+  const f = await fixture(t);
+  f.service.updateTicket(f.target.id, { version: f.service.getTicket(f.target.id).version,
+    brief: { allowedPaths: f.source.brief.allowedPaths } });
+  assert.equal(f.service.readiness(f.target.id).ready, false);
+  const before = f.service.getTicket(f.target.id), run = f.store.execution(f.targetRun.id);
+  assert.equal((await f.req()).status, 200);
+  assert.deepEqual(f.service.getTicket(f.target.id), before);
+  assert.deepEqual(f.store.execution(f.targetRun.id), run);
+});
+
+test("invalid receiving reservations and methods cannot release source", async t => {
+  for (const mutate of [
+    f => f.store.put("ticket", { ...f.service.getTicket(f.target.id), archived: true }),
+    f => f.store.put("ticket", { ...f.service.getTicket(f.target.id), ownerId: "gemini" }),
+    f => f.make("target-child", { parentId: f.target.id, stageId: f.stages.planning }),
+    f => f.store.saveExecution({ ...f.store.execution(f.targetRun.id), scopeSnapshot: null }),
+    f => f.store.saveExecution({ ...f.store.execution(f.targetRun.id), scopeSnapshot: { unknown: true } }),
+    f => f.service.updateAgent("claude", { enabled: false }),
+  ]) {
+    const f = await fixture(t); mutate(f); const before = f.service.getTicket(f.source.id);
+    assert.equal((await f.req()).status, 409);
+    assert.deepEqual(f.service.getTicket(f.source.id), before);
+  }
+  const f = await fixture(t), before = f.service.getTicket(f.source.id);
+  assert.equal((await f.req(f.input, "fixture-codex", "PATCH")).status, 403);
+  assert.equal((await f.req(f.input, "fixture-codex", "GET")).status, 403);
+  assert.equal((await f.req(f.input, "fixture-codex", "POST", "/extra")).status, 403);
+  assert.equal((await f.req({ ...f.input, targetTicketId: "not-found" })).status, 404);
+  assert.deepEqual(f.service.getTicket(f.source.id), before);
 });
 
 async function clientProcess(f, args, messages) {

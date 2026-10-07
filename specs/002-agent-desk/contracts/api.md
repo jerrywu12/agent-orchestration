@@ -42,7 +42,8 @@ It records the operator's checkpoint/stop evidence for one exact imported source
 it never stops a native agent itself. An aggregate imported claim remains active until
 its primary session and all heldSessions entries are explicitly reconciled. Terminal
 agent events cannot bypass held-session reconciliation. UI requires explicit confirmation.
-# Reviewed metadata-only scope release (2026-10-08)
+
+## Reviewed metadata-only scope release (2026-10-08)
 
 POST /api/tickets/:id/release-scope (assigned-agent token or configured operator).
 Body: agentId (credential-bound), executionId, sessionId, version, targetTicketId,

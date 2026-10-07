@@ -90,6 +90,19 @@ Preserve existing `blocked:*` evidence, especially `blocked:duplicate-reference`
 Clear a blocker only when its cause is resolved and record the evidence. Backlog work,
 temporary blockers and stopped executors are distinct states. Explicit authorization
 lets the assigned agent claim a bounded resolution pass from its own client; it does not clear the hold itself.
+For a human-authorized, independently reviewed metadata-only contribution handoff, use
+`desk_release_scope` (CLI `agent-desk release-scope`) after the source's latest exact
+execution/session has checkpointed and released. This fixed action requires no separate
+administrator resolution grant, new resolution claim or stage confirmation. It atomically
+moves only the source leaf to Planning and clears its future writable paths/resource keys;
+the old scope, execution identity, frozen head, target identity, reason and review evidence
+are appended to source history. Source owner, parent, acceptance, dependencies and blockers
+remain intact. Active/held/foreign/stale/review/completed/archived work refuses. The distinct
+same-project receiver must have an active owned implementation with admitted scope, which
+remains untouched; adding the contribution still needs ordinary readiness and a fresh claim.
+Never require receiver readiness against the still-reserved source before releasing it.
+This narrow exception does not authorize source edits, takeovers, Ready/Done or delivery.
+All other blocker-resolution claims follow the version-bound authorization below.
 An administrator records that authorization against the current ticket version,
 assigned agent, native session and exact resolution reason. The assigned agent presents the matching
 reason when claiming; the grant is consumed once. A changed ticket needs a fresh

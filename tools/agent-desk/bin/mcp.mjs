@@ -44,6 +44,15 @@ export const definitions = [
     ),
   },
   {
+    name: "desk_release_scope",
+    description:
+      "Release your own reviewed future writable scope after the latest exact execution/session has checkpointed and released. Fixed metadata-only source move to Planning; preserves acceptance, ownership and history. Supply current version, active same-project receiving ticket and independent handoff review. No administrator grant or new claim required. Does not admit or modify the receiver.",
+    inputSchema: object({ ticketId: str, executionId: str, sessionId: str,
+      version: { type: "integer", minimum: 1 }, targetTicketId: str,
+      reason: str, reviewerId: str, reviewEvidence: str },
+    ["ticketId", "executionId", "sessionId", "version", "targetTicketId", "reason", "reviewerId", "reviewEvidence"]),
+  },
+  {
     name: "desk_get_resolution_context",
     description:
       "Read bounded same-project dependency and subtask metadata for your active assigned execution. Related reservations are not permission to modify another ticket.",
@@ -215,10 +224,11 @@ async function invoke(name, input = {}) {
       config,
     );
   }
-  if (name === "desk_update_task" || name === "desk_create_subtask" || name === "desk_deliver_task" || name === "desk_correct_completion_head") {
+  if (name === "desk_update_task" || name === "desk_release_scope" || name === "desk_create_subtask" || name === "desk_deliver_task" || name === "desk_correct_completion_head") {
     const { ticketId, ...payload } = input;
     const action = {
       desk_update_task: "agent-update",
+      desk_release_scope: "release-scope",
       desk_create_subtask: "subtasks",
       desk_deliver_task: "deliver",
       desk_correct_completion_head: "correct-completion-head",

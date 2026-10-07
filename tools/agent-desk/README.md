@@ -366,3 +366,24 @@ execution history, ownership and delivery status remain unchanged; no agent star
 A retry with the same ticket version after removal returns `outcome: unchanged`.
 Scoped agent credentials cannot call this administrator operation. Unknown launch
 statuses display as unavailable until repaired, rather than claiming a launch failed.
+
+## Metadata-only contribution handoff
+
+After human authorization and independent handoff review, the original assigned agent can
+release its own future writable scope directly from its latest released checkpoint:
+
+```sh
+agent-desk release-scope SOURCE_TICKET --agent codex --execution EXACT_EXECUTION \
+  --session EXACT_NATIVE_SESSION --version CURRENT_VERSION --target ACTIVE_LEAD_TICKET \
+  --reason "Reviewed contribution handoff" --reviewer INDEPENDENT_REVIEWER \
+  --review-evidence "Exact frozen source and acceptance review"
+```
+
+The equivalent MCP tool is `desk_release_scope`. No separate administrator grant, resolution
+claim or stage confirmation is required for this fixed metadata action. It clears only source
+future paths/resource keys and moves the source to Planning, retaining original scope in an
+audited receipt. It preserves owner, parent, blockers, acceptance and execution history and
+does not complete work. The same-project receiver must have an active admitted implementation;
+its scope and claim remain unchanged. Receiver admission of new paths is a separate normal
+step. Live/held sessions, foreign identity, stale versions and review/completed work refuse.
+General blocker resolution still uses its existing one-use administrator grant.
