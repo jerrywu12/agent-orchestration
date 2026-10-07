@@ -435,7 +435,7 @@ export class Service extends EventEmitter {
       return attachment;
     });
   }
-  updateTicket(key, input, { confirmedTransition = false, resumeReason, deliveryEvidence } = {}) {
+  updateTicket(key, input, { confirmedTransition = false, resumeReason, deliveryEvidence, reconcileParent = true } = {}) {
     return this.store.transaction(() => {
       const previous = this.require("ticket", key);
       if (!Number.isSafeInteger(input.version))
@@ -551,7 +551,7 @@ export class Service extends EventEmitter {
           : "Ticket details updated",
       );
       this.changed();
-      if (next.parentId && next.stageId !== previous.stageId) {
+      if (reconcileParent && next.parentId && next.stageId !== previous.stageId) {
         this.syncParentContainerStage(next.parentId);
       }
       if (next.blockedReason !== previous.blockedReason ||
@@ -1893,7 +1893,7 @@ export class Service extends EventEmitter {
         version: ticket.version, stageId: planning.id,
         brief: { allowedPaths: "", conflictKeys: "none" },
         description: `${ticket.description || ""}\n\nReviewed metadata scope release (acceptance and delivery unfinished):\n${JSON.stringify(receipt)}`,
-      }, { confirmedTransition: true });
+      }, { confirmedTransition: true, reconcileParent: false });
       this.store.activity(key, "scope_released", JSON.stringify(receipt), input.agentId);
       return result;
     });

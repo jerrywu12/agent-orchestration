@@ -147,6 +147,23 @@ test("receiving admission is inspected without circular readiness or changed tar
   assert.deepEqual(f.store.execution(f.targetRun.id), run);
 });
 
+test("releasing a contribution never reconciles a foreign parent or changes other tickets", async t => {
+  const f = await fixture(t);
+  const parent = f.make("foreign-parent", { ownerId: "claude", stageId: f.stages.backlog });
+  for (const ticketId of [f.source.id, f.target.id])
+    f.service.updateTicket(ticketId, { version: f.service.getTicket(ticketId).version, parentId: parent.id });
+  // An imported parent may disagree with current child stages. This fixed leaf
+  // action must not reconcile that unrelated record as a hidden side effect.
+  f.store.put("ticket", { ...f.store.get("ticket", parent.id), stageId: f.stages.backlog });
+  const others = () => f.store.list("ticket").filter(x => x.id !== f.source.id);
+  const before = others(), sourceBefore = f.store.get("ticket", f.source.id);
+  const runs = [f.store.execution(f.run.id), f.store.execution(f.targetRun.id)];
+  assert.equal((await f.req({ ...f.input, version: sourceBefore.version })).status, 200);
+  assert.deepEqual(others(), before);
+  assert.equal(f.store.get("ticket", f.source.id).parentId, parent.id);
+  assert.deepEqual([f.store.execution(f.run.id), f.store.execution(f.targetRun.id)], runs);
+});
+
 test("invalid receiving reservations and methods cannot release source", async t => {
   for (const mutate of [
     f => f.store.put("ticket", { ...f.service.getTicket(f.target.id), archived: true }),

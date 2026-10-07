@@ -107,8 +107,12 @@ based on f587a309708a48b0093d8f6dc25c793b3b81d474. Tests use synthetic in-memory
   `run-9h6xp6wi.log`. First missing boundary is a fixed assigned-agent release operation.
 - Focused source/HTTP/CLI/MCP plus existing resolution guards: 26 PASS, exit 0,
   `run-pcj_phyb.log`; expanded release matrix 9 PASS, `run-ddvomr11.log`.
-- Complete source suite before the two additional negative tests: 385 PASS, no skips/failures,
-  `run-al45xzux.log`; TypeScript/production build PASS, `run-5mrtn2f6.log`.
+- Final complete source suite: 388 PASS, no skips/failures, `run-gwuv1hdo.log`;
+  TypeScript/production build PASS, `run-5mrtn2f6.log`.
+- Independent exact-head review found hidden parent synchronization on source release. A
+  genuine regression failed before correction (`run-t8h0n9jd.log`), then 24 focused parent/core/
+  release controls passed (`run-no2ske94.log`). Only this action suppresses parent reconciliation;
+  ordinary updates retain it. All non-source stored tickets and executions remain unchanged.
 - Matrix covers source/target ownership, latest checkpoint including resolution purpose,
   active/held reservations, archive/review/Done/parent, current version, malformed fields,
   receiver admission without circular readiness, unchanged target/execution, one concurrent
