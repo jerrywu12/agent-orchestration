@@ -23,3 +23,10 @@
 - [x] T016 [US5] Deploy authorized replacement, verify live source identity/browser/connectors; record evidence in specs/002-agent-desk/verification.md.
 
 - [x] T017 Transition observer under [explicit transition contract](transition-contract.md), preserving native sessions during cutover.
+
+## Metadata-only scope release amendment 2026-10-08
+- [x] T018 Lock reviewed spec/plan/API amendment and exact owned scope before source changes.
+- [ ] T019 Write and run genuine failing own-checkpoint API/MCP/CLI regression and negative tests in tools/agent-desk/tests/{scope_release,mcp}.test.mjs.
+- [ ] T020 Implement fixed atomic source-only release in server/{service,http}.mjs and bin/{desk,mcp}.mjs; preserve general grants and ownership guards.
+- [ ] T021 Update canonical policy/API/README; run focused then complete npm test/build/e2e.
+- [ ] T022 Independent exact-head review, push/PR, green CI, squash merge; installed identity/API proof with preserved active sessions; record verification.

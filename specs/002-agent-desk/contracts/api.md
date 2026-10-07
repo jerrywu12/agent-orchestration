@@ -42,3 +42,20 @@ It records the operator's checkpoint/stop evidence for one exact imported source
 it never stops a native agent itself. An aggregate imported claim remains active until
 its primary session and all heldSessions entries are explicitly reconciled. Terminal
 agent events cannot bypass held-session reconciliation. UI requires explicit confirmation.
+# Reviewed metadata-only scope release (2026-10-08)
+
+POST /api/tickets/:id/release-scope (assigned-agent token or configured operator).
+Body: agentId (credential-bound), executionId, sessionId, version, targetTicketId,
+reason (<=2000), reviewerId (<=200; independent of implementing agent),
+reviewEvidence (<=2000). Unknown fields are rejected.
+Response: updated source ticket only. Its Planning stage, cleared future allowedPaths
+and conflictKeys=none release the reservation, preserving prior scope in an appended
+handoff receipt. Receiver and execution history are untouched.
+Requires latest checkpointed released exact execution with no active/held session,
+current assigned owner/version, leaf source in Backlog/Planning/Ready/In progress,
+distinct unarchived same-project leaf receiver with an active owned implementation
+execution and valid admitted scope snapshot. Do not run receiver readiness against
+the source reservation; that would make release circular.
+No resolution grant/claim or separate stage confirmation. Existing general resolution
+and implementation/delivery gates remain unchanged. Invalid/stale/foreign/live requests
+fail transactionally; prior historical scope and all unfinished acceptance stay durable.
