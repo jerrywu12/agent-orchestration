@@ -69,3 +69,29 @@ Assignment then explicit Start is the default, with optional stage automation; u
 Plane is a UX reference for an independent implementation. Source belongs in agent-orchestrator.
 User authorizes building and global cutover; existing ticket owners and active sessions remain intact.
 This newly assigned task is not an existing To Do ticket being auto-promoted.
+
+## Amendment 2026-10-08: reviewed metadata-only scope release
+
+Human request: approve the Scanner 283-to-284 metadata handoff and remove the separate
+administrator grant for this action. Existing general blocker resolution remains unchanged.
+An authenticated assigned agent may release its own future writable reservation after its
+latest exact execution has checkpointed and released. A fixed atomic action moves only that
+source ticket to Planning, clears allowed paths/resource keys, and records its former scope,
+receiving ticket, reason and independent review evidence. It preserves source ownership,
+parent, dependencies, blockers, acceptance, specification, verification and execution history.
+The receiving ticket remains unchanged and must acquire its own ordinary admitted scope.
+
+Acceptance:
+- No administrator grant, new resolution claim or extra stage confirmation for this action.
+- Exact current ticket version and latest checkpointed released execution/session are required.
+- Active/held sessions, foreign owners, stale versions, superseded execution, archived,
+  completed, In-review and parent work refuse without mutation.
+- The receiving ticket must be distinct, in the same project, assigned to an enabled agent,
+  unarchived leaf with an active owned implementation execution and admitted scope snapshot;
+  no receiver claim or scope is changed.
+- Audited reason, independently reviewed handoff evidence and exact original source references
+  remain durable. The action never marks work complete or clears delivery obligations.
+- Stable authenticated API, CLI and MCP expose the same fixed action. Concurrent/repeated
+  requests cannot release a newer claim or overwrite another handoff.
+- API regression, authorization/negative/concurrency/connector tests, existing complete app
+  suite/build/browser, independent exact-head review, CI, PR/merge and installed API proof.

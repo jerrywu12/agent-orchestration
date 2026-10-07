@@ -89,3 +89,37 @@ Gemini CLI was found in Homebrew's opt/gemini-cli/bin directory and its installe
 confirmed the fixed prompt/stream-json adapter. The service PATH now includes that directory.
 Cursor agent CLI is absent; its MCP connector is verified, while direct launch remains
 unavailable until the separate CLI is installed. The editor launcher was not substituted.
+## Metadata-only scope release: pre-release evidence 2026-10-08
+
+Human authorized the metadata-only Scanner handoff and removal of the separate grant for
+that action. The original handoff used the existing authorized path: source 283 now Planning,
+version 11, cleared future paths/key, checkpointed exact resolution released; original frozen
+8353 contribution and integrated acceptance preserved. No Scanner code or runtime changed.
+
+New additive `desk_release_scope` / CLI `release-scope` / authenticated API performs this
+fixed source-only action directly from an exact released checkpoint, without a grant, claim
+or extra stage confirmation. General resolution and all implementation/delivery guards stay.
+Independent contract review APPROVE; local isolated root `/private/tmp/agent-desk-metadata-handoff`
+based on f587a309708a48b0093d8f6dc25c793b3b81d474. Tests use synthetic in-memory databases.
+
+- Genuine pre-fix API/connector regression: 6 FAIL / 1 PASS, exit 1; API returned AGENT_SCOPE
+  403 for own metadata handoff; MCP unknown tool and CLI unavailable. Private log
+  `run-9h6xp6wi.log`. First missing boundary is a fixed assigned-agent release operation.
+- Focused source/HTTP/CLI/MCP plus existing resolution guards: 26 PASS, exit 0,
+  `run-pcj_phyb.log`; expanded release matrix 9 PASS, `run-ddvomr11.log`.
+- Final complete source suite: 388 PASS, no skips/failures, `run-gwuv1hdo.log`;
+  TypeScript/production build PASS, `run-5mrtn2f6.log`.
+- Independent exact-head review found hidden parent synchronization on source release. A
+  genuine regression failed before correction (`run-t8h0n9jd.log`), then 24 focused parent/core/
+  release controls passed (`run-no2ske94.log`). Only this action suppresses parent reconciliation;
+  ordinary updates retain it. All non-source stored tickets and executions remain unchanged.
+- Matrix covers source/target ownership, latest checkpoint including resolution purpose,
+  active/held reservations, archive/review/Done/parent, current version, malformed fields,
+  receiver admission without circular readiness, unchanged target/execution, one concurrent
+  winner, rollback, method/path and token isolation, actual CLI/MCP dispatch.
+- Complete browser suite: 159 PASS in 1.3m, exit 0, `run-md1bjh5u.log`; no screenshots or
+  shared application refresh. Independent exact-head review, GitHub CI/merge and installed API
+  proof remain pending at this pre-release record. Healthy service is not action proof.
+- Installed baseline reports root `~/.local/share/agent-desk/app`, code SHA 39579c087e67d36e53b64a8686f8580ec393213a.
+  Its tracked Agent Desk source equals current f587 baseline; deployment must preserve exact
+  active native executions and storage, with consistent backup and rollback manifest.

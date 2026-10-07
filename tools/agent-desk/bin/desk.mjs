@@ -98,6 +98,17 @@ try {
         clientConfig(agentId),
       ),
     );
+  } else if (command === "release-scope") {
+    const [ticketId] = args;
+    const agentId = option("agent") ?? process.env.AGENT_DESK_AGENT_ID;
+    const version = Number(option("version"));
+    const payload = { agentId, executionId: option("execution"), sessionId: option("session"),
+      version, targetTicketId: option("target"), reason: option("reason"),
+      reviewerId: option("reviewer"), reviewEvidence: option("review-evidence") };
+    if (!ticketId || !agentId || !Number.isSafeInteger(version) || version < 1 ||
+        Object.values(payload).some(value => value === undefined))
+      throw Error("release-scope requires TICKET --agent AGENT --execution ID --session SESSION --version N --target TICKET --reason TEXT --reviewer ID --review-evidence TEXT.");
+    output(await request("POST", `/api/tickets/${encodeURIComponent(ticketId)}/release-scope`, payload, clientConfig(agentId)));
   } else if (command === "authorize-resolution") {
     const [ticketId] = args;
     const agentId = option("agent");
@@ -171,7 +182,7 @@ try {
     output(await previewKangentic(args[0]));
   } else {
     console.log(
-      "Agent Desk\n  health | state\n  request METHOD /api/path [JSON]\n  admit-existing TICKET --agent AGENT --version N --confirm (operator only; agent claims separately)\n  authorize-resolution TICKET --agent AGENT --session SESSION --version N --reason TEXT --confirm (operator only)\n  claim TICKET --agent AGENT --session SESSION [--resolution-reason AUTHORIZED_SCOPE]\n  event EXECUTION --agent AGENT --session SESSION --seq N --type progress --summary TEXT\n  wrap --ticket TICKET --agent AGENT [--session SESSION] -- COMMAND [ARGS...]\n  mcp --agent AGENT\n  migration-preview SOURCE_DIRECTORY",
+      "Agent Desk\n  health | state\n  request METHOD /api/path [JSON]\n  admit-existing TICKET --agent AGENT --version N --confirm (operator only; agent claims separately)\n  authorize-resolution TICKET --agent AGENT --session SESSION --version N --reason TEXT --confirm (operator only)\n  release-scope TICKET --agent AGENT --execution ID --session SESSION --version N --target TICKET --reason TEXT --reviewer ID --review-evidence TEXT\n  claim TICKET --agent AGENT --session SESSION [--resolution-reason AUTHORIZED_SCOPE]\n  event EXECUTION --agent AGENT --session SESSION --seq N --type progress --summary TEXT\n  wrap --ticket TICKET --agent AGENT [--session SESSION] -- COMMAND [ARGS...]\n  mcp --agent AGENT\n  migration-preview SOURCE_DIRECTORY",
     );
     if (command) process.exitCode = 1;
   }

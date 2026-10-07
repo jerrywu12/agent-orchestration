@@ -50,3 +50,19 @@ Never import session prompts/transcripts/secrets. Preserve unknown routing metad
 Never treat an exit code as delivery. No GitHub writes caused by import. Sync existing links
 only unless explicitly publishing an individual ticket. Exclude PRs from issue imports.
 No arbitrary executable configuration through ticket or untrusted imported text.
+
+## Amendment 2026-10-08 implementation boundary
+
+Add Service.releaseScope and authenticated POST /api/tickets/:id/release-scope. Validate
+latest released checkpoint identity, current version, idle leaf source, distinct same-project
+prepared receiver and bounded audit fields in one store transaction. Use fixed source-only
+updateTicket with confirmedTransition internally: Planning plus empty allowedPaths and
+conflictKeys=none. Preserve all other fields and append immutable original-scope receipt to
+description/activity. No new claim, grant lookup, target update or execution mutation.
+Expose desk_release_scope through bin/mcp.mjs and release-scope through bin/desk.mjs.
+Add isolated API/service/MCP/CLI tests in tests/scope_release.test.mjs; extend mcp.test.mjs.
+Update docs/AGENT_DESK_POLICY.md, tools README and existing API/verification contracts.
+Keep general resolution grants and every implementation/readiness/delivery guard intact.
+Run local because current installed service, exact native sessions and deployment are local
+truth. Review contract before implementation; write genuine RED then implement; source checks,
+independent review and CI before merge; preserve database and active sessions during cutover.

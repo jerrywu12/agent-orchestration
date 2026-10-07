@@ -261,6 +261,7 @@ export function createAppServer({
               parts.length === 4 &&
               ((action === "resolution-context" && method === "GET") ||
                 (action === "agent-update" && method === "PATCH") ||
+                (action === "release-scope" && method === "POST") ||
                 (action === "deliver" && method === "POST") ||
                 (action === "correct-completion-head" && method === "POST") ||
                 (action === "subtasks" && method === "POST"))) ||
@@ -525,7 +526,7 @@ export function createAppServer({
           resource === "tickets" &&
           key &&
           parts.length === 4 &&
-          ["resolution-context", "agent-update", "deliver", "correct-completion-head", "subtasks"].includes(action)
+          ["resolution-context", "agent-update", "release-scope", "deliver", "correct-completion-head", "subtasks"].includes(action)
         ) {
           if (
             actor.role === "agent" &&
@@ -554,6 +555,8 @@ export function createAppServer({
             );
           if (action === "agent-update" && method === "PATCH")
             return json(service.agentUpdate(key, context));
+          if (action === "release-scope" && method === "POST")
+            return json(service.releaseScope(key, context));
           if (action === "deliver" && method === "POST") {
             const delivery = service.deliveryContext(key, context);
             if (!syncManager?.client?.getPullRequest)

@@ -38,6 +38,10 @@ test("stdio MCP initializes and lists durable claim/progress tools without leaki
   assert.match(lines[1].result.tools.find((t) => t.name === "desk_claim_task").description, /Planning ticket for preparation or Ready ticket for implementation/);
   const claim = lines[1].result.tools.find((t) => t.name === "desk_claim_task");
   assert.equal(claim.inputSchema.properties.resolutionReason.type, "string");
+  const release = lines[1].result.tools.find(t => t.name === "desk_release_scope");
+  assert.deepEqual(release.inputSchema.required, ["ticketId", "executionId", "sessionId", "version",
+    "targetTicketId", "reason", "reviewerId", "reviewEvidence"]);
+  assert.match(release.description, /No administrator grant or new claim required/);
   assert.ok(
     lines[1].result.tools.some((t) => t.name === "desk_report_progress"),
   );
